@@ -18,8 +18,16 @@ OVERRIDES="$ROOT/overrides"
 : "${REALM_LOCAL_ADDRESS:=127.0.0.1}"
 : "${REALM_LOCAL_SUBNET_MASK:=255.255.255.0}"
 : "${REALM_NAME:=Forever}"
+: "${REALM_PORT:=8085}"
 : "${REALM_ID:=70}"
 : "${LOGIN_HOSTNAME:=trinity.actual.battle.net}"
+
+validate_realm_port() {
+    if ! [[ "$REALM_PORT" =~ ^[0-9]+$ ]] || (( REALM_PORT < 1 || REALM_PORT > 65535 )); then
+        echo "[entrypoint] ERROR: REALM_PORT must be between 1 and 65535, got '$REALM_PORT'"
+        exit 1
+    fi
+}
 
 # setkey <file> <key> <value>: replaces "key = ..." or appends it when the .dist has no such line
 # (awk + ENVIRON, so passwords containing & \ | / are written verbatim)
@@ -94,7 +102,7 @@ configure_worldserver() {
     setkey "$f" MySQLExecutable '"/usr/bin/mysql"'
     setkey "$f" Network.SkipBuildAuthKeyCheck 1
     setkey "$f" Network.EnterEncryptedModeRegionGroup 8
-    setkey "$f" Realm.CfgContentSetID 137
+    setkey "$f" Realm.CfgContentSetID 136
     setkey "$f" Realm.SuperDistrictID 2
     setkey "$f" Updates.EnableDatabases 15
     setkey "$f" Updates.AutoSetup 1
@@ -121,6 +129,7 @@ configure_worldserver() {
     setkey "$f" AccountInstancesPerHour 5
     setkey "$f" PlayerSave.Stats.MinLevel 1
     apply_overrides "$f" worldserver
+    setkey "$f" WorldServerPort "$REALM_PORT"
 }
 
 configure_bnetserver() {
@@ -133,7 +142,7 @@ configure_bnetserver() {
     setkey "$f" CertificatesFile "\"$CERTS/forever.cert.pem\""
     setkey "$f" PrivateKeyFile "\"$CERTS/forever.key.pem\""
     setkey "$f" LogsDir "\"$ROOT/logs\""
-    setkey "$f" Realm.CfgContentSetID 137
+    setkey "$f" Realm.CfgContentSetID 136
     setkey "$f" Realm.SuperDistrictID 2
     apply_overrides "$f" bnetserver
 }
@@ -188,13 +197,15 @@ update_realmlist() {
         sleep 5
     done
     mysql_q "UPDATE auth.realmlist SET name='${REALM_NAME//\'/\'\'}', address='${PUBLIC_ADDRESS}', \
-        localAddress='${REALM_LOCAL_ADDRESS}', localSubnetMask='${REALM_LOCAL_SUBNET_MASK}' WHERE id=${REALM_ID}"
-    echo "[entrypoint] realm ${REALM_ID}: address=${PUBLIC_ADDRESS} localAddress=${REALM_LOCAL_ADDRESS}"
+        localAddress='${REALM_LOCAL_ADDRESS}', localSubnetMask='${REALM_LOCAL_SUBNET_MASK}', \
+        port=${REALM_PORT}, contentSetId=136 WHERE id=${REALM_ID}"
+    echo "[entrypoint] realm ${REALM_ID}: address=${PUBLIC_ADDRESS} port=${REALM_PORT} localAddress=${REALM_LOCAL_ADDRESS}"
 }
 
 case "${1:-worldserver}" in
     worldserver)
         shift || true
+        validate_realm_port
         configure_worldserver
         write_client_build_override
         check_data
@@ -203,6 +214,7 @@ case "${1:-worldserver}" in
         ;;
     bnetserver)
         shift || true
+        validate_realm_port
         configure_bnetserver
         check_certs
         wait_for_mysql

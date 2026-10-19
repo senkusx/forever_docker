@@ -90,6 +90,7 @@ const MESSAGES: &[(&str, Texts)] = &[
     ("cert_missing", ["certificat du serveur non installé", "server certificate not installed", "certificado del servidor no instalado", "certificado do servidor não instalado"]),
     ("cert_ok_macos", ["certificat du serveur approuvé par macOS", "server certificate trusted by macOS", "certificado del servidor aprobado por macOS", "certificado do servidor aprovado pelo macOS"]),
     ("cert_not_trusted", ["certificat du serveur non approuvé", "server certificate not trusted", "certificado del servidor no aprobado", "certificado do servidor não aprovado"]),
+    ("cert_check_failed", ["impossible de lire les réglages de confiance de macOS", "could not read macOS trust settings", "no se pudo leer la configuración de confianza de macOS", "não foi possível ler as configurações de confiança do macOS"]),
     ("cert_ok_prefix", ["certificat installé dans le préfixe Wine", "certificate installed in the Wine prefix", "certificado instalado en el prefijo de Wine", "certificado instalado no prefixo do Wine"]),
     ("prefix_missing", ["préfixe Wine pas encore créé", "Wine prefix not created yet", "prefijo de Wine aún no creado", "prefixo do Wine ainda não criado"]),
     ("cert_not_in_prefix", ["certificat absent du préfixe Wine", "certificate missing from the Wine prefix", "certificado ausente del prefijo de Wine", "certificado ausente do prefixo do Wine"]),

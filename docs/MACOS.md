@@ -13,7 +13,7 @@ key store is not stored in clear in the binary. What the launcher does instead:
    in the game's memory and writes the server's public key in the region group 8 entry, like the Windows/Linux
    patcher (`app/src-tauri/src/patcher/`).
 3. **PC setup**: the hosts entry is written through `osascript ... with administrator privileges`; the CA is
-   trusted with `security add-trusted-cert -d -r trustRoot` from the user session (macOS shows its own prompt).
+   trusted in the user's default keychain with `security add-trusted-cert -r trustRoot`.
 4. **Automatic login**: the login ticket goes to the `net.battle` preferences (`Launch Options/WoW/WEB_TOKEN`,
    AES-128-CBC with a PBKDF2 key derived from the client's entropy and `$USER`), then the copy is started with
    `-launcherlogin -config ForeverLauncher.wtf`.

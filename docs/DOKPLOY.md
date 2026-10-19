@@ -9,7 +9,7 @@ through its own Traefik. This is the simplest way to host it.
 - **Disk**: ~20 GB free (the image is ~7 GB, plus the database and the build).
 - **RAM**: 4 GB to play. The build needs ~2 GB per job: set `BUILD_JOBS` accordingly
   (e.g. `BUILD_JOBS=2` with 4 GB + swap, `BUILD_JOBS=6` with 16 GB).
-- **Firewall / router**: forward **TCP 1119, 8081 and 8085** to the server. Never open 3306 (MySQL) or 7878 (SOAP).
+- **Firewall / router**: forward **TCP 1119, 8081 and the `REALM_PORT`** (default `8085`) to the server. The realm and in-world game connection both use this port. Never open 3306 (MySQL) or 7878 (SOAP).
 
 ## 1. Create the application
 
@@ -25,6 +25,7 @@ DB_PASSWORD=<random>
 SOAP_PASSWORD=<random>
 PUBLIC_ADDRESS=<public IP or DNS name of the server>
 REALM_NAME=Forever
+REALM_PORT=8085
 CLIENT_BUILD=70450
 BUILD_JOBS=2
 DATA_DIR=../files/data

@@ -57,7 +57,7 @@ Forward these ports to the server on your router / firewall (**TCP only**, no UD
 |---|---|---|
 | 1119 | bnetserver | Battle.net login (TLS) |
 | 8081 | bnetserver | login REST API (launcher login, game login ticket) |
-| 8085 | worldserver | the game itself, once in the realm |
+| 8085 (default) | worldserver | realm and in-world game connections; set `REALM_PORT` to change the published and container port |
 | 80, 443 | Traefik / Dokploy | the website (HTTP for Let's Encrypt, HTTPS), only if you publish it |
 
 Never expose MySQL (3306) or SOAP (7878): they stay on the internal Docker network.

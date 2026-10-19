@@ -194,12 +194,58 @@ killall -HUP mDNSResponder || true
     }
 
     pub fn certificate_status(_: &Settings) -> (bool, String) {
-        // the client checks the certificate with the system trust settings (keychain)
-        let ok = write_file("forever_root_ca.crt", CA_PEM)
-            .ok()
-            .and_then(|ca| Command::new("security").args(["verify-cert", "-c"]).arg(ca).output().ok())
-            .is_some_and(|o| o.status.success());
-        (ok, if ok { t("cert_ok_macos").into() } else { t("cert_not_trusted").into() })
+        let output = match Command::new("security")
+            .args(["find-certificate", "-a", "-Z"])
+            .output()
+        {
+            Ok(output) => output,
+            Err(_) => return (false, t("cert_check_failed").into()),
+        };
+        if !output.status.success() {
+            return (false, t("cert_check_failed").into());
+        }
+        let ok = certificate_list_contains_ca(&String::from_utf8_lossy(&output.stdout), &ca_sha1());
+        (
+            ok,
+            if ok {
+                t("cert_ok_macos").into()
+            } else {
+                t("cert_not_trusted").into()
+            },
+        )
+    }
+
+    fn certificate_list_contains_ca(certificates: &str, fingerprint: &[u8; 20]) -> bool {
+        let expected: String = fingerprint
+            .iter()
+            .map(|byte| format!("{byte:02X}"))
+            .collect();
+        certificates.lines().any(|line| {
+            line.split_once("SHA-1 hash:").is_some_and(|(_, value)| {
+                let actual: String = value.chars().filter(char::is_ascii_hexdigit).collect();
+                actual.eq_ignore_ascii_case(&expected)
+            })
+        })
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::certificate_list_contains_ca;
+
+        #[test]
+        fn macos_trust_check_matches_the_exact_ca_fingerprint() {
+            let fingerprint = [0xA5; 20];
+            let matching = "SHA-256 hash: ignored\nSHA-1 hash: A5:A5:A5:A5:A5:A5:A5:A5:A5:A5:A5:A5:A5:A5:A5:A5:A5:A5:A5:A5";
+            let different =
+                "SHA-1 hash: B5:B5:B5:B5:B5:B5:B5:B5:B5:B5:B5:B5:B5:B5:B5:B5:B5:B5:B5:B5";
+
+            assert!(certificate_list_contains_ca(matching, &fingerprint));
+            assert!(!certificate_list_contains_ca(different, &fingerprint));
+            assert!(!certificate_list_contains_ca(
+                "0 certificates found",
+                &fingerprint
+            ));
+        }
     }
 
     pub fn repair(settings: &Settings) -> Result<(), String> {
@@ -228,13 +274,37 @@ killall -HUP mDNSResponder || true
             }
         }
         if !certificate_status(settings).0 {
-            // must run in the user's session (not as root): macOS asks for the authorisation itself, a root
-            // process gets "no user interaction was possible"
             let ca = write_file("forever_root_ca.crt", CA_PEM)?;
-            match Command::new("security").args(["add-trusted-cert", "-d", "-r", "trustRoot"]).arg(&ca).output() {
-                Ok(o) if o.status.success() => {}
-                Ok(o) => errors.push(tf("cert_trust_failed", &[&String::from_utf8_lossy(&o.stderr).trim()])),
-                Err(e) => errors.push(format!("security : {e}")),
+            let keychain = Command::new("security")
+                .args(["default-keychain", "-d", "user"])
+                .output()
+                .map_err(|e| format!("security default-keychain : {e}"))?;
+            if !keychain.status.success() {
+                errors.push(tf(
+                    "cert_trust_failed",
+                    &[&String::from_utf8_lossy(&keychain.stderr).trim()],
+                ));
+            } else {
+                let keychain = String::from_utf8_lossy(&keychain.stdout)
+                    .trim()
+                    .trim_matches('"')
+                    .to_string();
+                if keychain.is_empty() {
+                    errors.push("security default-keychain returned an empty path".into());
+                } else {
+                    match Command::new("security")
+                        .args(["add-trusted-cert", "-r", "trustRoot", "-k", &keychain])
+                        .arg(&ca)
+                        .output()
+                    {
+                        Ok(o) if o.status.success() => {}
+                        Ok(o) => errors.push(tf(
+                            "cert_trust_failed",
+                            &[&String::from_utf8_lossy(&o.stderr).trim()],
+                        )),
+                        Err(e) => errors.push(format!("security : {e}")),
+                    }
+                }
             }
         }
         if errors.is_empty() { Ok(()) } else { Err(errors.join(" ; ")) }

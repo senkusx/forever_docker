@@ -54,13 +54,14 @@ services:
       MMAP_PATHFINDING: ${MMAP_PATHFINDING:-0}
       CLIENT_BUILD: ${CLIENT_BUILD:-}
       PACKET_LOG: ${PACKET_LOG:-0}   # 1 = packet log (diagnostics, holds chat)
+      REALM_PORT: ${REALM_PORT:-8085}
       SOAP_ENABLED: "1"   # for the website; port 7878 is never published
     # interactive console: docker compose attach worldserver  (leave with Ctrl+P, Ctrl+Q)
     stdin_open: true
     tty: true
     stop_grace_period: 2m
     ports:
-      - "8085:8085"
+      - "${REALM_PORT:-8085}:${REALM_PORT:-8085}"
     volumes:
       - ${DATA_DIR:-./data}:/opt/trinitycore/data:ro
       - ./overrides:/opt/trinitycore/overrides:ro
@@ -83,6 +84,7 @@ services:
       REALM_LOCAL_ADDRESS: ${REALM_LOCAL_ADDRESS:-127.0.0.1}
       REALM_LOCAL_SUBNET_MASK: ${REALM_LOCAL_SUBNET_MASK:-255.255.255.0}
       REALM_NAME: ${REALM_NAME:-Forever}
+      REALM_PORT: ${REALM_PORT:-8085}
     # bnetserver refuses to start if it cannot resolve the LoginREST hostname itself
     extra_hosts:
       - "trinity.actual.battle.net:${PUBLIC_ADDRESS:-127.0.0.1}"
