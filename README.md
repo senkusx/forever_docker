@@ -62,6 +62,14 @@ Forward these ports to the server on your router / firewall (**TCP only**, no UD
 
 Never expose MySQL (3306) or SOAP (7878): they stay on the internal Docker network.
 
+### Docker images
+
+The TrinityCore server/extractor and website images are published to
+[GitHub Container Registry](https://github.com/senkusx?tab=packages&repo_name=forever_docker) for Linux `amd64`
+and `arm64`. Start or update with `docker compose pull && docker compose up -d`; Docker Compose uses the published
+`latest` images by default. To build them locally instead, run `docker compose build` (the TrinityCore build takes
+a while). You can override the defaults with `TRINITY_IMAGE` and `WEB_IMAGE`.
+
 ### The website
 
 It listens on `127.0.0.1:8088`. To publish it on a domain with HTTPS:

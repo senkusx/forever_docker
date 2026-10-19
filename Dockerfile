@@ -75,6 +75,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libboost-locale1.83.0 libboost-thread1.83.0 libboost-iostreams1.83.0 \
     && rm -rf /var/lib/apt/lists/*
 
+LABEL org.opencontainers.image.source="https://github.com/senkusx/forever_docker"
+
 COPY --from=build /opt/trinitycore /opt/trinitycore
 # The updater looks for sql/ under the source directory baked in at build time
 COPY --from=build /src/TrinityCore/sql /src/TrinityCore/sql

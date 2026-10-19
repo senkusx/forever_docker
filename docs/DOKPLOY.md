@@ -1,8 +1,11 @@
 # Deploying on Dokploy
 
 [Dokploy](https://dokploy.com) runs the whole `docker-compose.yml` (MySQL, worldserver, bnetserver, website),
-pulls it from your Git repository, builds the images on the server and handles the website's domain and HTTPS
-through its own Traefik. This is the simplest way to host it.
+pulls it from your Git repository, pulls the published application images from GitHub Container Registry, and
+handles the website's domain and HTTPS through its own Traefik. This is the simplest way to host it.
+
+The TrinityCore image can still be built from source with `docker compose build worldserver`; this requires more
+memory and time than pulling the prebuilt package. `BUILD_JOBS` controls the local source build.
 
 ## Server requirements
 

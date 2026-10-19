@@ -42,7 +42,8 @@ services:
       args:
         TC_REF: ${TC_REF:-forever}
         BUILD_JOBS: ${BUILD_JOBS:-4}
-    image: forever-trinitycore:latest
+    image: ${TRINITY_IMAGE:-ghcr.io/senkusx/forever_docker-trinitycore:latest}
+    pull_policy: always
     command: ["worldserver"]
     networks: [forever]
     restart: unless-stopped
@@ -68,8 +69,8 @@ services:
       - logs:/opt/trinitycore/logs
 
   bnetserver:
-    image: forever-trinitycore:latest
-    pull_policy: never   # local image, built by the worldserver service
+    image: ${TRINITY_IMAGE:-ghcr.io/senkusx/forever_docker-trinitycore:latest}
+    pull_policy: always
     command: ["bnetserver"]
     networks: [forever]
     restart: unless-stopped
@@ -99,6 +100,8 @@ services:
   # Account sign-up website. Behind Traefik or Dokploy: route your domain to this service, port 8000.
   web:
     build: ./web
+    image: ${WEB_IMAGE:-ghcr.io/senkusx/forever_docker-web:latest}
+    pull_policy: always
     networks: [forever]
     restart: unless-stopped
     depends_on:
@@ -135,8 +138,8 @@ services:
 
   # Game data extraction from the client: docker compose run --rm extractor
   extractor:
-    image: forever-trinitycore:latest
-    pull_policy: never   # local image: run "docker compose build" first
+    image: ${TRINITY_IMAGE:-ghcr.io/senkusx/forever_docker-trinitycore:latest}
+    pull_policy: always
     profiles: ["tools"]
     entrypoint: ["/usr/local/bin/extract.sh"]
     user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
