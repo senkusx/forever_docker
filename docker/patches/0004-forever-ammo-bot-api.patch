@@ -1,10 +1,7 @@
 diff --git a/src/server/game/Entities/Player/Player.cpp b/src/server/game/Entities/Player/Player.cpp
 --- a/src/server/game/Entities/Player/Player.cpp
 +++ b/src/server/game/Entities/Player/Player.cpp
-@@ -10231,5 +10231,6 @@
- void Player::AutoSelectAmmo()
- {
-     // A bot has no client to choose its ammo: it takes a stack that is drawn with a model, not the generic white-box display.
+@@ -10234,2 +10234,3 @@
 -    bool const preferDrawable = GetSession() && GetSession()->IsBot();
 +    // The current forever branch does not expose a WorldSession::IsBot() API.
 +    bool const preferDrawable = false;
