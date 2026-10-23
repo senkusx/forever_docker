@@ -75,6 +75,14 @@ jobs:
             type=sha,format=long,suffix=-${{ matrix.arch }}
             type=raw,value=latest,suffix=-${{ matrix.arch }},enable={{is_default_branch}}
 
+      - name: Resolve TrinityCore source revision
+        id: trinitycore
+        if: matrix.name == 'trinitycore'
+        run: |
+          revision="$(git ls-remote https://github.com/advocaite/TrinityCore.git refs/heads/forever | cut -f1)"
+          test -n "$revision"
+          printf 'revision=%s\n' "$revision" >> "$GITHUB_OUTPUT"
+
       - name: Build and push platform image
         uses: docker/build-push-action@v6
         with:
@@ -82,7 +90,9 @@ jobs:
           file: ${{ matrix.file }}
           platforms: ${{ matrix.platform }}
           push: true
-          build-args: ${{ matrix.build_args }}
+          build-args: |
+            ${{ matrix.build_args }}
+            ${{ matrix.name == 'trinitycore' && format('TC_COMMIT={0}', steps.trinitycore.outputs.revision) || '' }}
           labels: ${{ steps.meta.outputs.labels }}
           tags: ${{ steps.meta.outputs.tags }}
           cache-from: type=gha,scope=${{ matrix.cache_scope }}

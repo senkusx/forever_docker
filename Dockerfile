@@ -17,7 +17,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 ARG TC_REPO=https://github.com/advocaite/TrinityCore.git
 ARG TC_REF=forever
-RUN git clone --branch "${TC_REF}" --single-branch --depth 1 "${TC_REPO}" /src/TrinityCore
+ARG TC_COMMIT=
+RUN git clone --branch "${TC_REF}" --single-branch --depth 1 "${TC_REPO}" /src/TrinityCore \
+    && if [ -n "${TC_COMMIT}" ]; then \
+        git -C /src/TrinityCore fetch --depth 1 origin "${TC_COMMIT}" \
+        && git -C /src/TrinityCore checkout --detach FETCH_HEAD; \
+    fi
 
 # Fixes not merged upstream yet (docker/patches/*.patch, applied in name order; the build fails if one no longer applies)
 COPY docker/patches/ /patches/
