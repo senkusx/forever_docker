@@ -177,7 +177,7 @@ pub fn installed_locale(game_dir: &Path) -> Option<String> {
     LOCALES.iter().find(|l| line.contains(&format!("{l} text"))).map(|l| l.to_string())
 }
 
-/// Full client version (e.g. 1.60.1.70450), from the Version column of .build.info next to the game folder.
+/// Full client version (e.g. 1.60.1.70532), from the Version column of .build.info next to the game folder.
 pub fn installed_version(game_dir: &Path) -> Option<String> {
     let info = std::fs::read_to_string(game_dir.parent()?.join(".build.info")).ok()?;
     let mut lines = info.lines();

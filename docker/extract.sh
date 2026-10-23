@@ -25,7 +25,12 @@ fi
 
 echo "[extract] === 2/3 vmap4extractor"
 rm -rf "$OUT/.work" && mkdir -p "$OUT/.work" && cd "$OUT/.work"
-"$BIN/vmap4extractor" -d "$WOW" -p "$PRODUCT"
+locale_dir="$(find "$OUT/dbc" -mindepth 1 -maxdepth 1 -type d -print -quit)"
+if [ -z "$locale_dir" ]; then
+    echo "[extract] ERROR: mapextractor produced no DBC locale directory."
+    exit 1
+fi
+"$BIN/vmap4extractor" -d "$WOW" -p "$PRODUCT" -dl "${locale_dir##*/}"
 
 echo "[extract] === 3/3 vmap4assembler"
 rm -rf "$OUT/vmaps" && mkdir -p "$OUT/vmaps"

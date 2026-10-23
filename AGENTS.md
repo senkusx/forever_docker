@@ -1,6 +1,6 @@
 # Instructions for AI coding assistants
 
-This repository runs a private server for the **World of Warcraft Forever** beta, client build **1.60.1.70450**,
+This repository runs a private server for the **World of Warcraft Forever** beta, client build **1.60.1.70532**,
 based on the [`forever` branch of TrinityCore](https://github.com/advocaite/TrinityCore/tree/forever). Read
 `README.md` first; this file adds what an assistant needs to help someone set it up.
 
@@ -18,7 +18,7 @@ based on the [`forever` branch of TrinityCore](https://github.com/advocaite/Trin
 ## Helping someone run their server
 
 1. Linux server with Docker. `cp .env.example .env`: set the three passwords, `PUBLIC_ADDRESS` (public IP or DNS
-   name), `WOW_DIR` (the "World of Warcraft" folder of a 1.60.1.70450 client, for the data extraction).
+   name), `WOW_DIR` (the "World of Warcraft" folder of a 1.60.1.70532 client, for the data extraction).
 2. `./scripts/gen-certs.sh`, `docker compose build`, `docker compose run --rm extractor`, `docker compose up -d`.
 3. Ports: TCP 1119, 8081, 8085 forwarded to the server; 80/443 for the website through Traefik or Dokploy.
 4. Dokploy: follow `docs/DOKPLOY.md` (data and certificates go to `/etc/dokploy/compose/<app>/files/`).
@@ -43,7 +43,7 @@ Then `LAUNCHER_REPO=<owner>/<repo>` in the server's `.env` so the website offers
 - **Never** commit, upload or paste `certs/ca/forever_root_ca.key`, `certs/forever.key.pem`, `.env` or passwords.
   `forever_root_ca.crt` is public and is what the launcher needs.
 - Do not add Blizzard files: no game client, game data, artwork, logos or download links to the client.
-- The client must be build 1.60.1.70450; do not suggest ways to get the beta without access.
+- The currently supported client build is 1.60.1.70532; do not suggest ways to get the beta without access.
 - Do not redeploy or restart the worldserver during its first database import (an interrupted import leaves a
   half-filled `world` database).
 - If the build stops at "applying /patches/...", the forever branch probably merged that fix: check upstream and

@@ -47,7 +47,7 @@ async function refresh() {
   $('view-login').hidden = logged;
   $('view-play').hidden = !logged;
   $('account').hidden = !logged;
-  $('game-field').textContent = `WoW Forever ${state.gameVersion || '1.60.1.70450'}`;
+  $('game-field').textContent = `WoW Forever ${state.gameVersion || '1.60.1.70532'}`;
   if (logged) {
     $('account-email').textContent = state.email;
     $('avatar').textContent = state.email[0].toUpperCase();

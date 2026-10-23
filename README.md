@@ -1,6 +1,6 @@
 # Forever
 
-A ready-to-run private server for the **World of Warcraft Forever** beta, client build **1.60.1.70450**, with an
+A ready-to-run private server for the **World of Warcraft Forever** beta, client build **1.60.1.70532**, with an
 account sign-up website and a launcher for Windows, Linux and macOS.
 
 I made it to play the free beta with my friends. It is built on the
@@ -27,7 +27,7 @@ a few fixes of my own found with packet logs.
 The launcher and the website are in English, French, Spanish and Portuguese (Latin America), following the system
 or browser language.
 
-**Requirements on the player side**: the game client in exactly build **1.60.1.70450** (World of Warcraft Forever
+**Requirements on the player side**: the game client in exactly build **1.60.1.70532** (World of Warcraft Forever
 beta, installed with Battle.net). Another build will not connect.
 
 **No Blizzard assets**: this repository contains no game client, game data, artwork or logo (only screenshots of the
@@ -121,8 +121,8 @@ signed by Apple, so players run `xattr -cr "/Applications/Forever Launcher.app"`
 
 ## Good to know
 
-- **Fixes on top of the forever branch**: `docker/patches/` (friend list, party invites and names with surnames,
-  360 action bar slots for the gamepad bars), each described in [its README](docker/patches/README.md).
+- **Fixes on top of the forever branch**: `docker/patches/` (friend list and names with surnames), each described
+  in [its README](docker/patches/README.md). The current branch already includes 360 action-button support.
 - **Config overrides**: `Key = Value` lines in `overrides/worldserver.conf` or `overrides/bnetserver.conf`.
 - **Update**: `docker compose build --no-cache && docker compose up -d`; new SQL updates are applied on start.
   If the branch merges one of the patches, the build stops at that patch: delete it.

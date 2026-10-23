@@ -1,4 +1,4 @@
-# TrinityCore "Forever" (WoW Forever beta 1.60.1.70450, CLIENT_BUILD) - https://github.com/advocaite/TrinityCore/tree/forever
+# TrinityCore "Forever" (WoW Forever beta 1.60.1.70532, CLIENT_BUILD) - https://github.com/advocaite/TrinityCore/tree/forever
 #
 # Stage 1: compile worldserver + bnetserver
 # Stage 2: download the Forever database release (world + hotfixes)

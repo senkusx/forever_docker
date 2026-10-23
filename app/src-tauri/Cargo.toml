@@ -1,7 +1,7 @@
 [package]
 name = "forever-launcher"
 version = "1.0.0"
-description = "Forever Launcher - WoW Forever 1.60.1.70450 on a TrinityCore server"
+description = "Forever Launcher - WoW Forever 1.60.1.70532 on a TrinityCore server"
 edition = "2021"
 publish = false
 
