@@ -16,6 +16,7 @@
 #include "Group.h"
 #include "Item.h"
 #include "Log.h"
+#include "Loot.h"
 #include "Map.h"
 #include "MotionMaster.h"
 #include "MovementDefines.h"
@@ -357,7 +358,10 @@ namespace Companions
 
         // charging (Charge, Intercept, Feral Charge) or thrown back: any new movement order would fight the effect and stutter
         if (_bot->HasUnitState(UNIT_STATE_CHARGING) || _bot->GetMotionMaster()->GetCurrentMovementGeneratorType() == EFFECT_MOTION_TYPE)
+        {
+            _chargeSettleUntil = GameTime::Now() + Milliseconds(400);
             return;
+        }
 
         // casting or channeling: let it finish (melee keeps swinging on its own); a resurrection whose target came back
         // or left stops, like a player who sees it
@@ -385,6 +389,7 @@ namespace Companions
         {
             NoticeSituation();
             CompanionLLM::ConsiderTactics(_bot);
+            HandleLoot();
         }
 
         if (UpdateCallouts())
@@ -1348,6 +1353,20 @@ namespace Companions
 
     bool CompanionAI::UpdateBuffs(bool inCombat)
     {
+        // asked for: cast again now, even over a buff that is still up
+        while (!_rebuffQueue.empty())
+        {
+            Player* member = ObjectAccessor::GetPlayer(*_bot, _rebuffTarget);
+            if (!member || !member->IsAlive() || _bot->GetDistance(member) > 30.0f)
+            {
+                _rebuffQueue.clear();
+                break;
+            }
+            std::string spell = _rebuffQueue.front();
+            _rebuffQueue.erase(_rebuffQueue.begin());
+            if (Cast(spell, member))
+                return true;
+        }
         if (_class->SelfBuffs(inCombat))
             return true;
         if (inCombat)
@@ -1356,6 +1375,128 @@ namespace Companions
             if (member->IsAlive() && _bot->GetDistance(member) < 30.0f && _class->GroupBuffs(member))
                 return true;
         return false;
+    }
+
+    std::string CompanionAI::BlessingFor(ObjectGuid member) const
+    {
+        auto itr = _blessingFor.find(member);
+        return itr != _blessingFor.end() ? itr->second : std::string();
+    }
+
+    bool CompanionAI::OrderRebuff(Player* member, std::string const& filter)
+    {
+        // what players call them: "int" is Arcane Intellect, "fort" Fortitude, "motw" Mark of the Wild...
+        static std::pair<char const*, char const*> const aliases[] = { { "int", "intellect" }, { "ai", "intellect" }, { "fort", "fortitude" },
+            { "stamina", "fortitude" }, { "motw", "mark of the wild" }, { "mark", "mark of the wild" }, { "wild", "mark of the wild" },
+            { "bom", "might" }, { "bok", "kings" }, { "bow", "wisdom" }, { "salv", "salvation" }, { "spirit", "spirit" } };
+        std::string wanted = ToLower(filter);
+        for (auto const& [alias, full] : aliases)
+            if (wanted == alias)
+                wanted = full;
+        std::vector<std::string> queue;
+        for (std::string_view spell : _class->OwnBuffs(member))
+            if (Knows(spell) && (wanted.empty() || std::string(spell).find(wanted) != std::string::npos))
+                queue.emplace_back(spell);
+        if (queue.empty())
+            return false;
+        _rebuffTarget = member->GetGUID();
+        _rebuffQueue = std::move(queue);
+        return true;
+    }
+
+    std::string CompanionAI::OrderEquip(std::string const& what)
+    {
+        ScanBags();     // what was just handed over counts as "it"
+        std::string wanted = ToLower(what);
+        std::vector<Item*> candidates;
+        _bot->ForEachItem(ItemSearchLocation::Inventory, [&](Item* item)
+        {
+            if (wanted.empty() || wanted == "it" || wanted == "that" || wanted == "last")
+            {
+                if (item->GetGUID() == _lastNewItem)
+                    candidates.push_back(item);
+            }
+            else if (wanted == "upgrades" || wanted == "all" || wanted == "everything")
+            {
+                if (sCompanionFactory->IsUpgrade(_bot, item->GetTemplate(), GetEffectiveRole()))
+                    candidates.push_back(item);
+            }
+            else if (ToLower(item->GetTemplate()->GetName(LOCALE_enUS)).find(wanted) != std::string::npos)
+                candidates.push_back(item);
+            return ItemSearchCallbackResult::Continue;
+        });
+        if (candidates.empty())
+            return "I don't have that.";
+        std::string equipped;
+        for (Item* item : candidates)
+        {
+            std::string name = item->GetTemplate()->GetName(LOCALE_enUS);
+            if (!CompanionFactory::EquipFromBags(_bot, item))
+            {
+                if (candidates.size() == 1)
+                    return "I can't use " + name + ".";
+                continue;
+            }
+            equipped += (equipped.empty() ? "" : ", ") + name;
+        }
+        // what went back to the bags (the old piece) is not "it"
+        ScanBags();
+        _lastNewItem.Clear();
+        return equipped.empty() ? "Nothing I can use there." : "Equipped " + equipped + ".";
+    }
+
+    void CompanionAI::HandleLoot()
+    {
+        // a roll waiting for this bot: Need on a clear upgrade it can use, else Pass (the greed is for the players)
+        std::vector<LootRoll*> const& rolls = _bot->GetLootRolls();
+        if (!rolls.empty())
+        {
+            LootRoll* roll = rolls.front();
+            uint32 itemId = roll->GetItemId();
+            ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemId);
+            bool need = proto && sCompanionFactory->IsUpgrade(_bot, proto, GetEffectiveRole());
+            if (need && roll->PlayerVote(_bot, RollVote::Need))
+            {
+                _wantedLoot.push_back(itemId);
+                Say("Need on " + std::string(proto->GetName(LOCALE_enUS)) + ", that's an upgrade for me.");
+            }
+            else
+                roll->PlayerVote(_bot, RollVote::Pass);
+            return;     // one vote per second: the next one on the next tick
+        }
+
+        // put on what it rolled Need for
+        if (Item* toEquip = ScanBags(); toEquip && CompanionFactory::EquipFromBags(_bot, toEquip))
+        {
+            Say("Equipped " + std::string(toEquip->GetTemplate()->GetName(LOCALE_enUS)) + ".");
+            ObjectGuid received = _lastNewItem;
+            ScanBags();             // the old piece back in the bags is not "it"
+            _lastNewItem = received;
+        }
+    }
+
+    // new things in the bags: remembers the last one ("equip it"); returns one it rolled Need for
+    Item* CompanionAI::ScanBags()
+    {
+        std::vector<ObjectGuid> seen;
+        Item* wantedItem = nullptr;
+        _bot->ForEachItem(ItemSearchLocation::Inventory, [&](Item* item)
+        {
+            seen.push_back(item->GetGUID());
+            if (std::find(_knownBagItems.begin(), _knownBagItems.end(), item->GetGUID()) == _knownBagItems.end() && !_knownBagItems.empty())
+                _lastNewItem = item->GetGUID();
+            auto wanted = std::find(_wantedLoot.begin(), _wantedLoot.end(), item->GetEntry());
+            if (wanted != _wantedLoot.end() && !wantedItem)
+            {
+                _wantedLoot.erase(wanted);
+                wantedItem = item;
+            }
+            return ItemSearchCallbackResult::Continue;
+        });
+        if (_knownBagItems.empty() && seen.empty())
+            seen.push_back(ObjectGuid::Empty);   // an empty bag also counts as seen
+        _knownBagItems = std::move(seen);
+        return wantedItem;
     }
 
     bool CompanionAI::NeedsRest() const
@@ -1460,6 +1601,10 @@ namespace Companions
 
         bool melee = role == Role::Tank || role == Role::MeleeDps;
         EngageTarget(target, melee);
+
+        // just landed from a charge: the client still shows its end, a new chase right now would make it jump
+        if (GameTime::Now() < _chargeSettleUntil)
+            return;
 
         if (_stance == Stance::Stay && _forcedTarget.IsEmpty())
             return;

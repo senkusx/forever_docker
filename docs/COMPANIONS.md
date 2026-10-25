@@ -85,6 +85,9 @@ Type them in party chat. Start with a bot's name to talk to one bot ("Jaina stay
 | `retreat` | run back to you and stop fighting for a moment |
 | `cc <marker>` / `interrupt <marker>` / `taunt <marker>` | keep it crowd controlled / interrupt its casts / the tank takes it |
 | `burst` | offensive cooldowns now |
+| `bless <name\|me> salvation` (or `salvation on me`) | a paladin gives that blessing (salvation, might, wisdom, kings, light, sanctuary) from now on |
+| `rebuff <name\|me> [buff]` | cast the buff again now, even if it is still up (`rebuff me intellect`); passed to a companion that has it |
+| `equip it` / `equip <item>` / `equip upgrades` | put on what you handed over (master loot), an item by name, or everything better in its bags |
 | `stop` | stop attacking for a few seconds |
 | `passive` / `assist` / `aggressive` | never attack / fight what the group fights (default) / also attack hostiles nearby |
 | `role tank` / `role heal` / `role dps` / `role auto` | change role (talents and gear follow) |
@@ -212,7 +215,13 @@ owner: `login <character>`, `party <owner> [role]`, `raid <owner> [size]`, `say 
 - **Pathfinding**: without mmaps (`MMAP_PATHFINDING=0`, the default here) bots, like creatures, move in straight
   lines; they catch up with you when they get stuck. With `EXTRACT_MMAPS=1` (re-run the extractor, it takes
   hours) and `MMAP_PATHFINDING=1` they find their way around walls.
-- Bots pass on loot rolls, so the loot is yours.
+- Loot: with group loot a companion rolls **Need** only on a clear upgrade it can use (at least 5% better than what it
+  wears in that slot) and puts it on; it passes on everything else, the greed rolls are yours. With master loot it keeps
+  what you give it in its bags until you say `equip it`. Gear it looted or was given is kept when it regears.
+- Raid loot: `docker/sql/world/2026_10_25_90_world_companions_vanilla_loot.sql` adds the vanilla loot Forever's tables
+  lack in Molten Core, Blackwing Lair, Zul'Gurub and both Ahn'Qiraj raids (the Qiraji idols and ring, the enchanting
+  formulas, world drops...), from TrinityCore's 3.3.5 database where those raids are unchanged, only with items the
+  Forever client knows and never replacing Forever's own loot. The worldserver's updater applies it.
 - The companions you create live on the account `COMPANIONS` (nobody can log into it).
 - How it works: a small core patch (`docker/patches/0005-companions-core-hooks.patch`) lets a session without a
   client exist (`WorldSession::IsBot`), gives each bot a per-update hook and exposes the login loader. The module

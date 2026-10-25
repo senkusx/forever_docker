@@ -496,6 +496,19 @@ namespace Companions
         return true;
     }
 
+    // .bot admin items <id,id,...>: COMP|ITEMS|<the ids this server knows> (data imports check against it)
+    static bool HandleItems(ChatHandler* handler, std::string list)
+    {
+        std::string known;
+        std::istringstream ids(list);
+        std::string id;
+        while (std::getline(ids, id, ','))
+            if (!id.empty() && std::isdigit(static_cast<unsigned char>(id[0])) && sObjectMgr->GetItemTemplate(uint32(std::stoul(id))))
+                known += (known.empty() ? "" : ",") + id;
+        handler->SendSysMessage("COMP|ITEMS|" + known);
+        return true;
+    }
+
     // .bot admin config list: COMP|SET|key|value|type|min|max|stored
     static bool HandleConfigList(ChatHandler* handler)
     {
@@ -554,6 +567,7 @@ namespace Companions
             { "races",      HandleRaces,      PERM_ADMIN, Console::Yes },
             { "config",     configTable },
             { "builds",     HandleBuilds,     PERM_ADMIN, Console::Yes },
+            { "items",      HandleItems,      PERM_ADMIN, Console::Yes },
         };
         return table;
     }

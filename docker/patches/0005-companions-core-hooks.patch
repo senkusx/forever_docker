@@ -12,6 +12,18 @@ index 78d59ec..ae7e013 100644
      // Once per second, update items that have just a limited lifetime
      if (now > m_Last_tick)
      {
+diff --git a/src/server/game/Entities/Player/Player.h b/src/server/game/Entities/Player/Player.h
+index d87f3ab..4fed20e 100644
+--- a/src/server/game/Entities/Player/Player.h
++++ b/src/server/game/Entities/Player/Player.h
+@@ -2319,6 +2319,7 @@ class TC_GAME_API Player final : public Unit, public GridObject<Player>
+         LootRoll* GetLootRoll(ObjectGuid const& lootObjectGuid, uint8 lootListId);
+         void AddLootRoll(LootRoll* roll);
+         void RemoveLootRoll(LootRoll* roll);
++        std::vector<LootRoll*> const& GetLootRolls() const { return m_lootRolls; }   // companions: the rolls a bot answers
+ 
+         void RemovedInsignia(Player* looterPlr);
+ 
 diff --git a/src/server/game/Groups/Group.h b/src/server/game/Groups/Group.h
 index 40e7a38..8ec82eb 100644
 --- a/src/server/game/Groups/Group.h
@@ -101,6 +113,34 @@ index 0000000..214e994
 +};
 +
 +#endif
+diff --git a/src/server/game/Loot/Loot.cpp b/src/server/game/Loot/Loot.cpp
+index 8088797..7be6f03 100644
+--- a/src/server/game/Loot/Loot.cpp
++++ b/src/server/game/Loot/Loot.cpp
+@@ -575,6 +575,11 @@ bool LootRoll::UpdateRoll()
+     return false;
+ }
+ 
++uint32 LootRoll::GetItemId() const
++{
++    return m_lootItem ? m_lootItem->itemid : 0;
++}
++
+ bool LootRoll::IsLootItem(ObjectGuid const& lootObject, uint32 lootListId) const
+ {
+     return m_loot->GetGUID() == lootObject && m_lootItem->LootListId == lootListId;
+diff --git a/src/server/game/Loot/Loot.h b/src/server/game/Loot/Loot.h
+index edf57ad..3fd75b4 100644
+--- a/src/server/game/Loot/Loot.h
++++ b/src/server/game/Loot/Loot.h
+@@ -262,6 +262,7 @@ public:
+     bool UpdateRoll();
+ 
+     bool IsLootItem(ObjectGuid const& lootObject, uint32 lootListId) const;
++    uint32 GetItemId() const;           // companions: what is rolled for
+ 
+ private:
+     void SendStartRoll();
 diff --git a/src/server/game/Server/WorldSession.cpp b/src/server/game/Server/WorldSession.cpp
 index 5e6b41b..a9da99b 100644
 --- a/src/server/game/Server/WorldSession.cpp

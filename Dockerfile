@@ -88,6 +88,8 @@ LABEL org.opencontainers.image.source="https://github.com/senkusx/forever_docker
 COPY --from=build /opt/trinitycore /opt/trinitycore
 # The updater looks for sql/ under the source directory baked in at build time
 COPY --from=build /src/TrinityCore/sql /src/TrinityCore/sql
+# extra world data of this repository (applied by the updater with the forever branch's custom SQL)
+COPY docker/sql/world/ /src/TrinityCore/sql/custom/world/
 # worldserver's auto-setup imports TDB_full_*.sql from its working directory
 COPY --from=tdb /tdb/ /opt/trinitycore/bin/
 COPY docker/entrypoint.sh docker/extract.sh /usr/local/bin/

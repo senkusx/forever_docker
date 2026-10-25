@@ -319,11 +319,41 @@ namespace Companions
             return Cast("seal of command") || Cast("seal of righteousness");
         }
 
+        // a blessing asked for ("salvation on me"): Forever calls Blessing of Salvation just "Salvation"
+        std::string_view ChosenBlessing(Player* member) const
+        {
+            std::string kind = _ai.BlessingFor(member->GetGUID());
+            if (kind.empty())
+                return { };
+            // plain arrays: an initializer_list inside a pair would point at a temporary that is long gone
+            struct Kind { char const* Name; char const* Spells[2]; };
+            static Kind const kinds[] = {
+                { "salvation", { "blessing of salvation", "salvation" } }, { "might", { "blessing of might", nullptr } },
+                { "wisdom", { "blessing of wisdom", nullptr } }, { "kings", { "blessing of kings", nullptr } },
+                { "light", { "blessing of light", nullptr } }, { "sanctuary", { "blessing of sanctuary", nullptr } } };
+            for (Kind const& entry : kinds)
+                if (kind == entry.Name)
+                    for (char const* spell : entry.Spells)
+                        if (spell && Knows(spell))
+                            return spell;
+            return { };
+        }
+
+        std::vector<std::string_view> OwnBuffs(Player* member) override
+        {
+            if (std::string_view chosen = ChosenBlessing(member); !chosen.empty())
+                return { chosen };
+            return { "blessing of kings", "blessing of might", "blessing of wisdom", "blessing of light", "salvation", "blessing of salvation" };
+        }
+
         bool GroupBuffs(Player* member) override
         {
             static std::initializer_list<std::string_view> const blessings = { "blessing of kings", "blessing of might", "blessing of wisdom",
                 "blessing of salvation", "salvation", "blessing of light", "blessing of sanctuary", "greater blessing of kings",
                 "greater blessing of might", "greater blessing of wisdom", "greater blessing of light" };
+            // the one asked for replaces this paladin's other blessing
+            if (std::string_view chosen = ChosenBlessing(member); !chosen.empty())
+                return (!Has(member, chosen, true) || _ai.AuraRemaining(member, chosen) < 10000) && Cast(chosen, member);
             if (HasAnyAura(member, blessings, true))
                 return false;
             if (_ai.IsTank(member) && Knows("blessing of kings"))
@@ -583,6 +613,13 @@ namespace Companions
             if (MyRole() == Role::RangedDps && Knows("shadowform") && !Has(Me(), "shadowform") && Cast("shadowform"))
                 return true;
             return false;
+        }
+
+        std::vector<std::string_view> OwnBuffs(Player* member) override
+        {
+            if (UsesMana(member))
+                return { "power word: fortitude", "divine spirit", "shadow protection" };
+            return { "power word: fortitude", "shadow protection" };
         }
 
         bool GroupBuffs(Player* member) override
@@ -854,6 +891,11 @@ namespace Companions
             return UsesMana(member) && !Has(member, "arcane brilliance") && Buff("arcane intellect", member);
         }
 
+        std::vector<std::string_view> OwnBuffs(Player* /*member*/) override
+        {
+            return { "arcane intellect", "dampen magic", "amplify magic" };
+        }
+
         bool Interrupt(Unit* caster) override { return Cast("counterspell", caster); }
 
         bool CanCrowdControl(Unit const* target) const override
@@ -1019,6 +1061,12 @@ namespace Companions
             if (Feral())
                 return false;
             return Buff("omen of clarity", Me());
+        }
+
+        std::vector<std::string_view> OwnBuffs(Player* /*member*/) override
+        {
+            CasterForm();
+            return { "mark of the wild", "thorns" };
         }
 
         bool GroupBuffs(Player* member) override

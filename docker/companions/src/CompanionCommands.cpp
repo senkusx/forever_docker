@@ -156,7 +156,8 @@ namespace Companions
     {
         return "Orders (party chat, whisper, or \".bot order\"; start with a bot name for one bot): follow, stay, come, attack [skull|cross|...], "
                "pull, stop, retreat, assist [name], heal <name|me>, dispel <name|me>, protect <name|me>, cc <marker>, interrupt <marker>, "
-               "taunt <marker>, burst, spread, stack, normal, passive, aggressive, "
+               "taunt <marker>, burst, bless <name|me> salvation|might|wisdom|kings|light, rebuff <name|me> [buff], equip <item|it|upgrades>, "
+               "spread, stack, normal, passive, aggressive, "
                "role tank|heal|dps, rest, cast <spell> [on me|on target|on <name>], status, gear, dismiss, help";
     }
 
@@ -243,6 +244,81 @@ namespace Companions
             if (!target || !target->IsAlive() || !group)
                 return true;
             group->SetTargetIcon(uint8(IconIndex(words[1])), target->GetGUID(), bots.front()->GetGUID());
+        }
+        else if (order == "bless" || ((order == "salvation" || order == "salv" || order == "might" || order == "wisdom" || order == "kings"
+            || order == "light" || order == "sanctuary") && words.size() >= 3 && words[1] == "on"))
+        {
+            // "bless me salvation", "bless bob with kings", "salvation on me": that blessing instead of the usual one
+            std::string kind;
+            Player* member = commander;
+            if (order == "bless")
+            {
+                for (size_t i = 1; i < words.size(); ++i)
+                {
+                    if (words[i] == "with" || words[i] == "of" || words[i] == "blessing")
+                        continue;
+                    if (Player* named = i == 1 ? NamedMember(commander, words[i]) : nullptr)
+                        member = named;
+                    else
+                        kind = words[i];
+                }
+            }
+            else
+            {
+                kind = order;
+                member = NamedMember(commander, words[2]);
+            }
+            if (kind == "salv")
+                kind = "salvation";
+            static char const* const kinds[] = { "salvation", "might", "wisdom", "kings", "light", "sanctuary" };
+            if (!member || std::find_if(std::begin(kinds), std::end(kinds), [&](char const* k) { return kind == k; }) == std::end(kinds))
+                return false;
+            bool any = false;
+            forEach([&](Player* bot, CompanionAI* ai)
+            {
+                if (bot->GetClass() != CLASS_PALADIN || any)
+                    return;
+                ai->SetBlessingFor(member->GetGUID(), kind);
+                any = true;
+                Ack({ bot }, quiet, "Blessing of " + std::string(1, char(std::toupper(kind[0]))) + kind.substr(1) + " on " + member->GetName() + " from now on.");
+            });
+            if (!any)
+                Ack(bots, quiet, "No paladin here to bless you.");
+        }
+        else if (order == "rebuff" || order == "buff")
+        {
+            // "rebuff me intellect", "rebuff bob", "buff me": cast again now, even if it is still up
+            Player* member = commander;
+            size_t first = 1;
+            if (words.size() >= 2)
+                if (Player* named = NamedMember(commander, words[1]))
+                {
+                    member = named;
+                    first = 2;
+                }
+            std::string filter = Join(words, first);
+            bool any = false;
+            forEach([&](Player*, CompanionAI* ai) { any = ai->OrderRebuff(member, filter) || any; });
+            // asked of a companion without that buff: one of the others who has it does it
+            if (!any && !bots.empty())
+                if (CompanionAI* lead = sCompanionMgr->GetAI(bots.front()))
+                    for (Player* other : sCompanionMgr->GetBotsOf(lead->GetOwnerGUID()))
+                        if (CompanionAI* ai = sCompanionMgr->GetAI(other); ai && std::find(bots.begin(), bots.end(), other) == bots.end()
+                            && ai->OrderRebuff(member, filter))
+                        {
+                            any = true;
+                            break;
+                        }
+            if (!any)
+                Ack(bots, quiet, filter.empty() ? "I have no buff for you." : "I can't give " + filter + ".");
+            else
+                Ack(bots, quiet, "Buffing " + member->GetName() + ".");
+        }
+        else if (order == "equip" || order == "wear")
+        {
+            // master loot: the leader hands it over and says "equip it" (or names it, or "equip upgrades")
+            std::string what = Join(words, 1);
+            forEach([&](Player*, CompanionAI* ai) { ai->Say(ai->OrderEquip(what)); });
         }
         else if (order == "burst" || order == "cooldowns" || order == "bloodlust")
         {
@@ -434,6 +510,8 @@ namespace Companions
                 { "spells", HandleTestSpells, rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "why",    HandleTestWhy,    rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "kill",   HandleTestKill,   rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
+                { "give",   HandleTestGive,   rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
+                { "equip",  HandleTestEquip,  rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
             };
             static ChatCommandTable botTable =
             {
@@ -1057,6 +1135,32 @@ namespace Companions
             return true;
         }
 
+        // .bot test give <bot> <item>: into its bags, with what the loot roll would decide (Need on an upgrade)
+        static bool HandleTestGive(ChatHandler* handler, std::string botName, uint32 itemId)
+        {
+            Player* bot = ObjectAccessor::FindPlayerByName(botName);
+            CompanionAI* ai = sCompanionMgr->GetAI(bot);
+            ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemId);
+            if (!ai || !proto)
+                return true;
+            ItemPosCountVec dest;
+            if (bot->CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, itemId, 1) == EQUIP_ERR_OK)
+                bot->StoreNewItem(dest, itemId, true);
+            handler->PSendSysMessage("Companions test: %s gets %s - upgrade (would roll Need): %s, score %.1f", bot->GetName().c_str(),
+                proto->GetName(LOCALE_enUS), sCompanionFactory->IsUpgrade(bot, proto, ai->GetEffectiveRole()) ? "yes" : "no",
+                sCompanionFactory->ScoreTemplate(proto, bot, ai->GetEffectiveRole()));
+            return true;
+        }
+
+        // .bot test equip <bot> <it|name|upgrades>: what the "equip" order answers
+        static bool HandleTestEquip(ChatHandler* handler, std::string botName, Tail what)
+        {
+            Player* bot = ObjectAccessor::FindPlayerByName(botName);
+            if (CompanionAI* ai = sCompanionMgr->GetAI(bot))
+                handler->PSendSysMessage("Companions test: %s: %s", bot->GetName().c_str(), ai->OrderEquip(std::string(what)).c_str());
+            return true;
+        }
+
         static bool HandleTestKill(ChatHandler* handler, std::string botName)
         {
             Player* bot = ObjectAccessor::FindPlayerByName(botName);
@@ -1125,7 +1229,8 @@ namespace Companions
     static bool IsHelpOrder(std::string const& text)
     {
         std::vector<std::string> words = Split(ToLower(text));
-        static char const* const help[] = { "heal", "dispel", "decurse", "cleanse", "protect", "save", "assist" };
+        static char const* const help[] = { "heal", "dispel", "decurse", "cleanse", "protect", "save", "assist", "bless", "rebuff", "buff",
+            "salvation", "salv", "might", "wisdom", "kings", "light", "sanctuary" };
         return words.size() >= 2 && std::find(std::begin(help), std::end(help), words[0]) != std::end(help);
     }
 

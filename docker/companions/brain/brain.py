@@ -41,9 +41,11 @@ ORDER_WORDS = {
     "passive", "assist", "defensive", "aggressive", "role", "rest", "drink", "eat", "cast", "status", "gear",
     "dismiss", "heal", "dispel", "decurse", "cleanse", "protect", "save", "spread", "stack", "normal", "retreat",
     "run", "flee", "fallback", "cc", "sheep", "control", "interrupt", "taunt", "mark", "burst", "cooldowns",
+    "bless", "rebuff", "buff", "equip", "salvation", "might", "wisdom", "kings", "light", "sanctuary",
 }
 # what a player who is not the leader may ask of the companions
-HELP_WORDS = {"heal", "dispel", "decurse", "cleanse", "protect", "save", "assist", "status"}
+HELP_WORDS = {"heal", "dispel", "decurse", "cleanse", "protect", "save", "assist", "status", "bless", "rebuff", "buff",
+              "salvation", "might", "wisdom", "kings", "light", "sanctuary"}
 # what a tactical review may assign
 TACTIC_WORDS = {"kill", "attack", "focus", "cc", "interrupt", "taunt", "mark", "burst", "spread", "stack", "retreat", "heal",
                 "protect", "dispel", "assist", "stop"}
@@ -71,6 +73,11 @@ add the matching orders to the companion that does it. Orders (exact words, one 
   | taunt E2 (tank) | mark skull E2 (raid markers: skull = kill first, cross = second, moon = crowd controlled) | burst (cooldowns now)
 - passive | assist | aggressive (when they fight on their own)
 - role tank | role heal | role dps
+- bless <name> salvation|might|wisdom|kings|light|sanctuary (a paladin gives that blessing to them from now on)
+- rebuff <name> [buff] (cast the buff again now even if it is still up: "rebuff me intellect", "rebuff bob fortitude"), given to
+  the companion whose class has it: Arcane Intellect = mage, Fortitude and Divine Spirit = priest, Mark of the Wild and Thorns =
+  druid, blessings = paladin
+- equip it (put on the item the player just handed over) | equip <item name> | equip upgrades (everything better in its bags)
 - rest | gear | status | dismiss
 - cast <spell name> | cast <spell name> on me | cast <spell name> on target | cast <spell name> on <name>
 Only the leader decides following, roles, stance and dismiss; other players may ask for help (heal, dispel, protect, \

@@ -90,6 +90,8 @@ namespace Companions
         virtual bool Combat(Unit* target) = 0;          // damage / threat rotation
         virtual bool Pet(Unit* /*target*/) { return false; }
         virtual bool OutOfCombat() { return false; }    // forms, pets, totems, imbues...
+        // the buffs this class gives this member (asked again with "rebuff", even when they are still up)
+        virtual std::vector<std::string_view> OwnBuffs(Player* /*member*/) { return { }; }
         virtual void OnRoleChanged() { }
 
     protected:
@@ -126,6 +128,12 @@ namespace Companions
         void OrderCrowdControl(ObjectGuid target);
         void OrderInterrupt(ObjectGuid target) { _interruptTarget = target; _interruptUntil = GameTime::Now() + Seconds(30); }
         void OrderBurst() { _burstUntil = GameTime::Now() + Seconds(20); }
+        // buffs asked for: a blessing of choice for someone ("salvation on me"), or the buffs again now ("rebuff me intellect")
+        void SetBlessingFor(ObjectGuid member, std::string kind) { _blessingFor[member] = std::move(kind); }
+        std::string BlessingFor(ObjectGuid member) const;
+        bool OrderRebuff(Player* member, std::string const& filter);   // false: none of its buffs matches
+        // loot: equip something from its bags ("it" = the last item it received, "upgrades" = all that are better)
+        std::string OrderEquip(std::string const& what);
         void SetFollowSlot(uint32 slot, uint32 count) { _followSlot = slot; _followCount = count; _movement = MoveMode::None; }
         void SetSpread(float spread) { _spread = spread; _loitering = false; _movement = MoveMode::None; }
         void RefreshSpells() { _spellsDirty = true; }
@@ -224,6 +232,8 @@ namespace Companions
         // where this bot stands around the owner: tank in front, melee beside, healers and casters behind
         void FormationSlot(bool travelling, float& angle, float& halfWidth, float& minDist, float& maxDist) const;
         bool FollowPullingTank();
+        void HandleLoot();              // roll Need on upgrades, Pass on the rest; put on what it won
+        Item* ScanBags();
         bool AutoCrowdControl(Unit* killTarget);   // a pack: control one add, like a mage sheeps without being asked
         void EngageTarget(Unit* target, bool melee);
         void FaceTarget(Unit* target);
@@ -294,9 +304,16 @@ namespace Companions
         TimePoint _burstUntil = { };
         ObjectGuid _waitingFor;         // melee waiting for the tank to take this enemy
         TimePoint _ccCheckAt = { };
+        TimePoint _chargeSettleUntil = { };
         uint32 _ccCasts = 0;            // casts on the current assignment: two that do not hold and it gives up
         float _formationSide = 1.0f;    // melee: left or right of the owner
         std::deque<std::pair<TimePoint, std::string>> _recentCasts;
+        std::unordered_map<ObjectGuid, std::string> _blessingFor;
+        ObjectGuid _rebuffTarget;
+        std::vector<std::string> _rebuffQueue;
+        std::vector<uint32> _wantedLoot;            // won on Need: equipped as soon as it is in the bags
+        std::vector<ObjectGuid> _knownBagItems;
+        ObjectGuid _lastNewItem;
         // situational callouts to the party, like players make them (out of mana, adds, a rare...)
         void NoticeSituation();
         void Callout(char const* kind, std::string const& detail, std::string const& canned);

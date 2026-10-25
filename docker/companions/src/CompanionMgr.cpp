@@ -375,7 +375,7 @@ namespace Companions
             _ais[botGuid]->SetAggression(record->AggressionMode);
             _ais[botGuid]->SetStance(record->StanceMode);
         }
-        bot->SetPassOnGroupLoot(true);
+        bot->SetPassOnGroupLoot(false);    // the AI answers each roll: Need on its upgrades, Pass on the rest
         if (record)
         {
             record->Active = true;
