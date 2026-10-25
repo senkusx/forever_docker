@@ -687,6 +687,8 @@ namespace Companions
             itr = itr->second.Expire <= _msTime ? _incomingHeals.erase(itr) : std::next(itr);
         for (auto itr = _interruptClaims.begin(); itr != _interruptClaims.end();)
             itr = itr->second.second <= _msTime ? _interruptClaims.erase(itr) : std::next(itr);
+        for (auto itr = _ccClaims.begin(); itr != _ccClaims.end();)
+            itr = itr->second.second <= _msTime ? _ccClaims.erase(itr) : std::next(itr);
 
         CompanionLLM::Update(diff);
     }
@@ -806,6 +808,17 @@ namespace Companions
     {
         auto itr = _interruptClaims.find(caster);
         return itr == _interruptClaims.end() || itr->second.first == bot || itr->second.second <= _msTime;
+    }
+
+    void CompanionMgr::ClaimCrowdControl(ObjectGuid enemy, ObjectGuid bot, uint32 durationMs)
+    {
+        _ccClaims[enemy] = { bot, _msTime + durationMs };
+    }
+
+    bool CompanionMgr::IsCrowdControlClaimed(ObjectGuid enemy, ObjectGuid notBy) const
+    {
+        auto itr = _ccClaims.find(enemy);
+        return itr != _ccClaims.end() && itr->second.first != notBy && itr->second.second > _msTime;
     }
 
     void CompanionMgr::CommitInterrupt(ObjectGuid caster, ObjectGuid bot)

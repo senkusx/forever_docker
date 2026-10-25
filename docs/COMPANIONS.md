@@ -4,16 +4,19 @@ Companions are bots that play alongside you like real players, so a dungeon part
 real characters (not NPCs): they group with you, take loot rules, quest credit and XP, and enter dungeons with you.
 A server-side AI plays each one in its role:
 
-- **Tank**: picks up enemies that hit others (healers first), taunts, keeps sunder/shield/bear rotations, faces
-  enemies away from the group.
+- **Tank**: leads in front of you. Warriors wait in Battle Stance, charge the pull and switch to Defensive Stance;
+  taking threat back comes first (healers first): taunt, the biggest hits when it is on cooldown, Challenging Shout /
+  Roar when several got loose. Shield Slam, Revenge, Sunder, Shield Block, Demoralizing Shout, Thunder Clap, Cleave.
 - **Healer**: heals by priority (tank first), picks the cheapest rank that covers the damage, counts the heals
   of the other healers, uses group heals, shields and HoTs, dispels and resurrects.
-- **Damage**: attacks the skull, then the cross, then your target, then the tank's target. It waits a moment so
-  the tank builds threat, stands behind enemies (melee) or at range (casters, hunters), interrupts casts, uses
-  AoE only when no crowd-controlled enemy is near, and polymorphs the moon.
+- **Damage**: attacks the skull, then the cross, then your target, then the tank's target. On a pull the melee walk
+  up with the tank and wait behind the enemy until the tank has it. They stand behind enemies (melee) or at range
+  (casters, hunters), interrupt casts, use AoE only when no crowd-controlled enemy is near, and keep an add out of a
+  pack of three or more by themselves (polymorph, banish, hibernate, scare beast), calling it out like players do.
+  Hunters feign death and rogues feint when they pull aggro; cooldowns go on bosses or on `burst`.
 - **Everyone**: buffs the group (Fortitude, Arcane Intellect, Mark of the Wild, blessings, totems...), follows you
-  loosely like players do (each at its own spot within a radius, shuffling now and then, scattered behind you while
-  you travel), calls out what matters (out of mana, low health, adds, a loose moon, someone down, a rare or a
+  loosely like players do, each in its part of the group (tank in front, melee beside you, healers and casters a
+  little further back), shuffling now and then, calls out what matters (out of mana, low health, adds, a loose moon, someone down, a rare or a
   dangerous elite nearby), mounts when you mount, eats and drinks after fights, accepts resurrections, ready checks and shared
   quests, and joins you when you change zone or enter a dungeon.
 
@@ -74,6 +77,8 @@ Type them in party chat. Start with a bot's name to talk to one bot ("Jaina stay
 | `heal <name>` / `dispel <name>` / `protect <name>` | heal them now / cleanse them / the tank taunts off them, the others help them (`me` works) |
 | `spread` / `stack` / `normal` | stand farther apart / close together / as usual |
 | `retreat` | run back to you and stop fighting for a moment |
+| `cc <marker>` / `interrupt <marker>` / `taunt <marker>` | keep it crowd controlled / interrupt its casts / the tank takes it |
+| `burst` | offensive cooldowns now |
 | `stop` | stop attacking for a few seconds |
 | `passive` / `assist` / `aggressive` | never attack / fight what the group fights (default) / also attack hostiles nearby |
 | `role tank` / `role heal` / `role dps` / `role auto` | change role (talents and gear follow) |
@@ -101,6 +106,13 @@ players: the one you name answers ("Jaina, how much mana do you have?"), the one
 enemies and whom they attack, raid markers, rares and elites nearby, what was said earlier) and word their own
 callouts. Plain language becomes orders ("hold here and let the tank pull" gives `stay` plus `pull`). Combat stays
 with the server AI, so a slow answer never costs a fight.
+
+**Tactics**: in a fight worth it (a pack of three or more, two with an elite, a boss), the brain reviews the
+situation when it starts and every `LLM.TacticsInterval` seconds: enemies are numbered (E1, E2...) with their type,
+target and what they cast, and it assigns kill order, crowd control, interrupts, taunts, raid markers (that you see
+too) and cooldowns, with one short call in party chat. The server AI carries it out at once and checks everything
+(a mage cannot polymorph an undead); the brain is too slow to press buttons, so it leads instead. Off with
+`LLM.Tactics = 0`.
 
 Providers (web panel, Server & AI): **Claude** (Anthropic API), **Ollama**, or any **OpenAI-compatible** server
 (llama.cpp, vLLM, LM Studio, LocalAI, OpenRouter...). Each has a weight and a number of requests at once; the lines
@@ -170,6 +182,8 @@ who loves ale` (or the panel) gives a bot a character. Banter (comments on level
 | `Companions.LLM.Enable` | 0 | set by `COMPANIONS_LLM=1` |
 | `Companions.LLM.PartyChat` | 1 | the brain hears every party line that is not an order |
 | `Companions.LLM.Callouts` | 1 | the brain words the callouts of the bots linked to it |
+| `Companions.LLM.Tactics` | 1 | the brain leads fights (kill order, crowd control, interrupts) |
+| `Companions.LLM.TacticsInterval` | 15 | seconds between two tactical reviews of a fight |
 | `Companions.LLM.Banter` | 0 | comments on level ups |
 | `Companions.LLM.MaxAge` | 45 | seconds after which an unanswered line is dropped |
 
@@ -179,8 +193,9 @@ All of these (but `Enable` and the account) can be changed live in the web panel
 
 From the worldserver console (`docker compose attach worldserver`) or SOAP, `.bot test` drives a headless stand-in
 owner: `login <character>`, `party <owner> [role]`, `raid <owner> [size]`, `say <owner> <text>` (a party line), `create <owner> <class> [role]`, `go <owner> <map> <x> <y> <z>`,
-`fight <owner>` (attack the nearest enemy), `status <owner>`, `order <owner> <order>`, `why <bot>` (what it sees),
-`spells <bot>`, `kill <bot>`, `logout <owner>`. Administrators only (the permission of `.server shutdown`).
+`fight <owner>` (attack the nearest enemy), `pull <owner>` (the tank pulls the nearest one), `spawn <owner> <entry>
+[count]` (enemies in front of the group for 5 minutes), `status <owner>`, `order <owner> <order>`, `why <bot>` (what it sees),
+`spells <bot>`, `kill <bot>`, `logout <owner>`. `why <bot>` also shows where it stands around you and its last casts. Administrators only (the permission of `.server shutdown`).
 
 ## Good to know
 

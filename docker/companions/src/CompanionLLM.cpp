@@ -22,6 +22,8 @@
 #include "Player.h"
 #include "QueryCallback.h"
 #include "StringFormat.h"
+#include "SpellInfo.h"
+#include "Spell.h"
 #include <deque>
 #include <sstream>
 #include <unordered_map>
@@ -38,6 +40,51 @@ namespace Companions::CompanionLLM
         std::unordered_map<ObjectGuid, uint32> _lastEventMs;       // bot or owner -> last event (flood guard)
         std::unordered_map<std::string, uint32> _lastCalloutMs;    // "bot:kind" / "owner#kind" -> last callout
         std::unordered_map<ObjectGuid, uint32> _lastPartyCallout;  // owner -> last callout of the party
+
+        // enemies of a fight numbered for the brain (E1, E2...), per owner, stable while the fight lasts
+        std::unordered_map<ObjectGuid, std::vector<ObjectGuid>> _enemyRefs;
+        struct TacticsState { uint32 LastMs = 0; uint32 CombatSinceMs = 0; size_t Enemies = 0; };
+        std::unordered_map<ObjectGuid, TacticsState> _tactics;
+
+        uint32 RefOf(ObjectGuid owner, ObjectGuid enemy)
+        {
+            std::vector<ObjectGuid>& refs = _enemyRefs[owner];
+            auto itr = std::find(refs.begin(), refs.end(), enemy);
+            if (itr != refs.end())
+                return uint32(itr - refs.begin()) + 1;
+            refs.push_back(enemy);
+            return uint32(refs.size());
+        }
+
+        char const* CreatureTypeName(uint32 type)
+        {
+            switch (type)
+            {
+                case CREATURE_TYPE_BEAST:      return "beast";
+                case CREATURE_TYPE_DRAGONKIN:  return "dragonkin";
+                case CREATURE_TYPE_DEMON:      return "demon";
+                case CREATURE_TYPE_ELEMENTAL:  return "elemental";
+                case CREATURE_TYPE_GIANT:      return "giant";
+                case CREATURE_TYPE_UNDEAD:     return "undead";
+                case CREATURE_TYPE_HUMANOID:   return "humanoid";
+                case CREATURE_TYPE_MECHANICAL: return "mechanical";
+                default:                       return "creature";
+            }
+        }
+
+        // what a bot can do for tactics, from the spells it knows
+        std::string Abilities(Player* bot)
+        {
+            static char const* const useful[] = { "polymorph", "shackle undead", "banish", "hibernate", "scare beast", "gouge",
+                "kick", "pummel", "shield bash", "counterspell", "earth shock", "hammer of justice", "bash", "taunt", "growl",
+                "challenging shout", "challenging roar" };
+            CompanionAI* ai = sCompanionMgr->GetAI(bot);
+            std::string out;
+            for (char const* spell : useful)
+                if (ai && ai->Knows(spell))
+                    out += (out.empty() ? "" : ", ") + std::string(spell);
+            return out;
+        }
 
         struct ChatLine { uint32 At; std::string Speaker; std::string Text; };
         std::unordered_map<ObjectGuid, std::deque<ChatLine>> _history;   // group -> recent party chat
@@ -131,7 +178,7 @@ namespace Companions::CompanionLLM
             {
                 CompanionAI* ai = sCompanionMgr->GetAI(bot);
                 bots << bot->GetGUID().GetCounter() << "|" << bot->GetName() << "|" << ClassName(bot->GetClass()) << "|"
-                     << (ai ? RoleName(ai->GetEffectiveRole()) : "dps") << "\n";
+                     << (ai ? RoleName(ai->GetEffectiveRole()) : "dps") << "|" << Abilities(bot) << "\n";
             }
             BotRecord const* record = RecordOf(mainBot);
             std::string context = BuildContext(mainBot, voiced);
@@ -406,6 +453,73 @@ namespace Companions::CompanionLLM
         Insert(nullptr, bot, "event", "party", kind, detail, { bot }, ProviderOf(bot));
     }
 
+    bool IsEnemyRef(std::string const& word)
+    {
+        return word.size() >= 2 && word.size() <= 3 && (word[0] == 'e' || word[0] == 'E')
+            && std::all_of(word.begin() + 1, word.end(), [](char c) { return std::isdigit(static_cast<unsigned char>(c)); });
+    }
+
+    Unit* ResolveEnemy(Player* commander, std::string const& word)
+    {
+        if (!commander || !IsEnemyRef(word))
+            return nullptr;
+        auto itr = _enemyRefs.find(commander->GetGUID());
+        uint32 index = uint32(std::strtoul(word.c_str() + 1, nullptr, 10));
+        if (itr == _enemyRefs.end() || !index || index > itr->second.size())
+            return nullptr;
+        return ObjectAccessor::GetUnit(*commander, itr->second[index - 1]);
+    }
+
+    void ConsiderTactics(Player* bot)
+    {
+        Config const& config = GetConfig();
+        if (!config.LLMEnable || !config.LLMTactics || !IsEnabledFor(bot))
+            return;
+        CompanionAI* ai = sCompanionMgr->GetAI(bot);
+        if (!ai)
+            return;
+        ObjectGuid ownerGuid = ai->GetOwnerGUID();
+        TacticsState& state = _tactics[ownerGuid];
+        GroupView const& view = ai->View();
+        if (view.Enemies.empty())
+        {
+            state.CombatSinceMs = 0;
+            state.Enemies = 0;
+            return;
+        }
+        if (!state.CombatSinceMs)
+            state.CombatSinceMs = _msTime;
+        if (_msTime - state.CombatSinceMs < 1500)
+            return;     // the pull settles first
+
+        // worth a plan: a pack (3+), two with an elite among them, or a boss; one mob needs no raid leader
+        bool elite = false, boss = false;
+        for (Unit* enemy : view.Enemies)
+            if (Creature* creature = enemy->ToCreature())
+            {
+                elite = elite || creature->IsElite();
+                boss = boss || creature->isWorldBoss() || creature->IsDungeonBoss();
+            }
+        if (!boss && view.Enemies.size() < 3 && !(elite && view.Enemies.size() >= 2))
+            return;
+
+        bool firstLook = state.LastMs < state.CombatSinceMs || !state.LastMs;
+        bool adds = view.Enemies.size() >= state.Enemies + 2 && _msTime - state.LastMs > 5000;
+        if (!firstLook && !adds && _msTime - state.LastMs < config.LLMTacticsInterval * 1000)
+            return;
+        state.LastMs = _msTime;
+        state.Enemies = view.Enemies.size();
+
+        std::vector<Player*> voiced;
+        for (Player* member : sCompanionMgr->GetBotsOf(ownerGuid))
+            if (IsEnabledFor(member))
+                voiced.push_back(member);
+        if (voiced.empty())
+            return;
+        Insert(ObjectAccessor::FindPlayer(ownerGuid), bot, "tactics", "party", "tactics",
+            std::to_string(view.Enemies.size()) + (firstLook ? " enemies, the fight just started" : " enemies, the fight goes on"), voiced, ProviderOf(bot));
+    }
+
     void RecordChat(Group const* group, std::string const& speaker, std::string const& text)
     {
         if (!group || !GetConfig().LLMEnable)
@@ -482,26 +596,42 @@ namespace Companions::CompanionLLM
         if (ai)
         {
             GroupView const& view = ai->View();
-            if (!view.Enemies.empty())
+            ObjectGuid ownerGuid = ai->GetOwnerGUID();
+            if (view.Enemies.empty())
+                _enemyRefs.erase(ownerGuid);
+            else
             {
-                ss << "enemies in the fight:";
+                // numbered for orders ("kill E2", "cc E3"): type for crowd control, what they cast for interrupts
+                ss << "enemies in the fight:\n";
                 uint32 shown = 0;
                 for (Unit* enemy : view.Enemies)
                 {
-                    if (++shown > 8)
+                    if (++shown > 10)
                         break;
-                    ss << " " << enemy->GetName() << " (level " << uint32(enemy->GetLevel());
+                    ss << "  E" << RefOf(ownerGuid, enemy->GetGUID()) << " " << enemy->GetName() << " (level " << uint32(enemy->GetLevel());
                     if (Creature* creature = enemy->ToCreature())
-                        if (creature->IsElite() || creature->isWorldBoss())
+                    {
+                        if (creature->isWorldBoss() || creature->IsDungeonBoss())
+                            ss << ", boss";
+                        else if (creature->IsElite())
                             ss << ", elite";
-                    ss << ", " << uint32(enemy->GetHealthPct()) << "%";
+                    }
+                    ss << ", " << CreatureTypeName(enemy->GetCreatureType()) << ", " << uint32(enemy->GetHealthPct()) << "%";
                     if (Unit* victim = enemy->GetVictim())
                         ss << ", on " << victim->GetName();
+                    Spell* casting = enemy->GetCurrentSpell(CURRENT_GENERIC_SPELL);
+                    if (!casting)
+                        casting = enemy->GetCurrentSpell(CURRENT_CHANNELED_SPELL);
+                    if (casting && casting->GetSpellInfo()->SpellName)
+                        ss << ", casting " << casting->GetSpellInfo()->SpellName->Str[LOCALE_enUS];
                     if (enemy->HasBreakableByDamageCrowdControlAura())
                         ss << ", crowd controlled";
-                    ss << ");";
+                    if (group)
+                        for (uint8 icon = 0; icon < 8; ++icon)
+                            if (group->GetTargetIcon(icon) == enemy->GetGUID())
+                                ss << ", marked " << IconName(icon);
+                    ss << ")\n";
                 }
-                ss << "\n";
             }
         }
 

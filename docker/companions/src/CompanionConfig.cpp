@@ -60,6 +60,8 @@ namespace Companions
                 { "LLM.Callouts",      'b', 0, 1,   [](Config& c) -> void* { return &c.LLMCallouts; } },
                 { "LLM.Banter",        'b', 0, 1,   [](Config& c) -> void* { return &c.LLMBanter; } },
                 { "LLM.MaxAge",        'i', 10, 300, [](Config& c) -> void* { return &c.LLMMaxAge; } },
+                { "LLM.Tactics",       'b', 0, 1,   [](Config& c) -> void* { return &c.LLMTactics; } },
+                { "LLM.TacticsInterval", 'i', 5, 60, [](Config& c) -> void* { return &c.LLMTacticsInterval; } },
             };
             return settings;
         }
@@ -153,6 +155,8 @@ namespace Companions
         c.LLMBanter       = sConfigMgr->GetBoolDefault("Companions.LLM.Banter", false, true);
         c.LLMPollInterval = std::clamp<uint32>(sConfigMgr->GetIntDefault("Companions.LLM.PollInterval", 1000, true), 250, 10000);
         c.LLMMaxAge       = std::clamp<uint32>(sConfigMgr->GetIntDefault("Companions.LLM.MaxAge", 45, true), 10, 300);
+        c.LLMTactics      = sConfigMgr->GetBoolDefault("Companions.LLM.Tactics", true, true);
+        c.LLMTacticsInterval = std::clamp<uint32>(sConfigMgr->GetIntDefault("Companions.LLM.TacticsInterval", 15, true), 5, 60);
 
         // what the web panel saved wins over the file
         for (auto const& [key, value] : _stored)

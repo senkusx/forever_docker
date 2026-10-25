@@ -12,6 +12,7 @@
 #include "Optional.h"
 #include "Position.h"
 #include "SharedDefines.h"
+#include <deque>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -81,7 +82,9 @@ namespace Companions
         virtual bool Resurrect(Player* /*dead*/) { return false; }
         virtual bool Interrupt(Unit* /*caster*/) { return false; }
         virtual bool Taunt(Unit* /*target*/) { return false; }
+        virtual bool AoeTaunt() { return false; }                       // several enemies loose around the tank
         virtual bool CrowdControl(Unit* /*target*/) { return false; }
+        virtual bool CanCrowdControl(Unit const* /*target*/) const { return false; }
         virtual bool Emergency() { return false; }      // self preservation in combat
         virtual bool Pull(Unit* target) { return Combat(target); }
         virtual bool Combat(Unit* target) = 0;          // damage / threat rotation
@@ -119,6 +122,10 @@ namespace Companions
         void OrderProtect(ObjectGuid target) { _protectTarget = target; _protectUntil = GameTime::Now() + Seconds(25); }
         void OrderRetreat();
         void OrderCast(std::string spell, ObjectGuid target) { _pendingCast = std::move(spell); _pendingCastTarget = target; }
+        // tactics (players or the AI brain): keep this enemy crowd controlled, interrupt this caster, use cooldowns now
+        void OrderCrowdControl(ObjectGuid target);
+        void OrderInterrupt(ObjectGuid target) { _interruptTarget = target; _interruptUntil = GameTime::Now() + Seconds(30); }
+        void OrderBurst() { _burstUntil = GameTime::Now() + Seconds(20); }
         void SetFollowSlot(uint32 slot, uint32 count) { _followSlot = slot; _followCount = count; _movement = MoveMode::None; }
         void SetSpread(float spread) { _spread = spread; _loitering = false; _movement = MoveMode::None; }
         void RefreshSpells() { _spellsDirty = true; }
@@ -135,6 +142,11 @@ namespace Companions
         GroupView const& View() const { return _view; }
         Unit* GetCurrentTarget() const;
         std::string StatusLine() const;
+        bool IsPulling() const { return _pulling && !_forcedTarget.IsEmpty(); }
+        ObjectGuid GetPullTarget() const { return _pulling ? _forcedTarget : ObjectGuid::Empty; }
+        // an enemy this bot was told to crowd control: the others leave it alone while it does
+        bool IsAssignedCrowdControl(Unit const* unit) const;
+        std::string RecentCasts() const;    // test harness: what it did lately
 
         // ---- helpers for ClassAI ----
         uint32 SpellIdOf(std::string_view name) const { return _spells.Best(name); }
@@ -167,6 +179,7 @@ namespace Companions
         Unit* LowestAlly(float maxPct, float range, bool includePets = false) const;
         uint32 InjuredAllies(float maxPct, float range) const;
         bool IsBossFight() const;
+        bool Bursting() const;              // boss fight or ordered: offensive cooldowns now
         bool IsTargetedByEnemy() const;
         Unit* EnemyAttackingMe() const;
         bool IsMoving() const;
@@ -202,11 +215,15 @@ namespace Companions
         void UpdateMount();
         Unit* SelectTarget();
         Unit* SelectTankTarget();
-        bool IsValidEnemy(Unit* unit) const;
+        bool IsValidEnemy(Unit* unit, float maxDistance = 60.0f) const;   // ordered targets reach further
         bool IsCrowdControlTarget(Unit const* unit) const;
         void MoveForCombat(Unit* target);
         void FollowOwner();
-        bool PickLoiterSpot(Player* owner, float minDist, float maxDist, Position& spot) const;
+        bool PickLoiterSpot(Player* owner, float angle, float halfWidth, float minDist, float maxDist, Position& spot) const;
+        // where this bot stands around the owner: tank in front, melee beside, healers and casters behind
+        void FormationSlot(bool travelling, float& angle, float& halfWidth, float& minDist, float& maxDist) const;
+        bool FollowPullingTank();
+        bool AutoCrowdControl(Unit* killTarget);   // a pack: control one add, like a mage sheeps without being asked
         void EngageTarget(Unit* target, bool melee);
         void FaceTarget(Unit* target);
         void DisengageAll();
@@ -267,6 +284,17 @@ namespace Companions
         ObjectGuid _protectTarget;
         TimePoint _protectUntil = { };
         bool UpdateCallouts();
+        // tactics
+        ObjectGuid _ccTarget;
+        TimePoint _ccSince = { };
+        TimePoint _ccUntil = { };
+        ObjectGuid _interruptTarget;
+        TimePoint _interruptUntil = { };
+        TimePoint _burstUntil = { };
+        ObjectGuid _waitingFor;         // melee waiting for the tank to take this enemy
+        TimePoint _ccCheckAt = { };
+        float _formationSide = 1.0f;    // melee: left or right of the owner
+        std::deque<std::pair<TimePoint, std::string>> _recentCasts;
         // situational callouts to the party, like players make them (out of mana, adds, a rare...)
         void NoticeSituation();
         void Callout(char const* kind, std::string const& detail, std::string const& canned);

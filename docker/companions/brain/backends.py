@@ -92,6 +92,8 @@ class Anthropic:
 
 
 class Ollama:
+    TOP_LEVEL = ("keep_alive", "think", "orders")
+
     def __init__(self, row):
         self.model = row["model"]
         self.endpoint = (row.get("endpoint") or "http://localhost:11434").rstrip("/")
@@ -106,8 +108,10 @@ class Ollama:
             "stream": False,
             "format": schema,
             "keep_alive": self.options.get("keep_alive", "30m"),
-            "options": {"temperature": 0.7, **{k: v for k, v in self.options.items() if k != "keep_alive"}},
+            "options": {"temperature": 0.7, **{k: v for k, v in self.options.items() if k not in self.TOP_LEVEL}},
         }
+        if "think" in self.options:
+            body["think"] = self.options["think"]     # reasoning models (qwen3...): false answers fast
         try:
             response = httpx.post(f"{self.endpoint}/api/chat", json=body, headers=self.headers, timeout=self.timeout)
         except httpx.HTTPError as e:

@@ -15,4 +15,6 @@
 # Companions.TeleportDistance = 90
 # Companions.LLM.PartyChat = 1
 # Companions.LLM.Callouts = 1
+# Companions.LLM.Tactics = 1
+# Companions.LLM.TacticsInterval = 15
 # Companions.LLM.Banter = 0

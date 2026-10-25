@@ -43,6 +43,8 @@ namespace Companions
         bool LLMBanter = false;             // bots comment on events (level up, boss kill)
         uint32 LLMPollInterval = 1000;      // ms
         uint32 LLMMaxAge = 45;              // seconds after which an unanswered line is dropped
+        bool LLMTactics = true;             // in fights the brain assigns kill order, crowd control, interrupts, cooldowns
+        uint32 LLMTacticsInterval = 15;     // seconds between two tactical reviews of the same fight
     };
 
     // one setting the web panel can read and change

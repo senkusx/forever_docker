@@ -25,6 +25,7 @@
 #include "Player.h"
 #include "RBAC.h"
 #include "ScriptMgr.h"
+#include "TemporarySummon.h"
 #include "WorldSession.h"
 #include <sstream>
 
@@ -117,6 +118,19 @@ namespace Companions
             return -1;
         }
 
+        // "skull" (a raid marker) or "e3" (an enemy as the AI brain numbers them)
+        Unit* TargetRef(Player* commander, std::string const& word)
+        {
+            int32 icon = IconIndex(word);
+            if (icon >= 0)
+            {
+                Group* group = commander->GetGroup();
+                ObjectGuid marked = group ? group->GetTargetIcon(uint8(icon)) : ObjectGuid::Empty;
+                return marked.IsEmpty() ? nullptr : ObjectAccessor::GetUnit(*commander, marked);
+            }
+            return CompanionLLM::ResolveEnemy(commander, word);
+        }
+
         Unit* CommanderTarget(Player* commander)
         {
             Unit* target = commander->GetSelectedUnit();
@@ -141,7 +155,8 @@ namespace Companions
     std::string Commands::OrdersHelp()
     {
         return "Orders (party chat, whisper, or \".bot order\"; start with a bot name for one bot): follow, stay, come, attack [skull|cross|...], "
-               "pull, stop, retreat, assist [name], heal <name|me>, dispel <name|me>, protect <name|me>, spread, stack, normal, passive, aggressive, "
+               "pull, stop, retreat, assist [name], heal <name|me>, dispel <name|me>, protect <name|me>, cc <marker>, interrupt <marker>, "
+               "taunt <marker>, burst, spread, stack, normal, passive, aggressive, "
                "role tank|heal|dps, rest, cast <spell> [on me|on target|on <name>], status, gear, dismiss, help";
     }
 
@@ -174,16 +189,65 @@ namespace Companions
             forEach([](Player*, CompanionAI* ai) { ai->OrderComeHere(); });
             Ack(bots, quiet, "On my way.");
         }
-        else if ((order == "attack" || order == "kill" || order == "focus") && words.size() >= 2 && IconIndex(words[1]) >= 0)
+        else if ((order == "attack" || order == "kill" || order == "focus") && words.size() >= 2
+            && (IconIndex(words[1]) >= 0 || CompanionLLM::IsEnemyRef(words[1])))
         {
-            // "focus skull": the raid marker's target
-            Group* group = commander->GetGroup();
-            ObjectGuid marked = group ? group->GetTargetIcon(uint8(IconIndex(words[1]))) : ObjectGuid::Empty;
-            Unit* target = marked.IsEmpty() ? nullptr : ObjectAccessor::GetUnit(*commander, marked);
+            // "focus skull": the raid marker's target; "kill e2": an enemy as the brain numbers them
+            Unit* target = TargetRef(commander, words[1]);
             if (!target || !target->IsAlive())
                 return true;
             forEach([&](Player*, CompanionAI* ai) { ai->OrderAttack(target->GetGUID(), false); });
-            Ack(bots, quiet, "Focusing " + words[1] + ".");
+            Ack(bots, quiet, "Focusing " + target->GetName() + ".");
+        }
+        else if ((order == "cc" || order == "sheep" || order == "control") && words.size() >= 2)
+        {
+            // keep it out of the fight: whoever of these bots can (polymorph, shackle, banish, hibernate...)
+            Unit* target = TargetRef(commander, words[1]);
+            if (!target || !target->IsAlive())
+                return true;
+            bool any = false;
+            forEach([&](Player*, CompanionAI* ai)
+            {
+                if (any || !ai->GetClassAI() || !ai->GetClassAI()->CanCrowdControl(target))
+                    return;
+                ai->OrderCrowdControl(target->GetGUID());
+                any = true;
+            });
+            if (any)
+                Ack(bots, quiet, "I'll keep " + target->GetName() + " out of it.");
+        }
+        else if (order == "interrupt" && words.size() >= 2)
+        {
+            Unit* target = TargetRef(commander, words[1]);
+            if (!target || !target->IsAlive())
+                return true;
+            forEach([&](Player*, CompanionAI* ai) { ai->OrderInterrupt(target->GetGUID()); });
+            Ack(bots, quiet, "I'll interrupt " + target->GetName() + ".");
+        }
+        else if (order == "taunt" && words.size() >= 2)
+        {
+            Unit* target = TargetRef(commander, words[1]);
+            if (!target || !target->IsAlive())
+                return true;
+            forEach([&](Player*, CompanionAI* ai)
+            {
+                if (ai->GetEffectiveRole() == Role::Tank)
+                    ai->OrderAttack(target->GetGUID(), false);
+            });
+        }
+        else if (order == "mark" && words.size() >= 3 && IconIndex(words[1]) >= 0)
+        {
+            // "mark skull e2": the raid marker the players see too
+            Unit* target = TargetRef(commander, words[2]);
+            Group* group = commander->GetGroup();
+            if (!target || !target->IsAlive() || !group)
+                return true;
+            group->SetTargetIcon(uint8(IconIndex(words[1])), target->GetGUID(), bots.front()->GetGUID());
+        }
+        else if (order == "burst" || order == "cooldowns" || order == "bloodlust")
+        {
+            forEach([](Player*, CompanionAI* ai) { ai->OrderBurst(); });
+            Ack(bots, quiet, "Everything I've got!");
         }
         else if (order == "assist" && words.size() >= 2)
         {
@@ -362,6 +426,8 @@ namespace Companions
                 { "raid",   HandleTestRaid,   rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "say",    HandleTestSay,    rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "fight",  HandleTestFight,  rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
+                { "pull",   HandleTestPull,   rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
+                { "spawn",  HandleTestSpawn,  rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "status", HandleTestStatus, rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "go",     HandleTestGo,     rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "order",  HandleTestOrder,  rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
@@ -852,6 +918,56 @@ namespace Companions
             return true;
         }
 
+        // .bot test spawn <owner> <entry> [count]: enemies 25 yards in front of the owner (5 minutes), for pack fights
+        static bool HandleTestSpawn(ChatHandler* handler, std::string owner, uint32 entry, Optional<uint32> count)
+        {
+            Player* puppet = Puppet(handler, owner);
+            if (!puppet)
+                return true;
+            uint32 n = std::clamp<uint32>(count.value_or(1), 1, 8);
+            for (uint32 i = 0; i < n; ++i)
+            {
+                Position pos = puppet->GetPosition();
+                puppet->MovePosition(pos, 25.0f + frand(-2.0f, 2.0f), frand(-0.4f, 0.4f));
+                if (TempSummon* creature = puppet->SummonCreature(entry, pos, TEMPSUMMON_TIMED_OR_DEAD_DESPAWN, 5min))
+                {
+                    creature->SetFacingToObject(puppet);
+                    handler->PSendSysMessage("Companions test: %s (level %u) spawned", creature->GetName().c_str(), uint32(creature->GetLevel()));
+                }
+            }
+            return true;
+        }
+
+        // .bot test pull <owner>: the owner targets the nearest enemy and says "pull" (the tank goes, the melee walk with it)
+        static bool HandleTestPull(ChatHandler* handler, std::string owner)
+        {
+            Player* puppet = Puppet(handler, owner);
+            if (!puppet)
+                return true;
+            Unit* target = nullptr;
+            float best = 100.0f;
+            std::list<Unit*> units;
+            Trinity::AnyUnfriendlyUnitInObjectRangeCheck check(puppet, puppet, best);
+            Trinity::UnitListSearcher<Trinity::AnyUnfriendlyUnitInObjectRangeCheck> searcher(puppet, units, check);
+            Cell::VisitAllObjects(puppet, searcher, best);
+            for (Unit* creature : units)
+                if (creature->IsAlive() && creature->ToCreature() && puppet->IsValidAttackTarget(creature) && !creature->IsCritter()
+                    && !creature->IsInCombat() && puppet->GetDistance(creature) < best)
+                {
+                    best = puppet->GetDistance(creature);
+                    target = creature;
+                }
+            if (!target)
+            {
+                handler->SendSysMessage("Companions test: nothing to pull within 100 yards");
+                return true;
+            }
+            puppet->SetSelection(target->GetGUID());
+            handler->PSendSysMessage("Companions test: %s pulls %s (level %u, %.0f yards)", owner.c_str(), target->GetName().c_str(), uint32(target->GetLevel()), best);
+            Commands::ExecuteOrder(puppet, sCompanionMgr->GetBotsOf(puppet->GetGUID()), "pull", false);
+            return true;
+        }
+
         static bool HandleTestFight(ChatHandler* handler, std::string owner)
         {
             Player* puppet = Puppet(handler, owner);
@@ -965,6 +1081,19 @@ namespace Companions
                         uint32(bot->CanSeeOrDetect(victim)), bot->GetDistance(victim));
             for (Unit* enemy : view.Enemies)
                 handler->PSendSysMessage("  enemy %s victim %s", enemy->GetName().c_str(), enemy->GetVictim() ? enemy->GetVictim()->GetName().c_str() : "-");
+            if (view.Owner)
+            {
+                // where it stands: 0 = in front of the owner, 180 = behind
+                float angle = Position::NormalizeOrientation(view.Owner->GetAbsoluteAngle(bot) - view.Owner->GetOrientation());
+                if (angle > float(M_PI))
+                    angle -= 2.0f * float(M_PI);
+                handler->PSendSysMessage("  role %s, at %.0f degrees, %.1f yards from the owner", RoleName(ai->GetEffectiveRole()),
+                    angle * 180.0f / float(M_PI), bot->GetExactDist2d(view.Owner));
+            }
+            Unit* victim = bot->GetVictim();
+            handler->PSendSysMessage("  form %u rage %d, victim %s at %.1f (melee %u), casts: %s", uint32(bot->GetShapeshiftForm()), ai->Rage(),
+                victim ? victim->GetName().c_str() : "-", victim ? bot->GetDistance(victim) : 0.0f, uint32(victim && ai->InMelee(victim)),
+                ai->RecentCasts().c_str());
             return true;
         }
 

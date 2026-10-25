@@ -170,6 +170,7 @@ namespace Companions
         _combatStart = GameTime::Now();
         _lastCastTime = GameTime::Now();
         _stayPosition = bot->GetPosition();
+        _formationSide = roll_chance(50) ? 1.0f : -1.0f;
     }
 
     CompanionAI::~CompanionAI() = default;
@@ -366,7 +367,10 @@ namespace Companions
             return;
 
         if (slowTick)
+        {
             NoticeSituation();
+            CompanionLLM::ConsiderTactics(_bot);
+        }
 
         if (UpdateCallouts())
             return;
@@ -382,10 +386,12 @@ namespace Companions
             Player* owner = _view.Owner;
             if (owner && _stance == Stance::Follow && !_bot->IsBeingTeleported() && !owner->IsBeingTeleported())
             {
+                float slotAngle, slotWidth, slotMin, slotMax;
+                FormationSlot(false, slotAngle, slotWidth, slotMin, slotMax);
                 float dist = _bot->GetDistance(owner);
                 if (dist > GetConfig().TeleportDistance)
                     _stuckTimer = 100000;
-                else if (dist > std::max(20.0f, GetConfig().FollowMaxDistance * _spread + 8.0f) && std::fabs(dist - _lastOwnerDist) < 1.0f && !owner->isMoving())
+                else if (dist > std::max(20.0f, slotMax + 8.0f) && std::fabs(dist - _lastOwnerDist) < 1.0f && !owner->isMoving())
                     _stuckTimer += 1000;
                 else
                     _stuckTimer = 0;
@@ -660,9 +666,9 @@ namespace Companions
         if (_holdFire)
             return;
 
-        auto addEnemy = [this](Unit* unit)
+        auto addEnemy = [this](Unit* unit, float maxDistance = 60.0f)
         {
-            if (!IsValidEnemy(unit))
+            if (!IsValidEnemy(unit, maxDistance))
                 return;
             if (std::find(_view.Enemies.begin(), _view.Enemies.end(), unit) == _view.Enemies.end())
                 _view.Enemies.push_back(unit);
@@ -690,8 +696,8 @@ namespace Companions
         if (!_forcedTarget.IsEmpty())
         {
             Unit* forced = ObjectAccessor::GetUnit(*_bot, _forcedTarget);
-            if (forced && IsValidEnemy(forced))
-                addEnemy(forced);
+            if (forced && IsValidEnemy(forced, 100.0f))
+                addEnemy(forced, 100.0f);
             else
             {
                 _forcedTarget.Clear();
@@ -711,7 +717,7 @@ namespace Companions
         }
     }
 
-    bool CompanionAI::IsValidEnemy(Unit* unit) const
+    bool CompanionAI::IsValidEnemy(Unit* unit, float maxDistance) const
     {
         if (!unit || !unit->IsInWorld() || !unit->IsAlive() || unit->GetMap() != _bot->GetMap())
             return false;
@@ -720,7 +726,7 @@ namespace Companions
         if (Creature const* creature = unit->ToCreature())
             if (creature->IsEvadingAttacks() || creature->IsTrigger())
                 return false;
-        return _bot->GetDistance(unit) < 60.0f;
+        return _bot->GetDistance(unit) < maxDistance;
     }
 
     bool CompanionAI::IsCrowdControlTarget(Unit const* unit) const
@@ -728,14 +734,44 @@ namespace Companions
         if (Group* group = _bot->GetGroup())
             if (group->GetTargetIcon(ICON_MOON) == unit->GetGUID())
                 return true;
-        return unit->HasBreakableByDamageCrowdControlAura();
+        if (unit->HasBreakableByDamageCrowdControlAura())
+            return true;
+        return sCompanionMgr->IsCrowdControlClaimed(unit->GetGUID(), _bot->GetGUID());
+    }
+
+    void CompanionAI::OrderCrowdControl(ObjectGuid target)
+    {
+        _ccTarget = target;
+        _ccSince = GameTime::Now();
+        _ccUntil = _ccSince + Seconds(40);
+        sCompanionMgr->ClaimCrowdControl(target, _bot->GetGUID(), 5000);   // time to cast it
+    }
+
+    bool CompanionAI::IsAssignedCrowdControl(Unit const* unit) const
+    {
+        // a few seconds to cast it: after that, an enemy nobody controls is fair game again
+        return _ccTarget == unit->GetGUID() && GameTime::Now() < _ccUntil && Elapsed(_ccSince) < 5000;
+    }
+
+    bool CompanionAI::Bursting() const
+    {
+        return IsBossFight() || GameTime::Now() < _burstUntil;
+    }
+
+    std::string CompanionAI::RecentCasts() const
+    {
+        std::string out;
+        for (auto itr = _recentCasts.rbegin(); itr != _recentCasts.rend(); ++itr)   // newest first
+            out += (out.empty() ? "" : ", ") + itr->second + " (" + std::to_string(Elapsed(itr->first) / 1000) + "s)";
+        return out;
     }
 
     Unit* CompanionAI::SelectTarget()
     {
+        _waitingFor.Clear();
         if (!_forcedTarget.IsEmpty())
             if (Unit* forced = ObjectAccessor::GetUnit(*_bot, _forcedTarget))
-                if (IsValidEnemy(forced))
+                if (IsValidEnemy(forced, 100.0f))
                     return forced;
 
         auto usable = [this](Unit* unit) { return unit && IsValidEnemy(unit) && !IsCrowdControlTarget(unit); };
@@ -795,8 +831,12 @@ namespace Companions
         // a careful player lets the tank build threat first
         if (_view.Tank && _view.Tank != _bot && _view.Tank->IsAlive() && IsTank(_view.Tank) && pick->GetVictim() != _bot
             && Elapsed(_combatStart) < 2500 && _forcedTarget.IsEmpty() && pick->GetVictim() != _view.Tank)
+        {
+            _waitingFor = pick->GetGUID();
             return nullptr;
+        }
 
+        _waitingFor.Clear();
         return pick;
     }
 
@@ -809,7 +849,7 @@ namespace Companions
 
         if (!_forcedTarget.IsEmpty())
             if (Unit* forced = ObjectAccessor::GetUnit(*_bot, _forcedTarget))
-                if (IsValidEnemy(forced))
+                if (IsValidEnemy(forced, 100.0f))
                     return forced;
 
         // enemies hitting someone else: get them back, healers first
@@ -897,6 +937,19 @@ namespace Companions
         {
             if (role == Role::Healer)
                 MoveForCombat(nullptr);
+            else if (Unit* waiting = role == Role::MeleeDps && !_waitingFor.IsEmpty() ? ObjectAccessor::GetUnit(*_bot, _waitingFor) : nullptr)
+            {
+                // melee walk up with the tank and wait behind the enemy, ready to hit when it is taken
+                MotionMaster* motion = _bot->GetMotionMaster();
+                if (_movement != MoveMode::Chase || _moveTarget != waiting->GetGUID())
+                {
+                    motion->MoveChase(waiting, ChaseRange(4.0f, 7.0f), ChaseAngle(float(M_PI), float(M_PI_4)));
+                    _movement = MoveMode::Chase;
+                    _moveTarget = waiting->GetGUID();
+                    _moveRangeMin = 4.0f;
+                    _moveRangeMax = 7.0f;
+                }
+            }
             else
                 FollowOwner();
             return;
@@ -911,7 +964,39 @@ namespace Companions
         if (UpdateInterrupts())
             return;
 
-        if (role == Role::Tank && target->GetVictim() && target->GetVictim() != _bot && _class->Taunt(target))
+        if (role == Role::Tank)
+        {
+            // threat first: enemies on others are taken back, by taunt, or all at once when several got loose
+            uint32 loose = 0;
+            for (Unit* enemy : _view.Enemies)
+                if (enemy->GetVictim() && enemy->GetVictim() != _bot && enemy->GetVictim()->ToPlayer() && !IsCrowdControlTarget(enemy)
+                    && _bot->GetDistance(enemy) < 10.0f)
+                    ++loose;
+            if (loose >= 3 && _class->AoeTaunt())
+                return;
+            if (target->GetVictim() && target->GetVictim() != _bot && _class->Taunt(target))
+                return;
+        }
+
+        // an enemy this bot was told to keep under control
+        if (!_ccTarget.IsEmpty())
+        {
+            Unit* cc = GameTime::Now() < _ccUntil ? ObjectAccessor::GetUnit(*_bot, _ccTarget) : nullptr;
+            if (!cc || !IsValidEnemy(cc))
+                _ccTarget.Clear();
+            else if (!cc->HasBreakableByDamageCrowdControlAura() && _class->CrowdControl(cc))
+            {
+                _ccSince = GameTime::Now();
+                sCompanionMgr->ClaimCrowdControl(_ccTarget, _bot->GetGUID(), 5000);
+                return;
+            }
+            else if (cc->HasBreakableByDamageCrowdControlAura())
+            {
+                _ccSince = GameTime::Now();     // still under control: the others keep away
+                sCompanionMgr->ClaimCrowdControl(_ccTarget, _bot->GetGUID(), 5000);
+            }
+        }
+        else if (AutoCrowdControl(target))
             return;
 
         // crowd control the moon
@@ -977,7 +1062,73 @@ namespace Companions
             return;
 
         UpdateMount();
+        if (FollowPullingTank())
+            return;
         FollowOwner();
+    }
+
+    bool CompanionAI::AutoCrowdControl(Unit* killTarget)
+    {
+        Role role = GetEffectiveRole();
+        if (role == Role::Tank || role == Role::Healer || _bot->GetClass() == CLASS_ROGUE || GameTime::Now() < _ccCheckAt)
+            return false;
+        _ccCheckAt = GameTime::Now() + Seconds(2);
+        if (_view.Enemies.size() < 3)
+            return false;
+
+        // keep two to kill at least; never the kill target, the tank's, a marked one or one half dead
+        uint32 controlled = 0;
+        for (Unit* enemy : _view.Enemies)
+            controlled += IsCrowdControlTarget(enemy) ? 1 : 0;
+        if (_view.Enemies.size() - controlled < 3)
+            return false;
+        Unit* tankTarget = _view.Tank && _view.Tank != _bot ? _view.Tank->GetVictim() : nullptr;
+        Group* group = _bot->GetGroup();
+        Unit* pick = nullptr;
+        for (Unit* enemy : _view.Enemies)
+        {
+            if (enemy == killTarget || enemy == tankTarget || IsCrowdControlTarget(enemy) || enemy->GetHealthPct() < 60.0f
+                || !_class->CanCrowdControl(enemy) || _bot->GetDistance(enemy) > 30.0f)
+                continue;
+            if (Creature* creature = enemy->ToCreature())
+                if (creature->isWorldBoss() || creature->IsDungeonBoss())
+                    continue;
+            if (group && (group->GetTargetIcon(ICON_SKULL) == enemy->GetGUID() || group->GetTargetIcon(ICON_CROSS) == enemy->GetGUID()))
+                continue;
+            // the healthiest one is the one the group would reach last
+            if (!pick || enemy->GetHealthPct() > pick->GetHealthPct())
+                pick = enemy;
+        }
+        if (!pick)
+            return false;
+        OrderCrowdControl(pick->GetGUID());
+        static char const* const verbs[] = { "", "", "", "Scaring", "", "Shackling", "", "", "Sheep on", "Banishing", "", "Hibernate on" };
+        uint8 classId = _bot->GetClass();
+        std::string verb = classId < std::size(verbs) && *verbs[classId] ? verbs[classId] : "Controlling";
+        Callout("cc", "you start to crowd control " + pick->GetName() + " to keep it out of the fight", verb + " " + pick->GetName() + "!");
+        return _class->CrowdControl(pick);
+    }
+
+    // the tank goes for a pull: the melee walk with it instead of waiting at the leader's side
+    bool CompanionAI::FollowPullingTank()
+    {
+        if (GetEffectiveRole() != Role::MeleeDps || _stance == Stance::Stay || _aggression == Aggression::Passive)
+            return false;
+        Player* tank = _view.Tank;
+        CompanionAI* tankAI = tank && tank != _bot ? sCompanionMgr->GetAI(tank) : nullptr;
+        if (!tankAI || !tankAI->IsPulling())
+            return false;
+        Unit* target = ObjectAccessor::GetUnit(*_bot, tankAI->GetPullTarget());
+        if (!target || !target->IsAlive())
+            return false;
+        // behind the tank, a little apart
+        if (_movement != MoveMode::Follow || _moveTarget != tank->GetGUID())
+        {
+            _bot->GetMotionMaster()->MoveFollow(tank, frand(3.0f, 5.0f), ChaseAngle(float(M_PI) + _formationSide * frand(0.3f, 0.8f), 0.3f));
+            _movement = MoveMode::Follow;
+            _moveTarget = tank->GetGUID();
+        }
+        return true;
     }
 
     bool CompanionAI::UpdateHealing(bool inCombat)
@@ -1074,7 +1225,15 @@ namespace Companions
 
     bool CompanionAI::UpdateInterrupts()
     {
-        for (Unit* enemy : _view.Enemies)
+        std::vector<Unit*> order = _view.Enemies;
+        if (!_interruptTarget.IsEmpty())
+        {
+            if (GameTime::Now() >= _interruptUntil)
+                _interruptTarget.Clear();
+            else
+                std::stable_partition(order.begin(), order.end(), [this](Unit* u) { return u->GetGUID() == _interruptTarget; });
+        }
+        for (Unit* enemy : order)
         {
             if (_bot->GetDistance(enemy) > 30.0f)
                 continue;
@@ -1329,9 +1488,6 @@ namespace Companions
         if (_bot->GetVictim())
             _bot->AttackStop();
 
-        Config const& config = GetConfig();
-        float minDist = std::max(1.0f, config.FollowMinDistance * _spread);
-        float maxDist = std::max(minDist + 1.0f, config.FollowMaxDistance * _spread);
         TimePoint now = GameTime::Now();
 
         bool ownerMoving = owner->isMoving() || owner->GetExactDist2d(_lastOwnerPosition) > 0.3f;
@@ -1342,32 +1498,35 @@ namespace Companions
             _loitering = false;
         }
 
-        // travelling: each bot follows at a distance and side of its own, drifting every few seconds
+        // travelling: each bot follows in its part of the group (tank ahead, healers and casters behind), drifting now and then
         if (ownerMoving || Elapsed(_ownerStillSince) < _loiterDelay)
         {
             bool following = _movement == MoveMode::Follow && _moveTarget == owner->GetGUID()
                 && motion->GetCurrentMovementGeneratorType() == FOLLOW_MOTION_TYPE;
             if (following && now < _scatterUntil)
                 return;
-            float angle = float(M_PI) + frand(-1.9f, 1.9f);     // mostly behind and beside, never a line
-            float dist = frand(minDist, maxDist);
+            float angle, halfWidth, slotMin, slotMax;
+            FormationSlot(true, angle, halfWidth, slotMin, slotMax);
+            float dist = frand(slotMin, slotMax);
             _scatterUntil = now + Milliseconds(urand(5000, 12000));
             _loiterDelay = urand(400, 1800);                    // each bot notices the stop at its own pace
-            motion->MoveFollow(owner, dist, ChaseAngle(angle, float(M_PI) / 8.0f));
+            motion->MoveFollow(owner, dist, ChaseAngle(angle + frand(-halfWidth, halfWidth), float(M_PI) / 10.0f));
             _movement = MoveMode::Follow;
             _moveTarget = owner->GetGUID();
             return;
         }
 
-        // the owner waits: each bot takes a spot of its own around him, and moves again now and then
+        // the owner waits: each bot takes a spot of its own in its part of the group, and moves again now and then
+        float angle, halfWidth, slotMin, slotMax;
+        FormationSlot(false, angle, halfWidth, slotMin, slotMax);
         float dist = _bot->GetExactDist2d(owner);
         bool fidget = now >= _fidgetAt;
         if (fidget)
             _fidgetAt = now + Milliseconds(urand(12000, 35000));
-        if (!_loitering || dist > maxDist + 3.0f || dist < minDist * 0.5f || (fidget && roll_chance(35)))
+        if (!_loitering || dist > slotMax + 4.0f || dist < slotMin * 0.5f || (fidget && roll_chance(35)))
         {
             Position spot;
-            if (PickLoiterSpot(owner, minDist, maxDist, spot))
+            if (PickLoiterSpot(owner, angle, halfWidth, slotMin, slotMax, spot))
             {
                 _loiterSpot = spot;
                 _loitering = true;
@@ -1389,7 +1548,46 @@ namespace Companions
         }
     }
 
-    bool CompanionAI::PickLoiterSpot(Player* owner, float minDist, float maxDist, Position& spot) const
+    void CompanionAI::FormationSlot(bool travelling, float& angle, float& halfWidth, float& minDist, float& maxDist) const
+    {
+        Config const& config = GetConfig();
+        // a bigger group stands wider
+        float size = std::clamp(std::sqrt(float(sCompanionMgr->CountBotsOf(_owner)) / 4.0f), 1.0f, 2.2f);
+        float near = std::max(1.0f, config.FollowMinDistance * _spread);
+        float far = std::max(near + 1.0f, config.FollowMaxDistance * _spread * size);
+        float const pi = float(M_PI);
+        switch (GetEffectiveRole())
+        {
+            case Role::Tank:
+                // in front, leading the way (on the move a little to the side so the leader still sees ahead)
+                angle = travelling ? _formationSide * 0.5f : 0.0f;
+                halfWidth = travelling ? 0.3f : 0.6f;
+                minDist = near + 1.0f;
+                maxDist = std::max(minDist + 1.0f, far * 0.8f);
+                break;
+            case Role::MeleeDps:
+                // beside the leader, between the tank and the back line
+                angle = _formationSide * (travelling ? 1.9f : 1.5f);
+                halfWidth = 0.5f;
+                minDist = near;
+                maxDist = std::max(minDist + 1.0f, far * 0.7f);
+                break;
+            case Role::Healer:
+                angle = pi;
+                halfWidth = 0.8f;
+                minDist = near + far * 0.3f;
+                maxDist = far * 1.15f;
+                break;
+            default:    // ranged damage: the back line, a little wider
+                angle = pi + _formationSide * 0.4f;
+                halfWidth = 0.9f;
+                minDist = near + far * 0.3f;
+                maxDist = far * 1.2f;
+                break;
+        }
+    }
+
+    bool CompanionAI::PickLoiterSpot(Player* owner, float angle, float halfWidth, float minDist, float maxDist, Position& spot) const
     {
         // the spots of the other companions, so nobody stands in somebody else
         std::vector<Position> taken;
@@ -1406,7 +1604,9 @@ namespace Companions
         for (uint32 attempt = 0; attempt < 8; ++attempt)
         {
             Position pos = owner->GetPosition();
-            owner->MovePosition(pos, reach + frand(minDist, maxDist), frand(0.0f, 2.0f * float(M_PI)));
+            // later attempts look wider when the slot is blocked
+            float spread = halfWidth * (1.0f + attempt * 0.25f);
+            owner->MovePosition(pos, reach + frand(minDist, maxDist), angle + frand(-spread, spread));
             if (!owner->IsWithinLOS(pos.GetPositionX(), pos.GetPositionY(), pos.GetPositionZ() + 1.5f))
                 continue;
             // a slope or a wall shortened the move: not a spot on the owner's toes
@@ -1536,6 +1736,9 @@ namespace Companions
         if (result == SPELL_CAST_OK)
         {
             _lastCastTime = GameTime::Now();
+            _recentCasts.emplace_back(_lastCastTime, ToLower(info->SpellName->Str[LOCALE_enUS]));
+            while (_recentCasts.size() > 12)
+                _recentCasts.pop_front();
             return true;
         }
 

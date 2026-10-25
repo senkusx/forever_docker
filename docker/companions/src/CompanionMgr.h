@@ -87,6 +87,9 @@ namespace Companions
         // only one bot interrupts a given cast
         bool CanInterrupt(ObjectGuid caster, ObjectGuid bot) const;
         void CommitInterrupt(ObjectGuid caster, ObjectGuid bot);
+        // an enemy a bot keeps crowd controlled: the others do not hit it
+        void ClaimCrowdControl(ObjectGuid enemy, ObjectGuid bot, uint32 durationMs);
+        bool IsCrowdControlClaimed(ObjectGuid enemy, ObjectGuid notBy) const;
 
         // Player::Update hook (map thread)
         static void OnBotPlayerUpdate(Player* player, uint32 diff);
@@ -134,6 +137,7 @@ namespace Companions
         struct IncomingHeal { uint32 Amount; uint32 Expire; };
         std::unordered_multimap<ObjectGuid, IncomingHeal> _incomingHeals;
         std::unordered_map<ObjectGuid, std::pair<ObjectGuid, uint32>> _interruptClaims;
+        std::unordered_map<ObjectGuid, std::pair<ObjectGuid, uint32>> _ccClaims;
         std::unordered_map<ObjectGuid, WorldSession*> _puppets;
         uint32 _msTime = 0;
         bool _shuttingDown = false;

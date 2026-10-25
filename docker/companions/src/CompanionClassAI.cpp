@@ -112,6 +112,9 @@ namespace Companions
             return AutoRepeat("shoot", target);
         }
 
+        // Heroic Strike, Cleave, Maul: they wait for the next swing; casting again would only block the rotation
+        bool NextSwingQueued() const { return Me()->GetCurrentSpell(CURRENT_MELEE_SPELL) != nullptr; }
+
         bool HasAnyAura(Unit const* unit, std::initializer_list<std::string_view> spells, bool mine = false) const
         {
             for (std::string_view spell : spells)
@@ -133,44 +136,87 @@ namespace Companions
         bool CanTank() const override { return true; }
         float RangedDistance() const override { return 0.0f; }
 
-        bool SelfBuffs(bool inCombat) override
+        static ShapeshiftForm FormOf(std::string_view stance)
         {
-            ShapeshiftForm form = Me()->GetShapeshiftForm();
-            if (MyRole() == Role::Tank)
+            if (stance == "defensive stance")
+                return FORM_DEFENSIVE_STANCE;
+            if (stance == "berserker stance")
+                return FORM_BERSERKER_STANCE;
+            return FORM_BATTLE_STANCE;
+        }
+
+        // another tank leads: a damage warrior does not charge in first
+        bool OtherTank() const
+        {
+            Player* tank = _ai.View().Tank;
+            return tank && tank != Me() && _ai.IsTank(tank);
+        }
+
+        bool Stance(std::string_view stance)
+        {
+            return Knows(stance) && Me()->GetShapeshiftForm() != FormOf(stance) && Cast(stance);
+        }
+
+        bool SelfBuffs(bool /*inCombat*/) override
+        {
+            // like players: out of a fight in Battle Stance, ready to charge; in it Defensive (tank) or Berserker
+            bool fighting = Me()->IsInCombat();
+            if (!fighting && Knows("charge") && (MyRole() == Role::Tank || !OtherTank()))
             {
-                if (form != FORM_DEFENSIVE_STANCE && Knows("defensive stance") && Cast("defensive stance"))
+                if (Stance("battle stance"))
                     return true;
             }
-            else if (Knows("berserker stance"))
+            else if (MyRole() == Role::Tank)
             {
-                if (form != FORM_BERSERKER_STANCE && Cast("berserker stance"))
+                if (Stance("defensive stance"))
                     return true;
             }
-            else if (form != FORM_BATTLE_STANCE && Cast("battle stance"))
+            else if (Knows("berserker stance") ? Stance("berserker stance") : Stance("battle stance"))
                 return true;
 
-            if (inCombat && _ai.Rage() >= 10 && Buff("battle shout", Me()))
+            if (fighting && _ai.Rage() >= 10 && Buff("battle shout", Me()))
                 return true;
             return false;
         }
 
+        bool Pull(Unit* target) override
+        {
+            float dist = Me()->GetDistance(target);
+            bool charging = dist > 8.0f && dist < 25.0f && !Me()->IsInCombat() && Knows("charge") && _ai.IsSpellReady("charge");
+            if (charging && (Stance("battle stance") || Cast("charge", target)))
+                return true;
+            // no charge (cooldown, too far, too close): a throw or a shot brings it
+            if (!charging && dist > 8.0f && dist < 30.0f && (Cast("throw", target) || Cast("shoot", target)))
+                return true;
+            return Combat(target);
+        }
+
         bool Taunt(Unit* target) override
         {
-            return Cast("taunt", target) || (_ai.InMelee(target) && Cast("mocking blow", target));
+            if (Me()->GetShapeshiftForm() == FORM_DEFENSIVE_STANCE && Cast("taunt", target))
+                return true;
+            // taunt on cooldown: the biggest hits on it
+            return _ai.InMelee(target) && _ai.Rage() >= 15 && (Cast("shield slam", target) || Cast("revenge", target));
         }
+
+        bool AoeTaunt() override { return Cast("challenging shout"); }
 
         bool Interrupt(Unit* caster) override
         {
             if (!_ai.InMelee(caster))
                 return false;
-            return (_ai.HasShield() && Cast("shield bash", caster)) || Cast("pummel", caster);
+            return (_ai.HasShield() && Cast("shield bash", caster)) || Cast("pummel", caster) || Cast("concussion blow", caster);
         }
 
         bool Emergency() override
         {
-            if (_ai.HealthPct() > 20.0f || !_ai.IsTargetedByEnemy())
+            if (!_ai.IsTargetedByEnemy())
                 return false;
-            return Cast("last stand") || (_ai.HasShield() && Cast("shield wall"));
+            if (_ai.HealthPct() < 25.0f && (Cast("last stand") || (_ai.HasShield() && Cast("shield wall"))))
+                return true;
+            if (MyRole() != Role::Tank && _ai.HealthPct() < 30.0f && _ai.EnemiesAttacking(Me()) >= 2 && Cast("intimidating shout"))
+                return true;
+            return false;
         }
 
         bool Combat(Unit* target) override
@@ -178,14 +224,14 @@ namespace Companions
             float dist = Me()->GetDistance(target);
             if (!_ai.InMelee(target))
             {
-                if (dist > 8.0f && dist < 25.0f && !Me()->IsInCombat() && Cast("charge", target))
+                if (dist > 8.0f && dist < 25.0f && !Me()->IsInCombat() && (MyRole() == Role::Tank || !OtherTank()) && Cast("charge", target))
                     return true;
-                if (dist > 8.0f && dist < 25.0f && Cast("intercept", target))
+                if (dist > 8.0f && dist < 25.0f && Me()->IsInCombat() && Cast("intercept", target))
                     return true;
                 return false;
             }
 
-            if (_ai.Rage() < 15 && _ai.HealthPct() > 60.0f && Cast("bloodrage"))
+            if (_ai.Rage() < 20 && _ai.HealthPct() > 50.0f && Cast("bloodrage"))
                 return true;
             if (_ai.HealthPct() < 80.0f && Cast("victory rush", target))
                 return true;
@@ -193,33 +239,36 @@ namespace Companions
             uint32 nearby = _ai.EnemiesNear(Me()->GetPosition(), 8.0f);
             if (MyRole() == Role::Tank)
             {
-                if (nearby >= 2 && !Has(target, "demoralizing shout") && Cast("demoralizing shout"))
+                // threat: Shield Slam and Revenge first, Sunder as the filler, the rest of the rage in Heroic Strike / Cleave
+                if (_ai.HasShield() && target->GetVictim() == Me() && _ai.Rage() >= 10 && !Has(Me(), "shield block")
+                    && (_ai.IsBossFight() || _ai.HealthPct() < 70.0f) && Cast("shield block"))
                     return true;
-                if (_ai.HasShield() && target->GetVictim() == Me() && _ai.Rage() >= 10 && !Has(Me(), "shield block") && Cast("shield block"))
+                if (Cast("shield slam", target) || Cast("revenge", target))
                     return true;
-                if (Cast("revenge", target) || Cast("shield slam", target))
+                if ((nearby >= 2 || _ai.IsBossFight()) && !Has(target, "demoralizing shout") && _ai.Rage() >= 10 && Cast("demoralizing shout"))
                     return true;
-                if ((_ai.AuraStacks(target, "sunder armor") < 5 || _ai.AuraRemaining(target, "sunder armor") < 5000) && Cast("sunder armor", target))
+                // area hits never on a crowd controlled enemy
+                bool controlledNear = _ai.AnyCrowdControlledNear(Me()->GetPosition(), 10.0f);
+                if (nearby >= 3 && !controlledNear && Cast("thunder clap"))
                     return true;
-                if (nearby >= 3 && Cast("thunder clap"))
-                    return true;
-                if (_ai.Rage() >= 45)
-                    return nearby >= 2 ? Cast("cleave", target) : Cast("heroic strike", target);
-                return false;
+                // the rage dump does not take the global cooldown: Sunder goes on in between
+                if (_ai.Rage() >= 40 && !NextSwingQueued())
+                    Cast(nearby >= 2 && !controlledNear ? "cleave" : "heroic strike", target);
+                return Cast("sunder armor", target);
             }
 
             if (target->GetHealthPct() < 20.0f && Cast("execute", target))
                 return true;
-            if (_ai.IsBossFight() && Cast("death wish"))
+            if (_ai.Bursting() && (Cast("death wish") || Cast("recklessness")))
                 return true;
             if (Cast("bloodthirst", target) || Cast("mortal strike", target) || Cast("overpower", target))
                 return true;
-            if (nearby >= 1 && Cast("whirlwind"))
+            if (nearby >= 1 && !_ai.AnyCrowdControlledNear(Me()->GetPosition(), 10.0f) && Cast("whirlwind"))
                 return true;
-            if (Bleeds(target) && Dot("rend", target, 40.0f))
+            if (Bleeds(target) && !_ai.IsBossFight() && Dot("rend", target, 40.0f))
                 return true;
-            if (_ai.Rage() >= 50)
-                return nearby >= 2 ? Cast("cleave", target) : Cast("heroic strike", target);
+            if (_ai.Rage() >= 50 && !NextSwingQueued())
+                return nearby >= 2 && !_ai.AnyCrowdControlledNear(Me()->GetPosition(), 10.0f) ? Cast("cleave", target) : Cast("heroic strike", target);
             return false;
         }
     };
@@ -308,6 +357,7 @@ namespace Companions
 
         bool Resurrect(Player* dead) override { return Cast("redemption", dead); }
         bool Interrupt(Unit* caster) override { return Cast("hammer of justice", caster); }
+        bool Taunt(Unit* target) override { return MyRole() == Role::Tank && Cast("hand of reckoning", target); }
 
         bool Emergency() override
         {
@@ -328,7 +378,8 @@ namespace Companions
                 return true;
             if (MyRole() == Role::Tank)
             {
-                if (_ai.EnemiesNear(Me()->GetPosition(), 8.0f) >= 2 && _ai.ManaPct() > 40.0f && Cast("consecration"))
+                if (_ai.EnemiesNear(Me()->GetPosition(), 8.0f) >= 2 && _ai.ManaPct() > 40.0f && !_ai.AnyCrowdControlledNear(Me()->GetPosition(), 10.0f)
+                    && Cast("consecration"))
                     return true;
                 if (Buff("holy shield", Me()))
                     return true;
@@ -391,12 +442,15 @@ namespace Companions
 
         bool Emergency() override
         {
-            if (_ai.HealthPct() < 30.0f && _ai.IsTargetedByEnemy() && _ai.View().Tank && _ai.View().Tank != Me())
-                return Cast("feign death");
+            // pulled aggro with a tank around: drop it like a hunter does
+            if (_ai.IsTargetedByEnemy() && _ai.View().Tank && _ai.View().Tank != Me() && Cast("feign death"))
+                return true;
             return false;
         }
 
         bool Interrupt(Unit* caster) override { return Cast("scatter shot", caster); }
+        bool CanCrowdControl(Unit const* target) const override { return IsCreatureType(target, CREATURE_TYPE_BEAST) && Knows("scare beast"); }
+        bool CrowdControl(Unit* target) override { return CanCrowdControl(target) && !Has(target, "scare beast") && Cast("scare beast", target); }
 
         bool Combat(Unit* target) override
         {
@@ -413,7 +467,7 @@ namespace Companions
                 return true;
             if (AutoRepeat("auto shot", target))
                 return true;
-            if (_ai.IsBossFight() && (Cast("rapid fire") || Cast("bestial wrath")))
+            if (_ai.Bursting() && (Cast("rapid fire") || Cast("bestial wrath")))
                 return true;
             if (target->GetVictim() == Me() && Cast("concussive shot", target))
                 return true;
@@ -439,11 +493,16 @@ namespace Companions
         float RangedDistance() const override { return 0.0f; }
 
         bool Interrupt(Unit* caster) override { return _ai.InMelee(caster) && (Cast("kick", caster) || Cast("gouge", caster)); }
+        bool CanCrowdControl(Unit const* target) const override { return Knows("gouge") && IsCreatureType(target, CREATURE_TYPE_HUMANOID); }
+        bool CrowdControl(Unit* target) override { return _ai.InMelee(target) && CanCrowdControl(target) && Cast("gouge", target); }
 
         bool Emergency() override
         {
             if (!_ai.IsTargetedByEnemy())
                 return false;
+            // the tank lost it to us: shed threat first
+            if (_ai.View().Tank && _ai.View().Tank != Me() && Cast("feint"))
+                return true;
             if (_ai.HealthPct() < 35.0f && Cast("evasion"))
                 return true;
             if (_ai.HealthPct() < 15.0f && Cast("vanish"))
@@ -457,7 +516,7 @@ namespace Companions
                 return false;
 
             int32 cp = _ai.ComboPoints(target);
-            if (_ai.IsBossFight() && Cast("adrenaline rush"))
+            if (_ai.Bursting() && Cast("adrenaline rush"))
                 return true;
             if (_ai.EnemiesNear(Me()->GetPosition(), 8.0f) >= 2 && Cast("blade flurry"))
                 return true;
@@ -552,12 +611,17 @@ namespace Companions
         }
 
         bool Resurrect(Player* dead) override { return Cast("resurrection", dead); }
+        bool CanCrowdControl(Unit const* target) const override { return IsCreatureType(target, CREATURE_TYPE_UNDEAD) && Knows("shackle undead"); }
+        bool CrowdControl(Unit* target) override { return CanCrowdControl(target) && Cast("shackle undead", target); }
 
         bool Emergency() override
         {
             if (!_ai.IsTargetedByEnemy())
                 return false;
             if (_ai.HealthPct() < 30.0f && Cast("desperate prayer"))
+                return true;
+            if (_ai.HealthPct() < 50.0f && _ai.EnemiesAttacking(Me()) >= 2 && !_ai.AnyCrowdControlledNear(Me()->GetPosition(), 15.0f)
+                && Cast("psychic scream"))
                 return true;
             if (_ai.HealthPct() < 60.0f && Shield(Me()))
                 return true;
@@ -761,11 +825,14 @@ namespace Companions
 
         bool Interrupt(Unit* caster) override { return Cast("counterspell", caster); }
 
+        bool CanCrowdControl(Unit const* target) const override
+        {
+            return Knows("polymorph") && (IsCreatureType(target, CREATURE_TYPE_HUMANOID) || IsCreatureType(target, CREATURE_TYPE_BEAST));
+        }
+
         bool CrowdControl(Unit* target) override
         {
-            if (!IsCreatureType(target, CREATURE_TYPE_HUMANOID) && !IsCreatureType(target, CREATURE_TYPE_BEAST))
-                return false;
-            return !target->IsPolymorphed() && Cast("polymorph", target);
+            return CanCrowdControl(target) && !target->IsPolymorphed() && Cast("polymorph", target);
         }
 
         bool Emergency() override
@@ -791,7 +858,7 @@ namespace Companions
             if (_ai.EnemiesNear(target->GetPosition(), 8.0f) >= 4 && _ai.ManaPct() > 40.0f && !_ai.AnyCrowdControlledNear(target->GetPosition(), 12.0f)
                 && !_ai.IsTargetedByEnemy() && (Cast("blizzard", target) || Cast("flamestrike", target)))
                 return true;
-            if (_ai.IsBossFight() && (Cast("arcane power") || Cast("combustion") || Cast("presence of mind")))
+            if (_ai.Bursting() && (Cast("arcane power") || Cast("combustion") || Cast("presence of mind")))
                 return true;
             if (_ai.ManaPct() > 30.0f && Cast("fire blast", target))
                 return true;
@@ -842,6 +909,12 @@ namespace Companions
             _ai.PetAttack(target);
             return false;
         }
+
+        bool CanCrowdControl(Unit const* target) const override
+        {
+            return Knows("banish") && (IsCreatureType(target, CREATURE_TYPE_DEMON) || IsCreatureType(target, CREATURE_TYPE_ELEMENTAL));
+        }
+        bool CrowdControl(Unit* target) override { return CanCrowdControl(target) && !Has(target, "banish") && Cast("banish", target); }
 
         bool Emergency() override
         {
@@ -989,6 +1062,18 @@ namespace Companions
         }
 
         bool Taunt(Unit* target) override { return (InForm(FORM_BEAR_FORM) || InForm(FORM_DIRE_BEAR_FORM)) && Cast("growl", target); }
+        bool AoeTaunt() override { return (InForm(FORM_BEAR_FORM) || InForm(FORM_DIRE_BEAR_FORM)) && Cast("challenging roar"); }
+        bool CanCrowdControl(Unit const* target) const override
+        {
+            return MyRole() != Role::Tank && Knows("hibernate") && (IsCreatureType(target, CREATURE_TYPE_BEAST) || IsCreatureType(target, CREATURE_TYPE_DRAGONKIN));
+        }
+        bool CrowdControl(Unit* target) override
+        {
+            if (!CanCrowdControl(target) || Has(target, "hibernate"))
+                return false;
+            CasterForm();
+            return Cast("hibernate", target);
+        }
         bool Interrupt(Unit* caster) override { return _ai.InMelee(caster) && Cast("bash", caster); }
 
         bool Emergency() override
@@ -1015,11 +1100,11 @@ namespace Companions
                     return true;
                 if (!Has(target, "faerie fire (feral)") && Cast("faerie fire (feral)", target))
                     return true;
-                if (nearby >= 2 && Cast("swipe"))
+                if (nearby >= 2 && !_ai.AnyCrowdControlledNear(Me()->GetPosition(), 10.0f) && Cast("swipe"))
                     return true;
                 if ((_ai.AuraStacks(target, "lacerate", true) < 5 || _ai.AuraRemaining(target, "lacerate", true) < 4000) && Cast("lacerate", target))
                     return true;
-                return Cast("maul", target);
+                return !NextSwingQueued() && Cast("maul", target);
             }
 
             if (InForm(FORM_CAT_FORM))

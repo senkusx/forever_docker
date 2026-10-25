@@ -15,6 +15,7 @@
 
 class Group;
 class Player;
+class Unit;
 
 namespace Companions::CompanionLLM
 {
@@ -34,6 +35,11 @@ namespace Companions::CompanionLLM
     // party chat as the bots hear it (players and bots), for the brain's context
     void RecordChat(Group const* group, std::string const& speaker, std::string const& text);
     std::string BuildContext(Player* bot, std::vector<Player*> const& voiced);
+    // in fights: the brain reviews the situation now and then and assigns kill order, crowd control, interrupts...
+    void ConsiderTactics(Player* bot);
+    // "e3": an enemy as the brain numbers them for this owner's group
+    bool IsEnemyRef(std::string const& word);
+    Unit* ResolveEnemy(Player* commander, std::string const& word);
 }
 
 #endif

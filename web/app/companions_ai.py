@@ -350,7 +350,7 @@ def add_routes(router, *, query, execute, admin, guarded, session_of, PanelError
                 return {'ok': True, 'late': True}
             allowed = {int(event['bot_guid'])} | {int(line.split('|')[0]) for line in (event['bots'] or '').splitlines()
                                                   if line.split('|')[0].isdigit()}
-            for action in (data.get('actions') or [])[:3]:
+            for action in (data.get('actions') or [])[:12]:   # a tactical review assigns every companion
                 guid = int(action.get('bot_guid') or 0)
                 if guid not in allowed:
                     continue

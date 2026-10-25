@@ -40,10 +40,13 @@ ORDER_WORDS = {
     "follow", "stay", "hold", "wait", "come", "here", "regroup", "attack", "kill", "focus", "pull", "stop", "halt",
     "passive", "assist", "defensive", "aggressive", "role", "rest", "drink", "eat", "cast", "status", "gear",
     "dismiss", "heal", "dispel", "decurse", "cleanse", "protect", "save", "spread", "stack", "normal", "retreat",
-    "run", "flee", "fallback",
+    "run", "flee", "fallback", "cc", "sheep", "control", "interrupt", "taunt", "mark", "burst", "cooldowns",
 }
 # what a player who is not the leader may ask of the companions
 HELP_WORDS = {"heal", "dispel", "decurse", "cleanse", "protect", "save", "assist", "status"}
+# what a tactical review may assign
+TACTIC_WORDS = {"kill", "attack", "focus", "cc", "interrupt", "taunt", "mark", "burst", "spread", "stack", "retreat", "heal",
+                "protect", "dispel", "assist", "stop"}
 
 SYSTEM_PROMPT = """You voice companion characters in World of Warcraft Classic on a private server. They are bots that \
 adventure with human players; each has its own name, class, role and personality. They should feel like friendly, \
@@ -63,6 +66,9 @@ add the matching orders to the companion that does it. Orders (exact words, one 
 - attack (the leader's target) | pull (tank: pull the leader's target) | focus skull|cross|moon|square|triangle|diamond|circle|star (the marked target)
 - assist <name> (attack what that player attacks) | heal <name> | dispel <name> | protect <name> (tank: taunt off them, others: help them)
 - spread | stack | normal (how close they stand)
+- in fights, enemies are numbered E1, E2...: kill E2 | cc E3 (crowd control: polymorph, shackle undead, banish, hibernate,
+  scare beast, gouge - only a companion that knows it, on a creature type it works on) | interrupt E1 (that caster's casts)
+  | taunt E2 (tank) | mark skull E2 (raid markers: skull = kill first, cross = second, moon = crowd controlled) | burst (cooldowns now)
 - passive | assist | aggressive (when they fight on their own)
 - role tank | role heal | role dps
 - rest | gear | status | dismiss
@@ -101,13 +107,18 @@ OUTPUT_SCHEMA = {
 
 def roster_of(event):
     """[(guid, name, class, role)] of the companions this line is for."""
+    return [b[:4] for b in roster_full(event)]
+
+
+def roster_full(event):
+    """[(guid, name, class, role, abilities)]: abilities are the crowd control, interrupts and taunts it knows."""
     bots = []
     for line in (event.get("bots") or "").splitlines():
         parts = line.split("|")
         if len(parts) >= 4 and parts[0].isdigit():
-            bots.append((int(parts[0]), parts[1], parts[2], parts[3]))
+            bots.append((int(parts[0]), parts[1], parts[2], parts[3], parts[4] if len(parts) > 4 else ""))
     if not bots:
-        bots.append((int(event["bot_guid"]), "companion", "", ""))
+        bots.append((int(event["bot_guid"]), "companion", "", "", ""))
     return bots
 
 
@@ -124,7 +135,19 @@ def build_request(event, memory):
     bots = roster_of(event)
     names = ", ".join(f"{name} ({klass}, {role})" for _, name, klass, role in bots)
     kind, channel, speaker, message = event["kind"], event["channel"], event["speaker"], event["message"]
-    if kind == "test":
+    if kind == "tactics":
+        team = "\n".join(f"- {name} ({klass}, {role}){': ' + can if can else ''}" for _, name, klass, role, can in roster_full(event))
+        task = ("Tactical review of the fight (" + message + "). You lead the companions like a raid leader. Look at the enemies "
+                "(E1, E2...) and give orders only where they change something; companions without orders keep doing their job "
+                "(the tank tanks, healers heal, damage dealers follow the skull, then the tank's target).\n"
+                "- several enemies: one kill target for the damage dealers (kill E#, or mark skull E# so the player sees it too)\n"
+                "- a dangerous extra enemy that can be controlled: cc E# by a companion that can (and mark moon E#)\n"
+                "- a healer or caster enemy casting: interrupt E# by a companion that has an interrupt\n"
+                "- an enemy hitting a healer or caster: taunt E# for the tank\n"
+                "- a boss or a hard fight: burst for the damage dealers\n"
+                "At most one short line in total, in the words of the companion who calls it (naming the enemies, not their numbers), "
+                "everyone else with an empty say. Never change roles in a fight. Companions and what they can do:\n" + team)
+    elif kind == "test":
         task = f"Connection test from the web panel. Reply as {bots[0][1]} with one short friendly line."
     elif kind == "callout":
         task = (f"A callout from {bots[0][1]} about what {bots[0][1]} notices ({speaker}): {message}.\nWrite the short line {bots[0][1]} types "
@@ -151,13 +174,30 @@ def build_request(event, memory):
     return "\n".join(parts)
 
 
+TARGET = r"(e\d{1,2}|skull|cross|moon|square|triangle|diamond|circle|star)"
+CC_SPELLS = r"(?:polymorph|sheep|shackle undead|shackle|banish|hibernate|scare beast|gouge|sap|cc|crowd control)"
+KICKS = r"(?:kick|pummel|shield bash|counterspell|earth shock|hammer of justice|bash|interrupt)"
+NORMALIZE = [
+    # models write tactics loosely: "cast polymorph on E2", "shackle undead E3", "kill skull E1", "taunt E1, E2"
+    (re.compile(rf"^(?:cast |use )?{CC_SPELLS}(?: on)? {TARGET}\b"), r"cc \1"),
+    (re.compile(rf"^(?:cast |use )?{KICKS}(?: on)? {TARGET}\b"), r"interrupt \1"),
+    (re.compile(rf"^(kill|attack|focus) {TARGET} {TARGET}\b"), r"kill \3"),
+    (re.compile(rf"^(kill|attack|focus|taunt|interrupt|cc) {TARGET}\b.*"), r"\1 \2"),
+    (re.compile(rf"^mark (skull|cross|moon|square|triangle|diamond|circle|star)(?: on)? (e\d{{1,2}})\b.*"), r"mark \1 \2"),
+]
+
+
 def clean_orders(orders, allowed):
     clean = []
     for order in orders or []:
         if not isinstance(order, str):
             continue
-        order = " ".join(order.strip().lower().split())[:80]
-        if order and order.split()[0] in allowed:
+        order = " ".join(order.strip().lower().replace(",", " ").split())[:80]
+        for pattern, replacement in NORMALIZE:
+            if pattern.match(order):
+                order = pattern.sub(replacement, order, count=1)
+                break
+        if order and order.split()[0] in allowed and order not in clean:
             clean.append(order)
     return clean[:4]
 
@@ -171,15 +211,19 @@ def actions_from(event, data, order_mode="all"):
     by_name = {name.lower(): guid for guid, name, _, _ in bots}
     leader = leader_of(event).lower()
     speaker = (event.get("speaker") or "").lower()
-    # callouts and banter only talk; a player who is not the leader only gets help
+    # callouts and banter only talk; a player who is not the leader only gets help; tactics only assign tactics
     if event["kind"] in ("callout", "event", "test") or order_mode == "none":
         allowed = set()
+    elif event["kind"] == "tactics":
+        allowed = TACTIC_WORDS
     elif order_mode == "help" or (leader and speaker != leader):
         allowed = HELP_WORDS
     else:
         allowed = ORDER_WORDS
     addressed = by_name.get(context_line(event, "spoken to").lower())
-    single = event["kind"] != "group"
+    single = event["kind"] not in ("group", "tactics")
+    # "E2" in what they say becomes the enemy's name, like players talk
+    enemies = dict(re.findall(r"^\s*E(\d+) (.+?) \(level", event.get("context") or "", re.M))
     whisper = event["channel"] == "whisper"
 
     replies = data.get("replies")
@@ -198,6 +242,7 @@ def actions_from(event, data, order_mode="all"):
         if guid is None or guid in used:
             continue
         say = " ".join(str(reply.get("say") or "").split())[:250]
+        say = re.sub(r"\b[Ee](\d{1,2})\b", lambda m: enemies.get(m.group(1), m.group(0)), say)
         orders = clean_orders(reply.get("orders"), allowed)
         if not say and not orders:
             continue
@@ -214,8 +259,17 @@ def actions_from(event, data, order_mode="all"):
             "commands": "\n".join(orders),
             "delay_ms": max(0, min(delay, 6000)),
         })
-        if single or len(actions) >= 2:
+        if single or len(actions) >= (len(bots) if event["kind"] == "tactics" else 2):
             break
+    if event["kind"] == "tactics":
+        # orders now, one voice, and only when the fight starts (later reviews adjust quietly)
+        spoken = "goes on" in (event.get("message") or "")
+        for action in actions:
+            action["delay_ms"] = 0
+            if action["say"] and spoken:
+                action["say"] = ""
+            spoken = spoken or bool(action["say"])
+        return [a for a in actions if a["say"] or a["commands"]]
     # never two companions in the same instant
     for i, action in enumerate(sorted(actions, key=lambda a: a["delay_ms"])):
         action["delay_ms"] = max(action["delay_ms"], 250 + i * 1400 + random.randint(0, 500))

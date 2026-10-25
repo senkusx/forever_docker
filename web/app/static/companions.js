@@ -9,6 +9,16 @@
     return text;
   };
 
+  // the party view refreshes every 5 s: never while someone types, picks in a list or just changed something
+  let lastInput = 0;
+  document.addEventListener('input', () => { lastInput = Date.now(); }, true);
+  document.addEventListener('change', () => { lastInput = Date.now(); }, true);
+  function editing() {
+    const el = document.activeElement;
+    if (el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) && el.closest('.cp-content')) return true;
+    return Date.now() - lastInput < 15000;
+  }
+
   const state = { me: null, owner: null, view: null, templates: { bots: [], parties: [] }, tab: 'party', form: null, looks: {}, timer: null,
     page: 'owner', server: null, providerForm: null, newToken: null };
   const $ = (id) => document.getElementById(id);
@@ -196,7 +206,7 @@
     $('cp-owner-info').textContent = `${o.level} ${raceName(o.race)} ${className(o.class)} · `
       + (live && live.online ? T('in_game', { zone: live.zone || '?' }) : T('not_in_game'))
       + ` · ${T('bots_count', { n: state.view.bots.length })}`;
-    if (state.tab === 'party') renderParty();
+    if (state.tab === 'party') { if (!quiet || !editing()) renderParty(); }
     else if (state.tab === 'create' && !state.form) renderCreate();
     else if (state.tab === 'templates') renderTemplates();
   }
@@ -226,12 +236,12 @@
 
   async function editBot(bot, changes, message) {
     const done = await run(() => api('PATCH', `/api/companions/owner/${state.owner}/bots/${bot.guid}`, changes), message || T('saved'));
-    if (done) refresh(true);
+    if (done) refresh();
   }
 
   async function groupSetting(changes) {
     const done = await run(() => api('POST', `/api/companions/owner/${state.owner}/group`, changes), (r) => T('group_saved', { n: r.bots }));
-    if (done) refresh(true);
+    if (done) refresh();
   }
 
   function bar(pct, kind) {
@@ -571,7 +581,7 @@
     ['set_group_movement', ['FollowMinDistance', 'FollowMaxDistance', 'TeleportDistance', 'MountLevel']],
     ['set_group_behaviour', ['Callouts', 'AnnounceInParty', 'AutoRevive', 'AutoReviveDelay', 'FreeReagents', 'FreeFood',
       'RestoreOnLogin', 'AllowAlts', 'SyncLevel', 'AutoGear', 'GearMaxQuality']],
-    ['set_group_ai', ['LLM.Enable', 'LLM.DefaultOn', 'LLM.PartyChat', 'LLM.Callouts', 'LLM.Banter', 'LLM.MaxAge']],
+    ['set_group_ai', ['LLM.Enable', 'LLM.DefaultOn', 'LLM.PartyChat', 'LLM.Callouts', 'LLM.Tactics', 'LLM.TacticsInterval', 'LLM.Banter', 'LLM.MaxAge']],
   ];
   const settingLabel = (key) => T('set_' + key.replace('.', '_'));
   const ENDPOINT_HINTS = { anthropic: 'https://api.anthropic.com', ollama: 'http://ollama:11434', openai: 'http://192.168.1.20:8000/v1' };
