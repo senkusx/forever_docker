@@ -281,11 +281,18 @@ def actions_from(event, data, order_mode="all"):
 CLAIM_COLUMNS = "id, bot_guid, owner_guid, kind, channel, speaker, message, context, bots, provider_id, TIMESTAMPDIFF(SECOND, created, NOW()) AS age"
 
 
-def claim_condition(provider_ids):
-    """Lines this brain may take: for its providers, for any provider, or waiting too long for theirs."""
+KINDS = ("chat", "group", "callout", "event", "tactics", "test")
+
+
+def claim_condition(provider_ids, kinds=None):
+    """Lines this brain may take: for its providers, for any provider, or waiting too long for theirs;
+    only the kinds its free providers answer (a small model only for callouts...)."""
     mine = f"provider_id IN ({','.join(str(int(i)) for i in provider_ids)})" if provider_ids else "0"
-    return (f"(provider_id = 0 OR {mine} OR (kind <> 'test' AND (created < NOW() - INTERVAL 8 SECOND "
-            f"OR provider_id NOT IN (SELECT id FROM companion_llm_providers WHERE enabled = 1))))")
+    condition = (f"(provider_id = 0 OR {mine} OR (kind <> 'test' AND (created < NOW() - INTERVAL 8 SECOND "
+                 f"OR provider_id NOT IN (SELECT id FROM companion_llm_providers WHERE enabled = 1))))")
+    if kinds is not None and set(kinds) != set(KINDS):
+        condition += " AND kind IN (" + ",".join(f"'{k}'" for k in kinds if k in KINDS) + ")"
+    return condition
 
 
 class DbStore:
@@ -330,12 +337,12 @@ class DbStore:
             cur.execute("SELECT * FROM companion_llm_providers WHERE enabled = 1 AND worker_id = 0")
             return cur.fetchall()
 
-    def claim(self, count, provider_ids):
+    def claim(self, count, provider_ids, kinds=None):
         token = f"{self.prefix}:{secrets.token_hex(6)}"
         with self.cursor() as cur:
             cur.execute(
                 f"UPDATE companion_llm_events SET status = 1, claimed_by = %s, claimed_at = NOW() WHERE status = 0 AND claimed_by <> %s "
-                f"AND created > NOW() - INTERVAL {MAX_AGE} SECOND AND {claim_condition(provider_ids)} ORDER BY id LIMIT %s",
+                f"AND created > NOW() - INTERVAL {MAX_AGE} SECOND AND {claim_condition(provider_ids, kinds)} ORDER BY id LIMIT %s",
                 (token, f"x:{self.prefix}", count),
             )
             if not cur.rowcount:
@@ -397,8 +404,8 @@ class HttpStore:
         info = os.environ.get("BRAIN_NAME") or os.uname().nodename
         return self.post("/api/brain/heartbeat", {"version": VERSION, "info": info})["providers"]
 
-    def claim(self, count, provider_ids):
-        return self.post("/api/brain/claim", {"max": count})["events"]
+    def claim(self, count, provider_ids, kinds=None):
+        return self.post("/api/brain/claim", {"max": count, "kinds": list(kinds) if kinds is not None else None})["events"]
 
     def release(self, event, failed=False):
         self.post("/api/brain/release", {"event_id": event["id"], "failed": failed})
@@ -422,8 +429,14 @@ class Slot:
         self.row = row
         self.backend = backends.make(row)
         self.busy = 0
-        mode = backends.options_of(row).get("orders")
+        options = backends.options_of(row)
+        mode = options.get("orders")
         self.order_mode = mode if mode in ("all", "help", "none") else ("all" if row["kind"] == "anthropic" else "help")
+        # "kinds": which lines it answers and with which weight, e.g. {"callout": 4, "event": 4} for a small model
+        kinds = options.get("kinds")
+        if isinstance(kinds, list):
+            kinds = {k: 1 for k in kinds}
+        self.kinds = {k: float(v) for k, v in kinds.items() if isinstance(v, (int, float)) and v > 0} if isinstance(kinds, dict) else None
 
     @property
     def id(self):
@@ -432,6 +445,13 @@ class Slot:
     @property
     def free(self):
         return max(0, int(self.row.get("max_concurrent") or 1) - self.busy)
+
+    def serves(self, kind):
+        return self.kinds is None or kind in self.kinds or kind == "test"
+
+    def weight_for(self, kind):
+        base = max(1, int(self.row.get("weight") or 1))
+        return base if self.kinds is None else self.kinds.get(kind, base)
 
     def same_setup(self, row):
         return all(str(self.row.get(f)) == str(row.get(f)) for f in self.FIELDS)
@@ -471,13 +491,14 @@ class Brain:
         self.slots = current
 
     def pick(self, event, exclude=()):
+        kind = event.get("kind") or "chat"
         preferred = self.slots.get(int(event.get("provider_id") or 0))
-        if preferred and preferred.free and preferred.id not in exclude:
+        if preferred and preferred.free and preferred.id not in exclude and preferred.serves(kind):
             return preferred
-        choices = [s for s in self.slots.values() if s.free and s.id not in exclude]
+        choices = [s for s in self.slots.values() if s.free and s.id not in exclude and s.serves(kind)]
         if not choices:
             return None
-        return random.choices(choices, weights=[max(1, int(s.row.get("weight") or 1)) * s.free for s in choices])[0]
+        return random.choices(choices, weights=[s.weight_for(kind) * s.free for s in choices])[0]
 
     def rate_limited(self):
         now = time.monotonic()
@@ -539,7 +560,15 @@ class Brain:
         free = sum(s.free for s in self.slots.values())
         if not free or self.rate_limited():
             return False
-        events = self.store.claim(min(free, 10), list(self.slots))
+        # only the kinds a free provider answers
+        kinds = None
+        if any(s.kinds is not None for s in self.slots.values() if s.free):
+            servable = set()
+            for s in self.slots.values():
+                if s.free:
+                    servable |= set(KINDS) if s.kinds is None else set(s.kinds) | {"test"}
+            kinds = sorted(servable)
+        events = self.store.claim(min(free, 10), list(self.slots), kinds)
         for event in events:
             if int(event.get("age") or 0) > MAX_AGE:
                 self.store.answer(event, [], 0, True, 0, "")

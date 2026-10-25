@@ -119,7 +119,11 @@ Providers (web panel, Server & AI): **Claude** (Anthropic API), **Ollama**, or a
 are shared between the providers with free slots, and a provider that fails hands its line to another. A companion
 can be tied to one provider (its card, the group settings or a template), else any provider answers. Small local
 models only give help orders (heal, dispel, protect, assist) because they tend to add random orders to small talk:
-`{"orders": "all"}` in a provider's options allows every order, `{"orders": "none"}` makes it only talk.
+`{"orders": "all"}` in a provider's options allows every order, `{"orders": "none"}` makes it only talk. `{"kinds":
+{"callout": 8, "event": 8}}` limits a provider to some lines with their own weights: a small model on a second card
+(for example `qwen2.5:3b` on a 3 GB GTX 1060, about 1 s per callout, with `"num_gpu": 99` so all of it stays on the card)
+takes the callouts, while the bigger one keeps the conversations and the tactics. Line kinds: `chat`, `group`,
+`callout`, `event`, `tactics`.
 
 1. In `.env`: `COMPANIONS_LLM=1` (and `ANTHROPIC_API_KEY=sk-ant-...` to start with Claude as the first provider),
    then `docker compose up -d worldserver` and `docker compose --profile brain up -d brain`.

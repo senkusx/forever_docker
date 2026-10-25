@@ -33,11 +33,20 @@ def token_hash(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
-def claim_condition(provider_ids):
-    """Same rule as brain.py: lines for these providers, for any provider, or waiting too long for theirs."""
+KINDS = ('chat', 'group', 'callout', 'event', 'tactics', 'test')
+
+
+def claim_condition(provider_ids, kinds=None):
+    """Same rule as brain.py: lines for these providers, for any provider, or waiting too long for theirs;
+    only the kinds the worker's free providers answer."""
     mine = f"provider_id IN ({','.join(str(int(i)) for i in provider_ids)})" if provider_ids else '0'
-    return (f"(provider_id = 0 OR {mine} OR (kind <> 'test' AND (created < NOW() - INTERVAL 8 SECOND "
-            f"OR provider_id NOT IN (SELECT id FROM characters.companion_llm_providers WHERE enabled = 1))))")
+    condition = (f"(provider_id = 0 OR {mine} OR (kind <> 'test' AND (created < NOW() - INTERVAL 8 SECOND "
+                 f"OR provider_id NOT IN (SELECT id FROM characters.companion_llm_providers WHERE enabled = 1))))")
+    if kinds is not None:
+        wanted = [k for k in kinds if k in KINDS]
+        if set(wanted) != set(KINDS):
+            condition += ' AND kind IN (' + ','.join(f"'{k}'" for k in wanted or ['none']) + ')'
+    return condition
 
 
 def add_routes(router, *, query, execute, admin, guarded, session_of, PanelError, clean_text):
@@ -307,6 +316,7 @@ def add_routes(router, *, query, execute, admin, guarded, session_of, PanelError
     @worker_route
     async def brain_claim(request: Request, worker: dict, data: dict):
         count = min(max(int(data.get('max') or 1), 1), 20)
+        kinds = data.get('kinds') if isinstance(data.get('kinds'), list) else None
 
         def claim():
             ids = [p['id'] for p in worker_providers(worker['id'])]
@@ -314,7 +324,7 @@ def add_routes(router, *, query, execute, admin, guarded, session_of, PanelError
                 return []
             token = f"w{worker['id']}:{secrets.token_hex(6)}"
             execute(f'UPDATE characters.companion_llm_events SET status = 1, claimed_by = %s, claimed_at = NOW() WHERE status = 0 '
-                    f'AND claimed_by <> %s AND created > NOW() - INTERVAL {MAX_AGE} SECOND AND {claim_condition(ids)} ORDER BY id LIMIT %s',
+                    f'AND claimed_by <> %s AND created > NOW() - INTERVAL {MAX_AGE} SECOND AND {claim_condition(ids, kinds)} ORDER BY id LIMIT %s',
                     (token, f"x:w{worker['id']}", count))
             execute('UPDATE characters.companion_llm_workers SET last_seen = NOW() WHERE id = %s', (worker['id'],))
             return query('SELECT id, bot_guid, owner_guid, kind, channel, speaker, message, context, bots, provider_id, '

@@ -92,7 +92,7 @@ class Anthropic:
 
 
 class Ollama:
-    TOP_LEVEL = ("keep_alive", "think", "orders")
+    TOP_LEVEL = ("keep_alive", "think", "orders", "kinds")
 
     def __init__(self, row):
         self.model = row["model"]
