@@ -127,8 +127,9 @@ def build_request(event, memory):
     if kind == "test":
         task = f"Connection test from the web panel. Reply as {bots[0][1]} with one short friendly line."
     elif kind == "callout":
-        task = (f"{bots[0][1]} notices something ({speaker}): {message}. Write the short callout {bots[0][1]} makes in party chat, "
-                "the way a real player would type it mid-fight (a few words). Add orders only if they clearly help.")
+        task = (f"A callout from {bots[0][1]} about what {bots[0][1]} notices ({speaker}): {message}.\nWrite the short line {bots[0][1]} types "
+                "in party chat to warn the others, the way a real player types it mid-fight: a few words about that, in the first person "
+                "(for example \"OOM, need a sec!\", \"Adds incoming!\", \"Rare spotted: Foulmaw!\", \"Tank, it's on me!\"). No orders.")
     elif kind == "event":
         task = f"Something happened to {bots[0][1]} ({speaker}): {message}. A short natural remark from {bots[0][1]}, or nothing."
     elif channel == "whisper":

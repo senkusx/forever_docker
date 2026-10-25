@@ -130,6 +130,17 @@ worker's machine). The worker only needs to reach the website (`/api/brain/*`, t
 keeps); it fetches its providers, takes the lines its providers can answer and posts the answers. Deleting a worker
 turns its providers off.
 
+**A GPU server the website cannot be reached from** (the website only on the LAN): keep Ollama private on the GPU
+server (`OLLAMA_HOST=127.0.0.1:11434`) and let the game server open an SSH tunnel to it, for example a small
+`autossh -N -L 0.0.0.0:11434:127.0.0.1:11434 tunneluser@gpu-server` container on the compose network with the alias
+`gpu-ollama.internal`, and a tunnel user restricted to that port
+(`restrict,port-forwarding,permitopen="127.0.0.1:11434"` in its authorized_keys). The provider address is then
+`http://gpu-ollama.internal:11434`: Ollama listening on localhost refuses other host names (it accepts `localhost`,
+`*.internal`, `*.local` and IP addresses). Sizes that fit: an 8 GB card (GTX 1080, RTX 2070...) runs `qwen2.5:7b`
+(about 5.6 GB with an 8k context, 1-3 s per answer on a GTX 1080, good at French, Spanish and Portuguese too), with
+`{"orders": "all"}`; a 4 GB card `qwen2.5:3b`. A GTX 10xx (Pascal) needs the NVIDIA 580 driver branch (the last one
+for these cards).
+
 `COMPANIONS_LLM_MAX_PER_MINUTE` (default 60) caps the requests of each brain. `.bot personality Jaina grumpy dwarf
 who loves ale` (or the panel) gives a bot a character. Banter (comments on level ups) is off by default.
 
