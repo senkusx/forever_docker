@@ -128,6 +128,10 @@ configure_worldserver() {
     setkey "$f" Classic.Shop.Enabled 1
     setkey "$f" AccountInstancesPerHour 5
     setkey "$f" PlayerSave.Stats.MinLevel 1
+    # Companions (player bots): the brain switch from .env; every other Companions.* key goes in overrides/worldserver.conf
+    if [ "${COMPANIONS_LLM:-0}" = 1 ]; then
+        setkey "$f" Companions.LLM.Enable 1
+    fi
     apply_overrides "$f" worldserver
     setkey "$f" WorldServerPort "$REALM_PORT"
 }

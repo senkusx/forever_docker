@@ -1,0 +1,529 @@
+"""Companions brain: an AI model talks for the bots, answers callouts and turns plain language into their orders.
+
+The worldserver writes what the bots hear into characters.companion_llm_events (a whisper, a party line, a callout
+the bot wants to make), with a snapshot of the situation. The brain answers each one in companion_llm_actions:
+which bots speak, what they say, and orders from the list players use ("heal Bob", "focus skull", "retreat").
+Combat itself stays in the server-side AI, so a slow answer never costs a fight.
+
+The providers (Claude, Ollama, any OpenAI-compatible server) are set in the web panel (companion_llm_providers).
+Two ways to run it:
+  local   next to the database (the "brain" compose service): answers with the providers of "this server"
+  remote  on any machine (a PC with a GPU running Ollama...): BRAIN_URL=https://your.site BRAIN_TOKEN=<token from
+          the web panel>; it fetches its providers and the lines to answer from the website and posts the answers
+Several brains share the work: each claims only as many lines as its providers have free slots.
+"""
+
+import json
+import logging
+import os
+import random
+import re
+import secrets
+import time
+from collections import defaultdict, deque
+from concurrent.futures import ThreadPoolExecutor
+
+import httpx
+
+import backends
+
+log = logging.getLogger("companions-brain")
+
+VERSION = "2"
+POLL_SECONDS = float(os.environ.get("COMPANIONS_LLM_POLL", "0.5"))
+MAX_PER_MINUTE = int(os.environ.get("COMPANIONS_LLM_MAX_PER_MINUTE", "60"))
+PROVIDER_REFRESH = 15
+MAX_AGE = 60            # seconds: an older line is not worth answering any more
+MEMORY_TURNS = 10
+
+ORDER_WORDS = {
+    "follow", "stay", "hold", "wait", "come", "here", "regroup", "attack", "kill", "focus", "pull", "stop", "halt",
+    "passive", "assist", "defensive", "aggressive", "role", "rest", "drink", "eat", "cast", "status", "gear",
+    "dismiss", "heal", "dispel", "decurse", "cleanse", "protect", "save", "spread", "stack", "normal", "retreat",
+    "run", "flee", "fallback",
+}
+# what a player who is not the leader may ask of the companions
+HELP_WORDS = {"heal", "dispel", "decurse", "cleanse", "protect", "save", "assist", "status"}
+
+SYSTEM_PROMPT = """You voice companion characters in World of Warcraft Classic on a private server. They are bots that \
+adventure with human players; each has its own name, class, role and personality. They should feel like friendly, \
+competent real players in a party or raid.
+
+How they talk: party chat, short lines (one sentence, under 150 characters), casual, in character, no emotes in \
+asterisks, no markdown, no quoting the situation back. Answer in the language the human wrote in (callouts: the \
+language of the recent chat, else English). Never invent game facts you were not given (quest steps, item stats, \
+coordinates); say you are not sure. Real players do not all answer every line: usually one companion answers, the \
+one who is concerned (the healer for heals, the tank for pulls, the one who was named); nobody answers small talk \
+between humans that is not for them. An empty "replies" list is often right.
+
+Their fighting, healing, buffing and following are automatic; never describe it. When a human asks for something, \
+add the matching orders to the companion that does it. Orders (exact words, one per entry; <name> is a party member, \
+"me" means the leader):
+- follow | stay | come | stop | retreat (run back to the leader and stop fighting)
+- attack (the leader's target) | pull (tank: pull the leader's target) | focus skull|cross|moon|square|triangle|diamond|circle|star (the marked target)
+- assist <name> (attack what that player attacks) | heal <name> | dispel <name> | protect <name> (tank: taunt off them, others: help them)
+- spread | stack | normal (how close they stand)
+- passive | assist | aggressive (when they fight on their own)
+- role tank | role heal | role dps
+- rest | gear | status | dismiss
+- cast <spell name> | cast <spell name> on me | cast <spell name> on target | cast <spell name> on <name>
+Only the leader decides following, roles, stance and dismiss; other players may ask for help (heal, dispel, protect, \
+assist). Relay what the companions know when asked (health, mana, who is low, enemies, markers, rares nearby, what \
+someone said earlier) from the situation, briefly.
+
+Reply with JSON: {"replies": [{"bot": "<companion name>", "say": "<line or empty>", "orders": [...], "delay_ms": <0-4000>}]}. \
+Use delay_ms so several companions do not answer in the same instant (the first one 300-1200, the next ones later)."""
+
+OUTPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "replies": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "bot": {"type": "string", "description": "Name of the companion who acts."},
+                    "say": {"type": "string", "description": "What it says (empty for nothing)."},
+                    "orders": {"type": "array", "items": {"type": "string"}, "description": "Orders it carries out, in order."},
+                    "delay_ms": {"type": "integer", "description": "Milliseconds before it acts."},
+                },
+                "required": ["bot", "say", "orders", "delay_ms"],
+                "additionalProperties": False,
+            },
+        }
+    },
+    "required": ["replies"],
+    "additionalProperties": False,
+}
+
+
+# ---------------------------------------------------------------------------- requests and answers
+
+def roster_of(event):
+    """[(guid, name, class, role)] of the companions this line is for."""
+    bots = []
+    for line in (event.get("bots") or "").splitlines():
+        parts = line.split("|")
+        if len(parts) >= 4 and parts[0].isdigit():
+            bots.append((int(parts[0]), parts[1], parts[2], parts[3]))
+    if not bots:
+        bots.append((int(event["bot_guid"]), "companion", "", ""))
+    return bots
+
+
+def context_line(event, name):
+    match = re.search(rf"^{name}: (.+)$", event.get("context") or "", re.M)
+    return match.group(1).strip() if match else ""
+
+
+def leader_of(event):
+    return context_line(event, "leader")
+
+
+def build_request(event, memory):
+    bots = roster_of(event)
+    names = ", ".join(f"{name} ({klass}, {role})" for _, name, klass, role in bots)
+    kind, channel, speaker, message = event["kind"], event["channel"], event["speaker"], event["message"]
+    if kind == "test":
+        task = f"Connection test from the web panel. Reply as {bots[0][1]} with one short friendly line."
+    elif kind == "callout":
+        task = (f"{bots[0][1]} notices something ({speaker}): {message}. Write the short callout {bots[0][1]} makes in party chat, "
+                "the way a real player would type it mid-fight (a few words). Add orders only if they clearly help.")
+    elif kind == "event":
+        task = f"Something happened to {bots[0][1]} ({speaker}): {message}. A short natural remark from {bots[0][1]}, or nothing."
+    elif channel == "whisper":
+        task = f"{speaker} whispers to {bots[0][1]}: {message}\nOnly {bots[0][1]} can answer (the answer is whispered back)."
+    elif kind == "group" and context_line(event, "spoken to"):
+        named = context_line(event, "spoken to")
+        task = (f"{speaker} says in party chat, to {named}: {message}\n{named} answers (and does what is asked); another companion "
+                f"adds something only if it is clearly concerned. Companions you voice: {names}.")
+    elif kind == "group":
+        task = (f"{speaker} says in party chat: {message}\nDecide which of the companions answer, if any, and what they do. "
+                f"Companions you voice: {names}.")
+    else:
+        task = f"{speaker} says in party chat to {bots[0][1]}: {message}"
+
+    parts = [f"<situation>\n{(event.get('context') or '').strip()}\n</situation>"]
+    if memory:
+        parts.append("<earlier_whispers>\n" + "\n".join(memory) + "\n</earlier_whispers>")
+    parts.append(f"<now>\n{task}\n</now>")
+    return "\n".join(parts)
+
+
+def clean_orders(orders, allowed):
+    clean = []
+    for order in orders or []:
+        if not isinstance(order, str):
+            continue
+        order = " ".join(order.strip().lower().split())[:80]
+        if order and order.split()[0] in allowed:
+            clean.append(order)
+    return clean[:4]
+
+
+def actions_from(event, data, order_mode="all"):
+    """The answer of the model as rows for companion_llm_actions.
+
+    order_mode (provider option "orders"): "all", "help" (heal, dispel, protect, assist, status: small local models
+    tend to add random orders to small talk) or "none"."""
+    bots = roster_of(event)
+    by_name = {name.lower(): guid for guid, name, _, _ in bots}
+    leader = leader_of(event).lower()
+    speaker = (event.get("speaker") or "").lower()
+    # callouts and banter only talk; a player who is not the leader only gets help
+    if event["kind"] in ("callout", "event", "test") or order_mode == "none":
+        allowed = set()
+    elif order_mode == "help" or (leader and speaker != leader):
+        allowed = HELP_WORDS
+    else:
+        allowed = ORDER_WORDS
+    addressed = by_name.get(context_line(event, "spoken to").lower())
+    single = event["kind"] != "group"
+    whisper = event["channel"] == "whisper"
+
+    replies = data.get("replies")
+    if replies is None and ("say" in data or "orders" in data):    # a small model answering the old shape
+        replies = [{"bot": bots[0][1], **data}]
+    actions = []
+    used = set()
+    for reply in replies if isinstance(replies, list) else []:
+        if not isinstance(reply, dict):
+            continue
+        name = str(reply.get("bot", "")).strip().lower()
+        guid = by_name.get(name) or (bots[0][0] if single or len(bots) == 1 else None)
+        if addressed and not actions and guid != addressed and not any(
+                by_name.get(str(r.get("bot", "")).strip().lower()) == addressed for r in replies if isinstance(r, dict)):
+            guid = addressed   # the one spoken to answers (small models mix the names up)
+        if guid is None or guid in used:
+            continue
+        say = " ".join(str(reply.get("say") or "").split())[:250]
+        orders = clean_orders(reply.get("orders"), allowed)
+        if not say and not orders:
+            continue
+        try:
+            delay = int(reply.get("delay_ms") or 0)
+        except (TypeError, ValueError):
+            delay = 0
+        used.add(guid)
+        actions.append({
+            "bot_guid": guid,
+            "channel": "whisper" if whisper else "party",
+            "target": event["speaker"] if whisper else "",
+            "say": say,
+            "commands": "\n".join(orders),
+            "delay_ms": max(0, min(delay, 6000)),
+        })
+        if single or len(actions) >= 2:
+            break
+    # never two companions in the same instant
+    for i, action in enumerate(sorted(actions, key=lambda a: a["delay_ms"])):
+        action["delay_ms"] = max(action["delay_ms"], 250 + i * 1400 + random.randint(0, 500))
+    return actions
+
+
+# ---------------------------------------------------------------------------- where the work comes from
+
+CLAIM_COLUMNS = "id, bot_guid, owner_guid, kind, channel, speaker, message, context, bots, provider_id, TIMESTAMPDIFF(SECOND, created, NOW()) AS age"
+
+
+def claim_condition(provider_ids):
+    """Lines this brain may take: for its providers, for any provider, or waiting too long for theirs."""
+    mine = f"provider_id IN ({','.join(str(int(i)) for i in provider_ids)})" if provider_ids else "0"
+    return (f"(provider_id = 0 OR {mine} OR (kind <> 'test' AND (created < NOW() - INTERVAL 8 SECOND "
+            f"OR provider_id NOT IN (SELECT id FROM companion_llm_providers WHERE enabled = 1))))")
+
+
+class DbStore:
+    """Local mode: straight to the characters database."""
+
+    def __init__(self):
+        import pymysql
+        self.pymysql = pymysql
+        self.db = None
+        self.prefix = "local"
+
+    def cursor(self):
+        if self.db is None:
+            self.db = self.pymysql.connect(
+                host=os.environ.get("DB_HOST", "mysql"),
+                port=int(os.environ.get("DB_PORT", "3306")),
+                user=os.environ.get("DB_USER", "trinity"),
+                password=os.environ["DB_PASSWORD"],
+                database=os.environ.get("DB_NAME", "characters"),
+                charset="utf8mb4",
+                autocommit=True,
+                connect_timeout=10,
+            )
+        return self.db.cursor(self.pymysql.cursors.DictCursor)
+
+    def reset(self):
+        self.db = None
+
+    def providers(self):
+        with self.cursor() as cur:
+            cur.execute("SELECT COUNT(*) AS n FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'companion_llm_providers'")
+            if not cur.fetchone()["n"]:
+                return []   # the worldserver creates the tables at its first start
+            cur.execute("SELECT COUNT(*) AS n FROM companion_llm_providers")
+            if not cur.fetchone()["n"] and os.environ.get("ANTHROPIC_API_KEY"):
+                # first start with a key in .env: Claude becomes the first provider (editable in the web panel)
+                cur.execute(
+                    "INSERT INTO companion_llm_providers (name, kind, model, weight, max_concurrent, timeout_s) VALUES (%s, 'anthropic', %s, 1, 4, 60)",
+                    ("Claude", os.environ.get("COMPANIONS_LLM_MODEL", "claude-opus-5-5")),
+                )
+                log.info("added Claude as the first AI provider")
+            cur.execute("SELECT * FROM companion_llm_providers WHERE enabled = 1 AND worker_id = 0")
+            return cur.fetchall()
+
+    def claim(self, count, provider_ids):
+        token = f"{self.prefix}:{secrets.token_hex(6)}"
+        with self.cursor() as cur:
+            cur.execute(
+                f"UPDATE companion_llm_events SET status = 1, claimed_by = %s, claimed_at = NOW() WHERE status = 0 AND claimed_by <> %s "
+                f"AND created > NOW() - INTERVAL {MAX_AGE} SECOND AND {claim_condition(provider_ids)} ORDER BY id LIMIT %s",
+                (token, f"x:{self.prefix}", count),
+            )
+            if not cur.rowcount:
+                return []
+            cur.execute(f"SELECT {CLAIM_COLUMNS} FROM companion_llm_events WHERE claimed_by = %s AND status = 1 ORDER BY id", (token,))
+            return cur.fetchall()
+
+    def release(self, event, failed=False):
+        """Back to the queue; after a failure marked so that another brain takes it."""
+        with self.cursor() as cur:
+            cur.execute("UPDATE companion_llm_events SET status = 0, claimed_by = %s WHERE id = %s AND status = 1",
+                        (f"x:{self.prefix}" if failed else "", event["id"]))
+
+    def answer(self, event, actions, provider_id, ok, ms, error):
+        with self.cursor() as cur:
+            for a in actions:
+                cur.execute(
+                    "INSERT INTO companion_llm_actions (event_id, bot_guid, channel, target, say, commands, delay_ms) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                    (event["id"], a["bot_guid"], a["channel"], a["target"], a["say"], a["commands"], a["delay_ms"]),
+                )
+            cur.execute("UPDATE companion_llm_events SET status = 2 WHERE id = %s", (event["id"],))
+            if provider_id:
+                record_stats(cur, provider_id, ok, ms, error)
+
+    def failure(self, provider_id, error):
+        with self.cursor() as cur:
+            record_stats(cur, provider_id, False, 0, error)
+
+
+def record_stats(cur, provider_id, ok, ms, error):
+    if ok:
+        cur.execute(
+            "UPDATE companion_llm_providers SET answered = answered + 1, avg_ms = IF(avg_ms = 0, %s, ROUND(avg_ms * 0.8 + %s * 0.2)), "
+            "last_ok = NOW(), last_error = '' WHERE id = %s",
+            (ms, ms, provider_id),
+        )
+    else:
+        cur.execute("UPDATE companion_llm_providers SET failed = failed + 1, last_error = %s WHERE id = %s", ((error or "")[:250], provider_id))
+
+
+class HttpStore:
+    """Remote mode: through the website's brain API, with the worker token made in the web panel."""
+
+    def __init__(self, url, token):
+        verify = os.environ.get("BRAIN_CA_FILE") or (os.environ.get("BRAIN_TLS_VERIFY", "1") != "0")
+        self.client = httpx.Client(base_url=url.rstrip("/"), headers={"Authorization": f"Bearer {token}"}, timeout=20, verify=verify)
+
+    def post(self, path, body):
+        response = self.client.post(path, json=body)
+        if response.status_code == 401:
+            raise RuntimeError("the website refused the worker token (deleted in the web panel?)")
+        response.raise_for_status()
+        return response.json()
+
+    def reset(self):
+        pass
+
+    def providers(self):
+        info = os.environ.get("BRAIN_NAME") or os.uname().nodename
+        return self.post("/api/brain/heartbeat", {"version": VERSION, "info": info})["providers"]
+
+    def claim(self, count, provider_ids):
+        return self.post("/api/brain/claim", {"max": count})["events"]
+
+    def release(self, event, failed=False):
+        self.post("/api/brain/release", {"event_id": event["id"], "failed": failed})
+
+    def answer(self, event, actions, provider_id, ok, ms, error):
+        self.post("/api/brain/answer", {"event_id": event["id"], "provider_id": provider_id, "ok": ok, "ms": ms,
+                                        "error": (error or "")[:250], "actions": actions})
+
+    def failure(self, provider_id, error):
+        self.post("/api/brain/failure", {"provider_id": provider_id, "error": (error or "")[:250]})
+
+
+# ---------------------------------------------------------------------------- the brain
+
+class Slot:
+    """One provider and how many requests it is answering now."""
+
+    FIELDS = ("kind", "endpoint", "model", "api_key", "timeout_s", "options")
+
+    def __init__(self, row):
+        self.row = row
+        self.backend = backends.make(row)
+        self.busy = 0
+        mode = backends.options_of(row).get("orders")
+        self.order_mode = mode if mode in ("all", "help", "none") else ("all" if row["kind"] == "anthropic" else "help")
+
+    @property
+    def id(self):
+        return int(self.row["id"])
+
+    @property
+    def free(self):
+        return max(0, int(self.row.get("max_concurrent") or 1) - self.busy)
+
+    def same_setup(self, row):
+        return all(str(self.row.get(f)) == str(row.get(f)) for f in self.FIELDS)
+
+
+class Brain:
+    def __init__(self, store):
+        self.store = store
+        self.slots: dict[int, Slot] = {}
+        self.refreshed = 0.0
+        self.pool = ThreadPoolExecutor(max_workers=32)
+        self.running = []          # (future, event, slot, started)
+        self.whispers = defaultdict(lambda: deque(maxlen=MEMORY_TURNS))
+        self.calls = deque()
+
+    def refresh(self):
+        if time.monotonic() - self.refreshed < PROVIDER_REFRESH and self.slots:
+            return
+        self.refreshed = time.monotonic()
+        rows = self.store.providers()
+        current = {}
+        for row in rows:
+            slot = self.slots.get(int(row["id"]))
+            try:
+                if slot and slot.same_setup(row):
+                    slot.row = row
+                else:
+                    busy = slot.busy if slot else 0
+                    slot = Slot(row)
+                    slot.busy = busy
+                    log.info("provider %s: %s %s %s", row["name"], row["kind"], row["model"], row.get("endpoint") or "")
+                current[slot.id] = slot
+            except backends.ProviderError as e:
+                log.error("provider %s: %s", row["name"], e)
+        for gone in set(self.slots) - set(current):
+            log.info("provider %s removed or disabled", self.slots[gone].row["name"])
+        self.slots = current
+
+    def pick(self, event, exclude=()):
+        preferred = self.slots.get(int(event.get("provider_id") or 0))
+        if preferred and preferred.free and preferred.id not in exclude:
+            return preferred
+        choices = [s for s in self.slots.values() if s.free and s.id not in exclude]
+        if not choices:
+            return None
+        return random.choices(choices, weights=[max(1, int(s.row.get("weight") or 1)) * s.free for s in choices])[0]
+
+    def rate_limited(self):
+        now = time.monotonic()
+        while self.calls and now - self.calls[0] > 60:
+            self.calls.popleft()
+        return len(self.calls) >= MAX_PER_MINUTE
+
+    def memory_key(self, event):
+        return (int(event["bot_guid"]), (event.get("speaker") or "").lower())
+
+    def start(self, event, slot):
+        memory = list(self.whispers[self.memory_key(event)]) if event["channel"] == "whisper" else []
+        request = build_request(event, memory)
+        slot.busy += 1
+        self.calls.append(time.monotonic())
+        future = self.pool.submit(slot.backend.ask, SYSTEM_PROMPT, request, OUTPUT_SCHEMA)
+        self.running.append((future, event, slot, time.monotonic()))
+
+    def collect(self):
+        still = []
+        for future, event, slot, started in self.running:
+            if not future.done():
+                still.append((future, event, slot, started))
+                continue
+            slot.busy = max(0, slot.busy - 1)
+            ms = int((time.monotonic() - started) * 1000)
+            try:
+                data = future.result()
+                actions = actions_from(event, data, slot.order_mode)
+                self.store.answer(event, actions, slot.id, True, ms, "")
+                if event["channel"] == "whisper":
+                    memory = self.whispers[self.memory_key(event)]
+                    memory.append(f"{event['speaker']}: {event['message']}")
+                    memory.extend(f"{a['say']}" for a in actions if a["say"])
+                log.info("%s #%s (%s, %s ms): %s", slot.row["name"], event["id"], event["kind"], ms,
+                         " / ".join(f"{a['say']!r} {a['commands'].splitlines()}" for a in actions) or "(no answer)")
+            except Exception as e:  # one bad answer must not stop the bots' brain
+                error = str(e) if isinstance(e, backends.ProviderError) else f"{type(e).__name__}: {e}"
+                log.warning("%s failed on #%s: %s", slot.row["name"], event["id"], error)
+                tried = event.setdefault("_tried", [])
+                tried.append(slot.id)
+                other = self.pick(event, exclude=tried) if event["kind"] != "test" and len(tried) < 3 else None
+                try:
+                    if other:
+                        self.store.failure(slot.id, error)
+                        self.start(event, other)       # failover: another provider answers it
+                    elif event["kind"] != "test" and int(event.get("age") or 0) + ms // 1000 < 20:
+                        self.store.failure(slot.id, error)
+                        self.store.release(event, failed=True)   # another brain may still answer it in time
+                    else:
+                        self.store.answer(event, [], slot.id, False, ms, error)
+                except Exception:
+                    log.exception("cannot store the failure of #%s", event["id"])
+        self.running = still
+
+    def step(self):
+        self.refresh()
+        self.collect()
+        free = sum(s.free for s in self.slots.values())
+        if not free or self.rate_limited():
+            return False
+        events = self.store.claim(min(free, 10), list(self.slots))
+        for event in events:
+            if int(event.get("age") or 0) > MAX_AGE:
+                self.store.answer(event, [], 0, True, 0, "")
+                continue
+            slot = self.pick(event)
+            if slot is None:
+                self.store.release(event)
+                continue
+            self.start(event, slot)
+        return bool(events)
+
+
+def run():
+    logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(message)s")
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    url, token = os.environ.get("BRAIN_URL"), os.environ.get("BRAIN_TOKEN")
+    if url and token:
+        store = HttpStore(url, token)
+        log.info("companions brain %s started as a remote worker of %s", VERSION, url)
+    else:
+        store = DbStore()
+        log.info("companions brain %s started next to the database", VERSION)
+    brain = Brain(store)
+    warned = False
+
+    while True:
+        try:
+            busy = brain.step()
+            if not brain.slots and not warned:
+                log.warning("no AI provider for this brain yet: add one in the web panel (Companions > Server)")
+                warned = True
+            elif brain.slots:
+                warned = False
+            time.sleep(0.1 if busy or brain.running else POLL_SECONDS)
+        except Exception as e:
+            log.error("%s (retrying)", e)
+            store.reset()
+            time.sleep(5)
+
+
+if __name__ == "__main__":
+    run()

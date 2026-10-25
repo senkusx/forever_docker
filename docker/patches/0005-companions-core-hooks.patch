@@ -1,0 +1,221 @@
+diff --git a/src/server/game/Entities/Player/Player.cpp b/src/server/game/Entities/Player/Player.cpp
+index 78d59ec..ae7e013 100644
+--- a/src/server/game/Entities/Player/Player.cpp
++++ b/src/server/game/Entities/Player/Player.cpp
+@@ -1010,6 +1010,9 @@ void Player::Update(uint32 p_time)
+ 
+     Unit::AIUpdateTick(p_time);
+ 
++    if (m_session->IsBot() && BotSessionHooks::OnPlayerUpdate)
++        BotSessionHooks::OnPlayerUpdate(this, p_time);
++
+     // Once per second, update items that have just a limited lifetime
+     if (now > m_Last_tick)
+     {
+diff --git a/src/server/game/Groups/Group.h b/src/server/game/Groups/Group.h
+index 40e7a38..8ec82eb 100644
+--- a/src/server/game/Groups/Group.h
++++ b/src/server/game/Groups/Group.h
+@@ -367,6 +367,7 @@ class TC_GAME_API Group
+ 
+         // -no description-
+         void SendTargetIconList(WorldSession* session) const;
++        ObjectGuid GetTargetIcon(uint8 symbol) const { return symbol < TARGET_ICONS_COUNT ? m_targetIcons[symbol] : ObjectGuid::Empty; }
+         void SendUpdate() const;
+         void SendUpdateToPlayer(Player* player, MemberSlot const* slot = nullptr) const;
+         void SendUpdateDestroyGroupToPlayer(Player* player) const;
+diff --git a/src/server/game/Handlers/CharacterHandler.cpp b/src/server/game/Handlers/CharacterHandler.cpp
+index 21faa16..bf7cd61 100644
+--- a/src/server/game/Handlers/CharacterHandler.cpp
++++ b/src/server/game/Handlers/CharacterHandler.cpp
+@@ -46,6 +46,7 @@
+ #include "Item.h"
+ #include "Language.h"
+ #include "Log.h"
++#include "LoginQueryHolder.h"
+ #include "Mail.h"
+ #include "Map.h"
+ #include "MapUtils.h"
+@@ -71,19 +72,6 @@
+ #include <boost/circular_buffer.hpp>
+ #include <sstream>
+ 
+-class LoginQueryHolder : public CharacterDatabaseQueryHolder
+-{
+-    private:
+-        uint32 m_accountId;
+-        ObjectGuid m_guid;
+-    public:
+-        LoginQueryHolder(uint32 accountId, ObjectGuid guid)
+-            : m_accountId(accountId), m_guid(guid) { }
+-        ObjectGuid GetGuid() const { return m_guid; }
+-        uint32 GetAccountId() const { return m_accountId; }
+-        bool Initialize();
+-};
+-
+ bool LoginQueryHolder::Initialize()
+ {
+     SetSize(MAX_PLAYER_LOGIN_QUERY);
+diff --git a/src/server/game/Handlers/LoginQueryHolder.h b/src/server/game/Handlers/LoginQueryHolder.h
+new file mode 100644
+index 0000000..214e994
+--- /dev/null
++++ b/src/server/game/Handlers/LoginQueryHolder.h
+@@ -0,0 +1,39 @@
++/*
++ * This file is part of the TrinityCore Project. See AUTHORS file for Copyright information
++ *
++ * This program is free software; you can redistribute it and/or modify it
++ * under the terms of the GNU General Public License as published by the
++ * Free Software Foundation; either version 2 of the License, or (at your
++ * option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but WITHOUT
++ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
++ * more details.
++ *
++ * You should have received a copy of the GNU General Public License along
++ * with this program. If not, see <http://www.gnu.org/licenses/>.
++ */
++
++#ifndef TRINITY_LOGIN_QUERY_HOLDER_H
++#define TRINITY_LOGIN_QUERY_HOLDER_H
++
++#include "DatabaseEnvFwd.h"
++#include "ObjectGuid.h"
++#include "QueryHolder.h"
++
++// Queries loading a character for HandlePlayerLogin (also used by the Companions bot module)
++class TC_GAME_API LoginQueryHolder : public CharacterDatabaseQueryHolder
++{
++    private:
++        uint32 m_accountId;
++        ObjectGuid m_guid;
++    public:
++        LoginQueryHolder(uint32 accountId, ObjectGuid guid)
++            : m_accountId(accountId), m_guid(guid) { }
++        ObjectGuid GetGuid() const { return m_guid; }
++        uint32 GetAccountId() const { return m_accountId; }
++        bool Initialize();
++};
++
++#endif
+diff --git a/src/server/game/Server/WorldSession.cpp b/src/server/game/Server/WorldSession.cpp
+index 5e6b41b..a9da99b 100644
+--- a/src/server/game/Server/WorldSession.cpp
++++ b/src/server/game/Server/WorldSession.cpp
+@@ -186,9 +186,13 @@ WorldSession::~WorldSession()
+     while (_recvQueue.next(packet))
+         delete packet;
+ 
+-    LoginDatabase.PExecute("UPDATE account SET online = 0 WHERE id = {};", GetAccountId());     // One-time query
++    // a bot session shares its account with other sessions: leave the account flag to them
++    if (!_isBot)
++        LoginDatabase.PExecute("UPDATE account SET online = 0 WHERE id = {};", GetAccountId());     // One-time query
+ }
+ 
++void (*BotSessionHooks::OnPlayerUpdate)(Player* player, uint32 diff) = nullptr;
++
+ bool WorldSession::PlayerDisconnected() const
+ {
+     return !(m_Socket[CONNECTION_TYPE_REALM] && m_Socket[CONNECTION_TYPE_REALM]->IsOpen() &&
+@@ -224,6 +228,10 @@ std::string WorldSession::GetPlayerInfo() const
+ /// Send a packet to the client
+ void WorldSession::SendPacket(WorldPacket const* packet, bool forced /*= false*/)
+ {
++    // bots have no client: drop silently instead of logging every packet as sent to a missing socket
++    if (_isBot)
++        return;
++
+     if (!opcodeTable.IsValid(static_cast<OpcodeServer>(packet->GetOpcode())))
+     {
+         char const* specialName = packet->GetOpcode() == UNKNOWN_OPCODE ? "UNKNOWN_OPCODE" : "INVALID_OPCODE";
+@@ -356,7 +364,7 @@ bool WorldSession::Update(uint32 diff, PacketFilter& updater)
+     ///- Before we process anything:
+     /// If necessary, kick the player because the client didn't send anything for too long
+     /// (or they've been idling in character select)
+-    if (IsConnectionIdle() && !HasPermission(rbac::RBAC_PERM_IGNORE_IDLE_CONNECTION))
++    if (m_Socket[CONNECTION_TYPE_REALM] && IsConnectionIdle() && !HasPermission(rbac::RBAC_PERM_IGNORE_IDLE_CONNECTION))
+         m_Socket[CONNECTION_TYPE_REALM]->CloseSocket();
+ 
+     // Classic 1.60: character list mail data, sent once the character list is shown (see HandleCharEnum)
+@@ -522,7 +530,7 @@ bool WorldSession::Update(uint32 diff, PacketFilter& updater)
+ 
+     _recvQueue.readd(requeuePackets.begin(), requeuePackets.end());
+ 
+-    if (!updater.ProcessUnsafe()) // <=> updater is of type MapSessionFilter
++    if (!updater.ProcessUnsafe() && !_isBot) // <=> updater is of type MapSessionFilter; bots never answer time syncs
+     {
+         // Send time sync packet every 10s.
+         if (_timeSyncTimer > 0)
+@@ -707,9 +715,15 @@ void WorldSession::LogoutPlayer(bool save)
+         TC_LOG_DEBUG("network", "SESSION: Sent SMSG_LOGOUT_COMPLETE Message");
+ 
+         //! Since each account can only have one online character at any given time, ensure all characters for active account are marked as offline
+-        CharacterDatabasePreparedStatement* stmt = CharacterDatabase.GetPreparedStatement(CHAR_UPD_ACCOUNT_ONLINE);
+-        stmt->setUInt32(0, GetAccountId());
+-        CharacterDatabase.Execute(stmt);
++        //! (a bot shares its account with other online characters: only its own character goes offline)
++        if (_isBot)
++            CharacterDatabase.PExecute("UPDATE characters SET online = 0 WHERE guid = {}", m_GUIDLow);
++        else
++        {
++            CharacterDatabasePreparedStatement* stmt = CharacterDatabase.GetPreparedStatement(CHAR_UPD_ACCOUNT_ONLINE);
++            stmt->setUInt32(0, GetAccountId());
++            CharacterDatabase.Execute(stmt);
++        }
+     }
+ 
+     if (m_Socket[CONNECTION_TYPE_INSTANCE])
+diff --git a/src/server/game/Server/WorldSession.h b/src/server/game/Server/WorldSession.h
+index 9a2e9b9..7dc48af 100644
+--- a/src/server/game/Server/WorldSession.h
++++ b/src/server/game/Server/WorldSession.h
+@@ -1009,6 +1009,10 @@ class TC_GAME_API WorldSession
+         bool PlayerRecentlyLoggedOut() const { return m_playerRecentlyLogout; }
+         bool PlayerDisconnected() const;
+ 
++        // Companions (player bots): a socketless session owned and updated by the bot manager, never by World
++        bool IsBot() const { return _isBot; }
++        void SetBot(bool isBot) { _isBot = isBot; }
++
+         bool IsAddonRegistered(std::string_view prefix) const;
+ 
+         void SendPacket(WorldPacket const* packet, bool forced = false);
+@@ -2087,6 +2091,7 @@ class TC_GAME_API WorldSession
+         bool m_playerLogout;                                // code processed in LogoutPlayer
+         bool m_playerRecentlyLogout;
+         bool m_playerSave;
++        bool _isBot = false;
+         LocaleConstant m_sessionDbcLocale;
+         LocaleConstant m_sessionDbLocaleIndex;
+         Minutes _timezoneOffset;
+@@ -2129,4 +2134,10 @@ class TC_GAME_API WorldSession
+         WorldSession& operator=(WorldSession const& right) = delete;
+ };
+ 
++// Companions: set by the bot module, called from Player::Update (map thread) for players of bot sessions
++struct TC_GAME_API BotSessionHooks
++{
++    static void (*OnPlayerUpdate)(Player* player, uint32 diff);
++};
++
+ #endif
+diff --git a/src/server/scripts/Custom/custom_script_loader.cpp b/src/server/scripts/Custom/custom_script_loader.cpp
+index 977f5fd..63baa90 100644
+--- a/src/server/scripts/Custom/custom_script_loader.cpp
++++ b/src/server/scripts/Custom/custom_script_loader.cpp
+@@ -17,10 +17,12 @@
+ 
+ // This is where scripts' loading functions should be declared:
+ void AddClassicScripts();
++void AddCompanionsScripts();
+ 
+ // The name of this function should match:
+ // void Add${NameOfDirectory}Scripts()
+ void AddCustomScripts()
+ {
+     AddClassicScripts();
++    AddCompanionsScripts();
+ }

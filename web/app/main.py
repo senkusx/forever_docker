@@ -24,7 +24,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from . import i18n
+from . import companions, companions_i18n, i18n
 
 log = logging.getLogger('forever-web')
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
@@ -101,6 +101,7 @@ async def bootstrap() -> None:
     while True:
         try:
             await asyncio.to_thread(ensure_soap_admin)
+            await asyncio.to_thread(ensure_companion_tables)
             return
         except pymysql.MySQLError as ex:
             log.info('waiting for the auth database (%s)', ex.args[-1] if ex.args else ex)
@@ -119,7 +120,8 @@ BASE = Path(__file__).parent
 app.mount('/static', StaticFiles(directory=BASE / 'static'), name='static')
 templates = Jinja2Templates(directory=BASE / 'templates')
 # appended to the stylesheet URL so browsers fetch the new one after an update
-ASSET_VERSION = hashlib.sha1((BASE / 'static' / 'style.css').read_bytes()).hexdigest()[:10]
+ASSET_VERSION = hashlib.sha1(b''.join((BASE / 'static' / name).read_bytes()
+                                      for name in ('style.css', 'companions.css', 'companions.js'))).hexdigest()[:10]
 
 _signups: dict[str, deque] = defaultdict(deque)
 
@@ -270,6 +272,18 @@ async def page(request: Request, status_code: int = 200, **ctx):
     if query_lang in i18n.TEXTS:
         response.set_cookie('lang', query_lang, max_age=365 * 24 * 3600, samesite='lax')
     return response
+
+
+async def companions_context(request: Request) -> dict:
+    lang = i18n.pick_language(request.query_params.get('lang'), request.cookies.get('lang'), request.headers.get('accept-language'))
+    panel_texts = companions_i18n.texts(lang)
+    return {'lang': lang, 'languages': i18n.LANGUAGES, 'server_name': SERVER_NAME, 'asset_version': ASSET_VERSION,
+            'texts': panel_texts, 'js_texts': panel_texts}
+
+
+# Companions panel (player bots), GM level 3 accounts: /companions
+companions_router, ensure_companion_tables = companions.build_router(db, soap_command, client_ip, templates, companions_context)
+app.include_router(companions_router)
 
 
 @app.get('/', response_class=HTMLResponse)

@@ -72,7 +72,10 @@ a while). You can override the defaults with `TRINITY_IMAGE` and `WEB_IMAGE`.
 
 ### The website
 
-It listens on `127.0.0.1:8088`. To publish it on a domain with HTTPS:
+By default, it listens on `127.0.0.1:8088` for local access and reverse proxies. To allow direct access from a
+LAN, set `WEB_BIND_ADDRESS` in `.env` to the server's LAN IP (for example, `10.11.11.70`); then visit
+`http://10.11.11.70:8088`. Restrict the port to trusted networks in the host firewall. To publish it on a domain
+with HTTPS:
 
 - **Traefik**: set `SITE_DOMAIN` in `.env` (and the Traefik network/entrypoint/resolver names if yours differ), then
   ```sh
@@ -87,6 +90,16 @@ It listens on `127.0.0.1:8088`. To publish it on a domain with HTTPS:
 docker compose attach worldserver   # leave with Ctrl+P, Ctrl+Q
 bnetaccount create mail@example.com Password
 ```
+
+## Play with bots (companions)
+
+`.bot party` in game gives you a tank, a healer and damage dealers that play like real players (`.bot raid` fills a
+20-player raid). They are real characters: they follow loosely around you, fight in their role, heal, buff, rest,
+call out what matters, and come into dungeons with you. Orders such as `follow`, `attack`, `heal me` or `focus skull`
+go in party chat, and raid markers work. Optionally an AI model (Claude, Ollama or any OpenAI-compatible server, on
+this machine or on remote workers) talks for them and understands plain language. GM accounts get a web panel at
+`/companions` to build bots (class, race, name, looks, talents, gear, role, AI), save party templates and set the
+server-wide limits and AI providers. Everything is in [docs/COMPANIONS.md](docs/COMPANIONS.md).
 
 ## Publish the launcher for your server
 
@@ -121,14 +134,14 @@ signed by Apple, so players run `xattr -cr "/Applications/Forever Launcher.app"`
 
 ## Good to know
 
-- **Fixes on top of the forever branch**: `docker/patches/` (friend list and names with surnames), each described
-  in [its README](docker/patches/README.md). The current branch already includes 360 action-button support.
+- **Fixes on top of the forever branch**: `docker/patches/` (friend list, names with surnames, the companion bot
+  hooks), each described in [its README](docker/patches/README.md). The current branch already includes 360 action-button support.
 - **Config overrides**: `Key = Value` lines in `overrides/worldserver.conf` or `overrides/bnetserver.conf`.
 - **Update**: `docker compose build --no-cache && docker compose up -d`; new SQL updates are applied on start.
   If the branch merges one of the patches, the build stops at that patch: delete it.
 - **Using an AI assistant**: [AGENTS.md](AGENTS.md) explains the project and the steps to it.
-- **Newer game client**: set `CLIENT_BUILD` in `.env` to the new build number (experimental until the branch
-  supports it).
+- **Newer game client**: set `CLIENT_BUILD` in `.env` to the build number (for example, `70532`). The build
+  override is experimental and does not itself add protocol support to TrinityCore.
 
 ## License
 

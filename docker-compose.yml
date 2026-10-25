@@ -41,6 +41,7 @@ services:
       context: .
       args:
         TC_REF: ${TC_REF:-forever}
+        TC_COMMIT: ${TC_COMMIT:-}
         BUILD_JOBS: ${BUILD_JOBS:-4}
     image: ${TRINITY_IMAGE:-ghcr.io/senkusx/forever_docker-trinitycore:latest}
     pull_policy: always
@@ -57,6 +58,7 @@ services:
       PACKET_LOG: ${PACKET_LOG:-0}   # 1 = packet log (diagnostics, holds chat)
       REALM_PORT: ${REALM_PORT:-8085}
       SOAP_ENABLED: "1"   # for the website; port 7878 is never published
+      COMPANIONS_LLM: ${COMPANIONS_LLM:-0}   # 1 = bots answer chat through the brain service (profile "brain")
     # interactive console: docker compose attach worldserver  (leave with Ctrl+P, Ctrl+Q)
     stdin_open: true
     tty: true
@@ -129,12 +131,53 @@ services:
       - "8000"
     # local access only (the public domain goes through the reverse proxy)
     ports:
-      - "127.0.0.1:${WEB_PORT:-8088}:8000"
+      - "${WEB_BIND_ADDRESS:-127.0.0.1}:${WEB_PORT:-8088}:8000"
     volumes:
       # only the CA's public certificate is read (never its key)
       - ${CERTS_DIR:-./certs}/ca/forever_root_ca.crt:/certs/ca/forever_root_ca.crt:ro
       # launchers served by /download/<os> (optional, see .env.example)
       - ${DOWNLOADS_DIR:-./downloads}:/downloads:ro
+
+  # Companions brain (optional): AI workers that talk for the bots (Claude, Ollama, OpenAI-compatible servers).
+  # Providers are set in the web panel (/companions > Server & AI). COMPANIONS_LLM=1 in .env, then:
+  #   docker compose --profile brain up -d            (add --profile ollama for a local Ollama server)
+  # A first Claude provider is added when ANTHROPIC_API_KEY is set. Brains on other machines: see docs/COMPANIONS.md.
+  brain:
+    build: ./docker/companions/brain
+    image: ${BRAIN_IMAGE:-forever-companions-brain:latest}
+    profiles: ["brain"]
+    networks: [forever]
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      DB_HOST: mysql
+      DB_USER: ${DB_USER:-trinity}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: characters
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      COMPANIONS_LLM_MODEL: ${COMPANIONS_LLM_MODEL:-claude-opus-5-5}
+      COMPANIONS_LLM_EFFORT: ${COMPANIONS_LLM_EFFORT:-low}
+      COMPANIONS_LLM_MAX_PER_MINUTE: ${COMPANIONS_LLM_MAX_PER_MINUTE:-60}
+
+  # Local LLM server for the brain (optional): provider "Ollama", address http://ollama:11434.
+  # Pull a model once: docker compose exec ollama ollama pull qwen2.5:7b
+  # NVIDIA GPU: uncomment "deploy" (needs the NVIDIA container toolkit).
+  ollama:
+    image: ollama/ollama:${OLLAMA_VERSION:-0.6.8}
+    profiles: ["ollama"]
+    networks: [forever]
+    restart: unless-stopped
+    environment:
+      OLLAMA_KEEP_ALIVE: 30m
+      OLLAMA_NUM_PARALLEL: ${OLLAMA_NUM_PARALLEL:-2}
+    volumes:
+      - ollama-models:/root/.ollama
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices: [{ driver: nvidia, count: all, capabilities: [gpu] }]
 
   # Game data extraction from the client: docker compose run --rm extractor
   extractor:
@@ -157,3 +200,4 @@ networks:
 volumes:
   mysql-data:
   logs:
+  ollama-models:

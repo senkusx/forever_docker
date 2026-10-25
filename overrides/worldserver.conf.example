@@ -3,3 +3,16 @@
 # Rate.XP.Kill = 2
 # Rate.Drop.Money = 2
 # GM.StartLevel = 1
+# Companions (player bots, docs/COMPANIONS.md); what the web panel changes (Server & AI) wins over these
+# Companions.MaxPerPlayer = 4
+# Companions.MaxTotal = 39
+# Companions.RaidSize = 20
+# Companions.Follow.MinDistance = 2
+# Companions.Follow.MaxDistance = 9
+# Companions.Callouts = 1
+# Companions.Gear.MaxQuality = 3
+# Companions.AutoRevive.Delay = 30
+# Companions.TeleportDistance = 90
+# Companions.LLM.PartyChat = 1
+# Companions.LLM.Callouts = 1
+# Companions.LLM.Banter = 0

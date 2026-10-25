@@ -1,0 +1,284 @@
+/*
+ * Companions: the bot brain. One CompanionAI per logged-in bot, updated from Player::Update (map thread).
+ */
+
+#ifndef COMPANION_AI_H
+#define COMPANION_AI_H
+
+#include "CompanionDefines.h"
+#include "Duration.h"
+#include "GameTime.h"
+#include "ObjectGuid.h"
+#include "Optional.h"
+#include "Position.h"
+#include "SharedDefines.h"
+#include <memory>
+#include <string>
+#include <string_view>
+#include <unordered_map>
+#include <vector>
+
+class Creature;
+class Group;
+class Item;
+class Player;
+class SpellInfo;
+class Unit;
+
+namespace Companions
+{
+    class CompanionAI;
+
+    // The bot's spells by (lower case, enUS) name, lowest rank first
+    class SpellBook
+    {
+    public:
+        void Rebuild(Player* bot);
+        uint32 Best(std::string_view name) const;                       // highest known rank, 0 if unknown
+        std::vector<uint32> const* Ranks(std::string_view name) const;  // all known ranks, lowest first
+        bool Has(std::string_view name) const { return Best(name) != 0; }
+        size_t Size() const { return _ranks.size(); }
+        std::vector<std::string> Names() const;
+
+    private:
+        std::unordered_map<std::string, std::vector<uint32>> _ranks;
+    };
+
+    // Allies and enemies the bot considers this tick (same map only)
+    struct GroupView
+    {
+        std::vector<Player*> Members;   // includes the bot and the owner when on the same map
+        Player* Owner = nullptr;
+        Player* Tank = nullptr;         // the bot with the tank role, else the owner
+        std::vector<Unit*> Enemies;     // hostile units in combat with a member
+    };
+
+    enum class HealUrgency : uint8
+    {
+        TopUp,      // out of combat or light damage: efficient heals
+        Normal,
+        Emergency,  // about to die: fastest heal
+    };
+
+    // Class specific decisions. Every method returns true when it cast or otherwise used the bot's turn.
+    class ClassAI
+    {
+    public:
+        explicit ClassAI(CompanionAI& ai) : _ai(ai) { }
+        virtual ~ClassAI() = default;
+
+        virtual Role DefaultRole() const = 0;
+        virtual bool CanTank() const { return false; }
+        virtual bool CanHeal() const { return false; }
+        // distance kept from the target for ranged roles (0 = melee)
+        virtual float RangedDistance() const { return 25.0f; }
+
+        virtual bool SelfBuffs(bool /*inCombat*/) { return false; }
+        virtual bool GroupBuffs(Player* /*member*/) { return false; }
+        virtual bool Heal(Unit* /*target*/, HealUrgency /*urgency*/, uint32 /*deficit*/) { return false; }
+        virtual bool GroupHeal(uint32 /*injuredCount*/) { return false; }
+        virtual bool Dispel(Unit* /*target*/) { return false; }
+        virtual bool Resurrect(Player* /*dead*/) { return false; }
+        virtual bool Interrupt(Unit* /*caster*/) { return false; }
+        virtual bool Taunt(Unit* /*target*/) { return false; }
+        virtual bool CrowdControl(Unit* /*target*/) { return false; }
+        virtual bool Emergency() { return false; }      // self preservation in combat
+        virtual bool Pull(Unit* target) { return Combat(target); }
+        virtual bool Combat(Unit* target) = 0;          // damage / threat rotation
+        virtual bool Pet(Unit* /*target*/) { return false; }
+        virtual bool OutOfCombat() { return false; }    // forms, pets, totems, imbues...
+        virtual void OnRoleChanged() { }
+
+    protected:
+        CompanionAI& _ai;
+    };
+
+    std::unique_ptr<ClassAI> CreateClassAI(CompanionAI& ai, uint8 classId);
+
+    class CompanionAI
+    {
+    public:
+        CompanionAI(Player* bot, ObjectGuid owner, Role role);
+        ~CompanionAI();
+
+        CompanionAI(CompanionAI const&) = delete;
+        CompanionAI& operator=(CompanionAI const&) = delete;
+
+        void Update(uint32 diff);
+
+        // ---- orders (called from commands on the world thread, or from the AI itself) ----
+        void SetStance(Stance stance);
+        void SetAggression(Aggression aggression) { _aggression = aggression; }
+        void SetRole(Role role);
+        void OrderAttack(ObjectGuid target, bool pull);
+        void OrderStop();
+        void OrderComeHere();
+        void OrderRest() { _restRequested = true; }
+        void OrderHeal(ObjectGuid target) { _healTarget = target; _healUntil = GameTime::Now() + Seconds(8); }
+        void OrderDispel(ObjectGuid target) { _dispelTarget = target; _dispelUntil = GameTime::Now() + Seconds(8); }
+        void OrderProtect(ObjectGuid target) { _protectTarget = target; _protectUntil = GameTime::Now() + Seconds(25); }
+        void OrderRetreat();
+        void OrderCast(std::string spell, ObjectGuid target) { _pendingCast = std::move(spell); _pendingCastTarget = target; }
+        void SetFollowSlot(uint32 slot, uint32 count) { _followSlot = slot; _followCount = count; _movement = MoveMode::None; }
+        void SetSpread(float spread) { _spread = spread; _loitering = false; _movement = MoveMode::None; }
+        void RefreshSpells() { _spellsDirty = true; }
+
+        // ---- state ----
+        Player* GetBot() const { return _bot; }
+        ObjectGuid GetOwnerGUID() const { return _owner; }
+        Role GetRole() const { return _role; }
+        Role GetEffectiveRole() const;
+        Stance GetStance() const { return _stance; }
+        Aggression GetAggression() const { return _aggression; }
+        ClassAI* GetClassAI() const { return _class.get(); }
+        SpellBook const& Spells() const { return _spells; }
+        GroupView const& View() const { return _view; }
+        Unit* GetCurrentTarget() const;
+        std::string StatusLine() const;
+
+        // ---- helpers for ClassAI ----
+        uint32 SpellIdOf(std::string_view name) const { return _spells.Best(name); }
+        bool Knows(std::string_view name) const { return _spells.Has(name); }
+        // cast the best known rank; target nullptr = self
+        bool Cast(std::string_view name, Unit* target = nullptr);
+        bool CastId(uint32 spellId, Unit* target = nullptr);
+        bool CanCast(std::string_view name, Unit* target = nullptr) const;
+        bool CanCastId(uint32 spellId, Unit* target = nullptr) const;
+        // heal with the cheapest rank that covers the deficit
+        bool CastHeal(std::string_view name, Unit* target, uint32 deficit);
+        bool HasAura(Unit const* unit, std::string_view name, bool mineOnly = false) const;
+        int32 AuraRemaining(Unit const* unit, std::string_view name, bool mineOnly = false) const;   // ms, 0 = absent, -1 = permanent
+        uint32 AuraStacks(Unit const* unit, std::string_view name, bool mineOnly = false) const;
+        bool IsSpellReady(std::string_view name) const;
+        uint32 DispellableMask(Unit* target) const;    // 1 << DispelType of harmful auras we could remove
+
+        float HealthPct() const;
+        float ManaPct() const;
+        int32 Rage() const;         // 0..100
+        int32 Energy() const;
+        int32 ComboPoints(Unit const* target) const;
+        bool IsBehind(Unit const* target) const;
+        bool InMelee(Unit const* target) const;
+        uint32 EnemiesNear(Position const& pos, float radius) const;           // engaged enemies around a point
+        uint32 EnemiesAttacking(Unit const* unit) const;
+        bool AnyCrowdControlledNear(Position const& pos, float radius) const;  // AoE would break a CC
+        bool IsTank(Unit const* unit) const;
+        bool IsHealer(Unit const* unit) const;
+        Unit* LowestAlly(float maxPct, float range, bool includePets = false) const;
+        uint32 InjuredAllies(float maxPct, float range) const;
+        bool IsBossFight() const;
+        bool IsTargetedByEnemy() const;
+        Unit* EnemyAttackingMe() const;
+        bool IsMoving() const;
+        void StopMovement();
+        bool HasPet() const;
+        Creature* GetPet() const;
+        void PetAttack(Unit* target);
+        void PetFollow();
+        Item* MainHand() const;
+        bool HasShield() const;
+        bool UsesWand() const;
+        void Say(std::string const& text);  // party chat (or say when alone)
+
+        void OnOwnerTeleported() { _movement = MoveMode::None; }
+        void OnRevived();
+
+    private:
+        enum class MoveMode : uint8 { None, Follow, Chase, Stay, Point };
+
+        void Think(uint32 diff);
+        void HandleRequests();
+        void HandleDeath(uint32 diff);
+        void BuildView();
+        void UpdateCombat();
+        void UpdateIdle();
+        bool UpdateHealing(bool inCombat);
+        bool UpdateDispels();
+        bool UpdateInterrupts();
+        bool UpdateResurrections();
+        bool UpdateBuffs(bool inCombat);
+        bool UpdateEatDrink();
+        bool UpdatePendingCast();
+        void UpdateMount();
+        Unit* SelectTarget();
+        Unit* SelectTankTarget();
+        bool IsValidEnemy(Unit* unit) const;
+        bool IsCrowdControlTarget(Unit const* unit) const;
+        void MoveForCombat(Unit* target);
+        void FollowOwner();
+        bool PickLoiterSpot(Player* owner, float minDist, float maxDist, Position& spot) const;
+        void EngageTarget(Unit* target, bool melee);
+        void FaceTarget(Unit* target);
+        void DisengageAll();
+        bool EnsureReagents(SpellInfo const* info);
+        bool NeedsRest() const;
+
+        Player* _bot;
+        ObjectGuid _owner;
+        Role _role;
+        Stance _stance = Stance::Follow;
+        Aggression _aggression = Aggression::Assist;
+        std::unique_ptr<ClassAI> _class;
+        SpellBook _spells;
+        bool _spellsDirty = true;
+        GroupView _view;
+
+        uint32 _thinkTimer = 0;
+        uint32 _slowTimer = 0;          // ~1 s housekeeping
+        uint32 _followSlot = 0;
+        uint32 _followCount = 1;
+        MoveMode _movement = MoveMode::None;
+        ObjectGuid _moveTarget;
+        float _moveRangeMin = 0.0f;
+        float _moveRangeMax = 0.0f;
+        Position _stayPosition;
+
+        ObjectGuid _forcedTarget;       // ordered "attack"/"pull"
+        bool _pulling = false;
+        ObjectGuid _lastTarget;
+        TimePoint _combatStart;
+        bool _inCombat = false;
+        TimePoint _lastCastTime;
+        uint32 _deadTimer = 0;
+        bool _restRequested = false;
+        bool _eating = false;
+        uint32 _restTimer = 0;
+        std::string _pendingCast;
+        ObjectGuid _pendingCastTarget;
+        uint32 _stuckTimer = 0;
+        float _lastOwnerDist = 0.0f;
+        uint32 _reagentTimer = 0;
+        uint32 _holdFire = 0;           // "stop": ms before attacking again
+        // loose following: a spot of its own around the owner instead of a fixed formation
+        float _spread = 1.0f;           // "spread" / "stack" orders scale the radius
+        bool _loitering = false;
+        Position _loiterSpot;
+        Position _lastOwnerPosition;
+        TimePoint _ownerStillSince = { };
+        TimePoint _scatterUntil = { };
+        TimePoint _fidgetAt = { };
+        TimePoint _faceAt = { };
+        uint32 _loiterDelay = 1000;
+        // callouts from players: heal / dispel / protect someone right now
+        ObjectGuid _healTarget;
+        TimePoint _healUntil = { };
+        ObjectGuid _dispelTarget;
+        TimePoint _dispelUntil = { };
+        ObjectGuid _protectTarget;
+        TimePoint _protectUntil = { };
+        bool UpdateCallouts();
+        // situational callouts to the party, like players make them (out of mana, adds, a rare...)
+        void NoticeSituation();
+        void Callout(char const* kind, std::string const& detail, std::string const& canned);
+        uint32 _noticeTimer = 0;
+        bool _saidOom = false;
+        bool _saidLowHealth = false;
+        bool _saidAggro = false;
+        bool _moonControlled = false;
+        size_t _enemyCount = 0;
+        std::vector<ObjectGuid> _deadSeen;
+        std::vector<ObjectGuid> _spotted;
+    };
+}
+
+#endif

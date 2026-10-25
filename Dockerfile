@@ -28,6 +28,9 @@ RUN git clone --branch "${TC_REF}" --single-branch --depth 1 "${TC_REPO}" /src/T
 COPY docker/patches/ /patches/
 RUN for p in /patches/*.patch; do [ -e "$p" ] || continue; echo "applying $p"; git -C /src/TrinityCore apply "$p" || exit 1; done
 
+# Companions: player bots (docker/companions/src, registered by 0005-companions-core-hooks.patch)
+COPY docker/companions/src/ /src/TrinityCore/src/server/scripts/Custom/Companions/
+
 # BUILD_JOBS: lower it on small machines (GCC needs ~2 GB RAM per job on the biggest files)
 ARG BUILD_JOBS=4
 # TOOLS=1: also build mapextractor / vmap4extractor / vmap4assembler / mmaps_generator

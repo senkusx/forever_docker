@@ -1,0 +1,749 @@
+// Companions panel: party, new companion and templates for the characters of a GM level 3 account.
+// Everything is built with textContent (names and personalities come from players).
+(() => {
+  'use strict';
+  const TX = window.CP_TEXTS || {};
+  const T = (key, values) => {
+    let text = TX[key] !== undefined ? TX[key] : key;
+    for (const [k, v] of Object.entries(values || {})) text = text.split(`{${k}}`).join(String(v));
+    return text;
+  };
+
+  const state = { me: null, owner: null, view: null, templates: { bots: [], parties: [] }, tab: 'party', form: null, looks: {}, timer: null,
+    page: 'owner', server: null, providerForm: null, newToken: null };
+  const $ = (id) => document.getElementById(id);
+
+  // ------------------------------------------------------------------ helpers
+
+  function h(tag, attrs, ...children) {
+    const el = document.createElement(tag);
+    for (const [key, value] of Object.entries(attrs || {})) {
+      if (value === undefined || value === null || value === false) continue;
+      if (key === 'class') el.className = value;
+      else if (key.startsWith('on')) el.addEventListener(key.slice(2), value);
+      else if (key === 'value') el.value = value;
+      else if (key === 'checked') el.checked = !!value;
+      else el.setAttribute(key, value === true ? '' : value);
+    }
+    for (const child of children.flat()) {
+      if (child === null || child === undefined || child === false) continue;
+      el.append(child instanceof Node ? child : document.createTextNode(String(child)));
+    }
+    return el;
+  }
+
+  async function api(method, url, body) {
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json', 'X-Companions': '1' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      credentials: 'same-origin',
+    });
+    let data = {};
+    try { data = await res.json(); } catch (e) { /* empty answer */ }
+    if (!res.ok) {
+      if (res.status === 401) showLogin();
+      const error = new Error(data.error || `HTTP ${res.status}`);
+      error.detail = data.detail;
+      throw error;
+    }
+    return data;
+  }
+
+  function toast(text, bad) {
+    const el = $('cp-toast');
+    el.textContent = text;
+    el.className = 'cp-toast show' + (bad ? ' bad' : '');
+    clearTimeout(toast.timer);
+    toast.timer = setTimeout(() => { el.className = 'cp-toast'; }, 4000);
+  }
+
+  const errorText = (err) => {
+    const key = 'err_' + err.message;
+    const text = TX[key] !== undefined ? TX[key] : err.message;
+    return err.detail ? `${text}: ${err.detail}` : text;
+  };
+
+  async function run(action, success) {
+    try {
+      const result = await action();
+      if (success) toast(typeof success === 'function' ? success(result) : success);
+      return result;
+    } catch (err) {
+      toast(errorText(err), true);
+      return null;
+    }
+  }
+
+  const className = (id) => T('class_' + id);
+  const raceName = (id) => T('race_' + id);
+  const roleName = (role) => T('role_' + role);
+  const specName = (klass, index) => T(`spec_${klass}_${index}`);
+  const qualityName = (q) => q ? T('quality_' + q) : T('quality_default');
+  const aggressionName = (a) => T('aggression_' + a);
+
+  function select(options, value, onchange, attrs) {
+    return h('select', { ...attrs, onchange: (e) => onchange(e.target.value) },
+      options.map(([v, label]) => h('option', { value: v, selected: String(v) === String(value) || undefined }, label)));
+  }
+
+  function toggle(label, checked, onchange) {
+    return h('label', { class: 'cp-toggle' }, h('input', { type: 'checkbox', checked, onchange: (e) => onchange(e.target.checked) }), h('span', null, label));
+  }
+
+  function specOptions(klass) {
+    const specs = (state.me && state.me.specs[klass]) || [];
+    const options = [['', T('spec_auto')]];
+    specs.forEach((_, i) => {
+      options.push([String(i), specName(klass, i)]);
+      specs.forEach((__, j) => { if (j !== i) options.push([`${i},${j}`, `${specName(klass, i)} + ${specName(klass, j)}`]); });
+    });
+    return options;
+  }
+
+  const qualityOptions = () => [['0', T('quality_default')], ...state.me.qualities.map((q) => [String(q), qualityName(q)])];
+  const aggressionOptions = () => [0, 1, 2].map((a) => [String(a), aggressionName(a)]);
+  const roleOptions = () => state.me.roles.map((r) => [r, roleName(r)]);
+  const providerOptions = () => [['0', T('provider_any')], ...(state.me.providers || []).map((p) => [String(p.id), p.enabled ? p.name : `${p.name} (${T('off')})`])];
+  const hasProviders = () => !!(state.me && state.me.providers && state.me.providers.length);
+
+  // ------------------------------------------------------------------ login
+
+  function showLogin() {
+    clearInterval(state.timer);
+    $('cp-app').hidden = true;
+    $('cp-user').hidden = true;
+    $('cp-login').hidden = false;
+  }
+
+  $('cp-login-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const form = new FormData(e.target);
+    $('cp-login-error').textContent = '';
+    try {
+      await api('POST', '/api/companions/login', { email: form.get('email'), password: form.get('password') });
+      e.target.reset();
+      await start();
+    } catch (err) {
+      $('cp-login-error').textContent = errorText(err);
+    }
+  });
+
+  $('cp-logout').addEventListener('click', async () => {
+    await api('POST', '/api/companions/logout').catch(() => {});
+    showLogin();
+  });
+
+  // ------------------------------------------------------------------ characters
+
+  async function start() {
+    try {
+      state.me = await api('GET', '/api/companions/me');
+    } catch (err) {
+      showLogin();
+      return;
+    }
+    $('cp-login').hidden = true;
+    $('cp-app').hidden = false;
+    $('cp-user').hidden = false;
+    $('cp-email').textContent = state.me.email;
+    const server = state.me.server;
+    $('cp-server').textContent = server.offline ? T('server_offline')
+      : T('server_info', { max: server.max_per_player, brain: server.llm ? T('on') : T('off') })
+        + (server.max_total ? ' · ' + T('server_total', { n: server.online_total, max: server.max_total }) : '');
+    renderCharacters();
+    await loadTemplates();
+    const remembered = Number(localStorage.getItem('cp-owner') || 0);
+    const first = state.me.characters.find((c) => Number(c.guid) === remembered) || state.me.characters.find((c) => c.online);
+    if (first) selectOwner(Number(first.guid));
+  }
+
+  function renderCharacters() {
+    const list = $('cp-chars');
+    list.replaceChildren(...state.me.characters.map((c) => h('li', null,
+      h('button', { type: 'button', class: 'cp-char' + (Number(c.guid) === state.owner ? ' on' : ''), onclick: () => selectOwner(Number(c.guid)) },
+        h('span', { class: 'dot ' + (c.online ? 'ok' : '') }),
+        h('strong', null, c.name),
+        h('small', { class: 'muted' }, `${c.level} ${raceName(c.race)} ${className(c.class)}`)))));
+    if (!state.me.characters.length) list.append(h('li', { class: 'muted' }, T('no_characters')));
+  }
+
+  async function selectOwner(guid) {
+    state.page = 'owner';
+    $('cp-serverview').hidden = true;
+    $('cp-server-open').classList.remove('on');
+    state.owner = guid;
+    try { localStorage.setItem('cp-owner', String(guid)); } catch (e) { /* private window */ }
+    renderCharacters();
+    $('cp-empty').hidden = true;
+    $('cp-owner').hidden = false;
+    state.form = null;
+    await refresh();
+    clearInterval(state.timer);
+    state.timer = setInterval(() => { if (state.page === 'owner' && state.tab === 'party' && !document.hidden) refresh(true); }, 5000);
+  }
+
+  async function refresh(quiet) {
+    if (!state.owner) return;
+    try {
+      state.view = await api('GET', `/api/companions/owner/${state.owner}`);
+    } catch (err) {
+      if (!quiet) toast(errorText(err), true);
+      return;
+    }
+    const o = state.view.owner, live = state.view.live;
+    $('cp-owner-name').textContent = o.name;
+    $('cp-owner-info').textContent = `${o.level} ${raceName(o.race)} ${className(o.class)} · `
+      + (live && live.online ? T('in_game', { zone: live.zone || '?' }) : T('not_in_game'))
+      + ` · ${T('bots_count', { n: state.view.bots.length })}`;
+    if (state.tab === 'party') renderParty();
+    else if (state.tab === 'create' && !state.form) renderCreate();
+    else if (state.tab === 'templates') renderTemplates();
+  }
+
+  document.querySelectorAll('.cp-tab').forEach((tab) => tab.addEventListener('click', () => {
+    state.tab = tab.dataset.tab;
+    document.querySelectorAll('.cp-tab').forEach((t) => t.classList.toggle('on', t === tab));
+    for (const name of ['party', 'create', 'templates']) $('tab-' + name).hidden = name !== state.tab;
+    if (state.tab === 'party') renderParty();
+    if (state.tab === 'create') renderCreate();
+    if (state.tab === 'templates') renderTemplates();
+  }));
+
+  // ------------------------------------------------------------------ party
+
+  const ownerOnline = () => !!(state.view && state.view.live && state.view.live.online);
+
+  async function order(text, bot) {
+    await run(() => api('POST', `/api/companions/owner/${state.owner}/order`, { order: text, bot: bot || 0 }), T('order_sent', { order: text }));
+  }
+
+  async function botAction(bot, action) {
+    if (action === 'delete' && !confirm(T('confirm_delete', { name: bot.name }))) return;
+    const done = await run(() => api('POST', `/api/companions/owner/${state.owner}/bots/${bot.guid}/${action}`), T('done_' + action, { name: bot.name }));
+    if (done) setTimeout(() => refresh(true), action === 'summon' ? 2500 : 600);
+  }
+
+  async function editBot(bot, changes, message) {
+    const done = await run(() => api('PATCH', `/api/companions/owner/${state.owner}/bots/${bot.guid}`, changes), message || T('saved'));
+    if (done) refresh(true);
+  }
+
+  async function groupSetting(changes) {
+    const done = await run(() => api('POST', `/api/companions/owner/${state.owner}/group`, changes), (r) => T('group_saved', { n: r.bots }));
+    if (done) refresh(true);
+  }
+
+  function bar(pct, kind) {
+    return h('div', { class: 'cp-bar ' + kind }, h('span', { style: `width:${Math.max(0, Math.min(100, pct))}%` }));
+  }
+
+  function renderParty() {
+    const panel = $('tab-party');
+    const view = state.view;
+    if (!view) return;
+    const online = ownerOnline();
+    const orderBot = h('select', { class: 'cp-order-bot' }, h('option', { value: '0' }, T('all_companions')),
+      view.bots.filter((b) => b.live).map((b) => h('option', { value: b.guid }, b.name)));
+    const custom = h('input', { type: 'text', placeholder: T('order_placeholder'), maxlength: 80 });
+
+    const orders = h('div', { class: 'card cp-orders' },
+      h('div', { class: 'label' }, T('orders')),
+      !online ? h('p', { class: 'muted' }, T('orders_offline')) : null,
+      h('div', { class: 'cp-row' }, orderBot,
+        ...['follow', 'stay', 'come', 'attack', 'pull', 'stop', 'retreat', 'rest', 'status'].map((o) =>
+          h('button', { type: 'button', class: 'cp-btn', disabled: !online, title: T('order_help_' + o), onclick: () => order(o, Number(orderBot.value)) }, T('order_' + o)))),
+      h('form', { class: 'cp-row', onsubmit: (e) => { e.preventDefault(); if (custom.value.trim()) order(custom.value.trim(), Number(orderBot.value)); } },
+        custom, h('button', { type: 'submit', class: 'cp-btn', disabled: !online }, T('send'))),
+      h('p', { class: 'muted small' }, T('orders_hint')));
+
+    const anyBrain = view.bots.some((b) => b.llm);
+    const group = h('div', { class: 'card cp-group' },
+      h('div', { class: 'label' }, T('group_settings')),
+      h('div', { class: 'cp-row' },
+        toggle(T('brain_all'), anyBrain, (on) => groupSetting({ llm: on })),
+        h('label', null, T('aggression'), select(aggressionOptions(), '', (v) => groupSetting({ aggression: Number(v) }), { 'aria-label': T('aggression') })),
+        h('label', null, T('stance'), select([['0', T('stance_0')], ['1', T('stance_1')]], '', (v) => groupSetting({ stance: Number(v) }))),
+        h('label', null, T('gear_quality'), select(qualityOptions(), '', (v) => groupSetting({ quality: Number(v) }))),
+        hasProviders() ? h('label', null, T('provider'), select([['', '—'], ...providerOptions()], '', (v) => { if (v !== '') groupSetting({ provider: Number(v) }); })) : null),
+      state.me.server.llm ? null : h('p', { class: 'muted small' }, T('brain_server_off')),
+      h('div', { class: 'cp-row' },
+        h('button', { type: 'button', class: 'cp-btn', disabled: !online || !view.bots.length,
+          onclick: async () => { await run(() => api('POST', `/api/companions/owner/${state.owner}/summon-all`, {}), (r) => T('summoned_n', { n: r.done })); setTimeout(() => refresh(true), 2500); } }, T('summon_all')),
+        h('button', { type: 'button', class: 'cp-btn', disabled: !view.bots.some((b) => b.live),
+          onclick: async () => { await run(() => api('POST', `/api/companions/owner/${state.owner}/summon-all`, { dismiss: true, bots: view.bots.filter((b) => b.live).map((b) => b.guid) }), T('dismissed_all')); setTimeout(() => refresh(true), 800); } }, T('dismiss_all')),
+        h('button', { type: 'button', class: 'cp-btn', disabled: !view.bots.length, onclick: () => savePartyFromCurrent() }, T('save_party_template'))));
+
+    const cards = view.bots.length ? view.bots.map((bot) => botCard(bot, online))
+      : [h('div', { class: 'card muted' }, T('no_bots'))];
+    panel.replaceChildren(orders, group, h('div', { class: 'cp-bots' }, cards));
+  }
+
+  function botCard(bot, ownerIn) {
+    const live = bot.live;
+    const status = bot.loading ? T('state_loading') : live ? T('state_' + live.state) : T('state_offline');
+    const specs = specOptions(bot.class);
+    const personality = h('textarea', { rows: 2, maxlength: 250, placeholder: T('personality_placeholder') }, bot.personality || '');
+    const rename = h('input', { type: 'text', value: bot.name, maxlength: 12, disabled: !!live || !bot.created, title: bot.created ? T('rename_hint') : T('rename_own') });
+
+    return h('article', { class: 'card cp-bot' + (live ? ' live' : '') },
+      h('header', null,
+        h('div', null,
+          h('h3', null, bot.name, bot.created ? null : h('small', { class: 'cp-tag' }, T('your_character'))),
+          h('div', { class: 'muted' }, `${live ? live.level : bot.level} ${raceName(bot.race)} ${className(bot.class)} · ${roleName(bot.role)}`)),
+        h('span', { class: 'cp-state ' + (live ? live.state : 'offline') }, status)),
+      live ? h('div', { class: 'cp-vitals' },
+        bar(live.health, 'hp'), live.mana >= 0 ? bar(live.mana, 'mana') : null,
+        h('div', { class: 'muted small' }, T('live_line', { ilvl: live.item_level, spells: live.spells, zone: live.zone || '?' })),
+        live.talents ? h('div', { class: 'muted small cp-talents' }, live.talents) : null) : null,
+      h('div', { class: 'cp-grid' },
+        h('label', null, T('role'), select(roleOptions(), bot.role, (v) => editBot(bot, { role: v }, T('role_saved')))),
+        h('label', null, T('spec'), select(specs, bot.spec || '', (v) => editBot(bot, { spec: v }, live ? T('respec_soon') : T('saved')))),
+        h('label', null, T('gear_quality'), select(qualityOptions(), String(bot.quality || 0), (v) => editBot(bot, { quality: Number(v) }))),
+        h('label', null, T('aggression'), select(aggressionOptions(), String(bot.aggression), (v) => editBot(bot, { aggression: Number(v) }))),
+        h('label', null, T('stance'), select([['0', T('stance_0')], ['1', T('stance_1')]], String(bot.stance), (v) => editBot(bot, { stance: Number(v) }))),
+        h('div', { class: 'cp-check' }, toggle(T('brain'), bot.llm, (on) => editBot(bot, { llm: on }))),
+        hasProviders() && bot.llm ? h('label', null, T('provider'), select(providerOptions(), String(bot.provider || 0), (v) => editBot(bot, { provider: Number(v) }))) : null),
+      h('div', { class: 'cp-row' }, personality,
+        h('button', { type: 'button', class: 'cp-btn', onclick: () => editBot(bot, { personality: personality.value }) }, T('save'))),
+      bot.created ? h('div', { class: 'cp-row' }, rename,
+        h('button', { type: 'button', class: 'cp-btn', disabled: !!live, onclick: () => editBot(bot, { name: rename.value.trim() }, T('renamed')) }, T('rename'))) : null,
+      h('footer', { class: 'cp-row' },
+        live ? h('button', { type: 'button', class: 'cp-btn', onclick: () => botAction(bot, 'dismiss') }, T('dismiss'))
+          : h('button', { type: 'button', class: 'cp-btn primary', disabled: !ownerIn || bot.loading, title: ownerIn ? null : T('owner_must_play'), onclick: () => botAction(bot, 'summon') }, T('summon')),
+        h('button', { type: 'button', class: 'cp-btn', disabled: !live, onclick: () => botAction(bot, 'regear') }, T('regear')),
+        h('button', { type: 'button', class: 'cp-btn', disabled: !live, onclick: () => botAction(bot, 'respec') }, T('respec')),
+        h('button', { type: 'button', class: 'cp-btn', onclick: () => saveBotTemplate(templateFromBot(bot)) }, T('save_template')),
+        h('button', { type: 'button', class: 'cp-btn danger', disabled: !!live, title: bot.created ? null : T('forget_hint'), onclick: () => botAction(bot, 'delete') },
+          bot.created ? T('delete') : T('forget'))));
+  }
+
+  const templateFromBot = (bot) => ({
+    class: bot.class, race: bot.race, gender: bot.gender, role: bot.role, spec: bot.spec, quality: bot.quality, llm: bot.llm,
+    provider: bot.provider || 0, aggression: bot.aggression, stance: bot.stance, personality: bot.personality, name: '', looks: '', random_looks: true,
+  });
+
+  // ------------------------------------------------------------------ new companion
+
+  function defaultForm() {
+    return { class: 1, race: 0, gender: 2, role: 'auto', spec: '', quality: 0, llm: true, provider: 0, aggression: 0, stance: 0,
+      personality: '', name: '', looks: {}, random_looks: true, template: 0 };
+  }
+
+  function allowedRaces(klass) {
+    const races = state.view && state.view.races && state.view.races[klass];
+    return races || Object.keys(state.me.races).map(Number);
+  }
+
+  async function loadLooks(race, gender) {
+    const key = `${race}-${gender}`;
+    if (!state.looks[key]) state.looks[key] = await api('GET', `/api/companions/looks?race=${race}&gender=${gender}`);
+    return state.looks[key];
+  }
+
+  async function renderCreate() {
+    if (!state.form) state.form = defaultForm();
+    const f = state.form;
+    const panel = $('tab-create');
+    const races = allowedRaces(f.class);
+    if (f.race && !races.includes(Number(f.race))) f.race = 0;
+
+    const nameInput = h('input', { type: 'text', value: f.name, maxlength: 12, placeholder: T('name_random'), oninput: (e) => { f.name = e.target.value.trim(); } });
+    const looksBox = h('div', { class: 'cp-looks' });
+
+    const classButtons = h('div', { class: 'cp-classes' }, Object.keys(state.me.classes).map(Number).map((klass) =>
+      h('button', { type: 'button', class: 'cp-class c' + klass + (klass === Number(f.class) ? ' on' : ''),
+        disabled: !(state.view && state.view.races && state.view.races[klass]) && !!(state.view && Object.keys(state.view.races || {}).length),
+        onclick: () => { f.class = klass; f.spec = ''; renderCreate(); } }, className(klass))));
+
+    panel.replaceChildren(h('div', { class: 'card cp-create' },
+      h('div', { class: 'label' }, f.template ? T('editing_template', { name: f.templateName || '' }) : T('new_companion')),
+      h('h4', null, T('class')), classButtons,
+      h('div', { class: 'cp-grid' },
+        h('label', null, T('race'), select([['0', T('random')], ...races.map((r) => [String(r), raceName(r)])], String(f.race), (v) => { f.race = Number(v); renderLooks(); })),
+        h('label', null, T('gender'), select([['2', T('random')], ['0', T('male')], ['1', T('female')]], String(f.gender), (v) => { f.gender = Number(v); renderLooks(); })),
+        h('label', null, T('name'), h('div', { class: 'cp-inline' }, nameInput,
+          h('button', { type: 'button', class: 'cp-btn', title: T('random_name'), onclick: async () => {
+            const r = await run(() => api('GET', '/api/companions/randomname'));
+            if (r && r.name) { f.name = r.name; nameInput.value = r.name; }
+          } }, '🎲'))),
+        h('label', null, T('role'), select(roleOptions(), f.role, (v) => { f.role = v; })),
+        h('label', null, T('spec'), select(specOptions(f.class), f.spec, (v) => { f.spec = v; })),
+        h('label', null, T('gear_quality'), select(qualityOptions(), String(f.quality), (v) => { f.quality = Number(v); })),
+        h('label', null, T('aggression'), select(aggressionOptions(), String(f.aggression), (v) => { f.aggression = Number(v); })),
+        h('label', null, T('stance'), select([['0', T('stance_0')], ['1', T('stance_1')]], String(f.stance), (v) => { f.stance = Number(v); })),
+        h('div', { class: 'cp-check' }, toggle(T('brain'), f.llm, (on) => { f.llm = on; })),
+        hasProviders() ? h('label', null, T('provider'), select(providerOptions(), String(f.provider || 0), (v) => { f.provider = Number(v); })) : null),
+      h('label', { class: 'cp-wide' }, T('personality'), h('textarea', { rows: 2, maxlength: 250, placeholder: T('personality_placeholder'), oninput: (e) => { f.personality = e.target.value; } }, f.personality)),
+      h('h4', null, T('appearance')),
+      h('div', { class: 'cp-row' }, toggle(T('random_looks'), f.random_looks, (on) => { f.random_looks = on; renderLooks(); })),
+      looksBox,
+      h('p', { class: 'muted small' }, T('create_hint')),
+      h('div', { class: 'cp-row' },
+        h('button', { type: 'button', class: 'cp-btn primary', onclick: createBot }, T('create')),
+        h('button', { type: 'button', class: 'cp-btn', onclick: () => saveBotTemplate(formTemplate(), f.template, f.templateName) }, f.template ? T('update_template') : T('save_template')),
+        h('button', { type: 'button', class: 'cp-btn', onclick: () => { state.form = defaultForm(); renderCreate(); } }, T('reset')))));
+
+    async function renderLooks() {
+      looksBox.replaceChildren();
+      if (f.random_looks) return;
+      if (!f.race || f.gender > 1) {
+        looksBox.append(h('p', { class: 'muted small' }, T('looks_need_race')));
+        return;
+      }
+      const data = await run(() => loadLooks(f.race, f.gender));
+      if (!data) return;
+      looksBox.replaceChildren(
+        h('div', { class: 'cp-row' }, h('button', { type: 'button', class: 'cp-btn', onclick: () => {
+          for (const option of data.options) f.looks[option.id] = option.choices[Math.floor(Math.random() * option.choices.length)].id;
+          renderLooks();
+        } }, T('randomize'))),
+        h('div', { class: 'cp-grid' }, data.options.map((option) => h('label', null, option.name || `#${option.id}`,
+          select([['0', T('random')], ...option.choices.map((c, i) => [String(c.id), c.name && !/^\d+$/.test(c.name) ? c.name : T('choice_n', { n: i + 1 })])],
+            String(f.looks[option.id] || 0), (v) => { f.looks[option.id] = Number(v); })))));
+    }
+    renderLooks();
+  }
+
+  function formTemplate() {
+    const f = state.form;
+    let looks = '';
+    if (!f.random_looks) {
+      // options left on "Random" get a random choice here: the server needs a complete set to keep the others
+      looks = { ...f.looks };
+      const data = state.looks[`${f.race}-${f.gender}`];
+      if (data) for (const option of data.options)
+        if (!looks[option.id]) looks[option.id] = option.choices[Math.floor(Math.random() * option.choices.length)].id;
+    }
+    return { class: f.class, race: f.race, gender: f.gender, role: f.role, spec: f.spec, quality: f.quality, llm: f.llm, provider: f.provider || 0,
+      aggression: f.aggression, stance: f.stance, personality: f.personality, name: f.name, looks, random_looks: f.random_looks };
+  }
+
+  async function createBot() {
+    const result = await run(() => api('POST', `/api/companions/owner/${state.owner}/bots`, formTemplate()),
+      (r) => T(ownerOnline() ? 'created_joining' : 'created_offline', { name: r.name }));
+    if (result) {
+      state.form = defaultForm();
+      setTimeout(() => refresh(true), 3000);
+      renderCreate();
+    }
+  }
+
+  // ------------------------------------------------------------------ templates
+
+  async function loadTemplates() {
+    const data = await run(() => api('GET', '/api/companions/templates'));
+    if (data) state.templates = data;
+  }
+
+  async function saveBotTemplate(data, id, currentName) {
+    const name = prompt(T('template_name'), currentName || T('class_' + data.class));
+    if (!name) return;
+    const saved = await run(() => api('POST', '/api/companions/templates', { kind: 'bot', name, data, id: id || 0 }), T('template_saved', { name }));
+    if (saved) {
+      await loadTemplates();
+      if (state.form && id) state.form.templateName = name;
+      if (state.tab === 'templates') renderTemplates();
+    }
+  }
+
+  async function savePartyFromCurrent() {
+    // a template per current companion (re-using matching ones), then a party template of them
+    const live = state.view.bots.filter((b) => b.live);
+    const bots = live.length ? live : state.view.bots;
+    const name = prompt(T('party_template_name'), T('party_of', { name: state.view.owner.name }));
+    if (!name) return;
+    const members = [];
+    for (const bot of bots) {
+      let id = bot.template;
+      if (!id || !state.templates.bots.some((t) => t.id === id)) {
+        const saved = await run(() => api('POST', '/api/companions/templates', { kind: 'bot', name: `${name}: ${bot.name}`, data: templateFromBot(bot) }));
+        if (!saved) return;
+        id = saved.id;
+      }
+      members.push(id);
+    }
+    const saved = await run(() => api('POST', '/api/companions/templates', { kind: 'party', name, data: { members, group: {}, replace: true } }), T('template_saved', { name }));
+    if (saved) await loadTemplates();
+  }
+
+  function templateSummary(data) {
+    const parts = [className(data.class), roleName(data.role)];
+    if (data.spec) parts.push(data.spec.split(',').map((i) => specName(data.class, Number(i))).join(' + '));
+    if (data.race) parts.push(raceName(data.race));
+    if (data.name) parts.push(`“${data.name}”`);
+    if (data.quality) parts.push(qualityName(data.quality));
+    parts.push(data.llm ? T('brain') : T('no_brain'));
+    return parts.join(' · ');
+  }
+
+  async function applyTemplate(template) {
+    const result = await run(() => api('POST', `/api/companions/owner/${state.owner}/apply/${template.id}`),
+      (r) => T('applied', { created: (r.created || []).length, summoned: (r.summoned || []).length }) + ((r.errors || []).length ? ` (${r.errors.join('; ')})` : ''));
+    if (result) setTimeout(() => refresh(true), 3000);
+  }
+
+  function renderTemplates() {
+    const panel = $('tab-templates');
+    const { bots, parties } = state.templates;
+    const botsById = Object.fromEntries(bots.map((t) => [t.id, t]));
+
+    const botList = h('div', { class: 'card' }, h('div', { class: 'label' }, T('bot_templates')),
+      bots.length ? h('ul', { class: 'cp-list' }, bots.map((t) => h('li', null,
+        h('div', null, h('strong', null, t.name), h('div', { class: 'muted small' }, templateSummary(t.data))),
+        h('div', { class: 'cp-row' },
+          h('button', { type: 'button', class: 'cp-btn primary', onclick: () => applyTemplate(t) }, T('use')),
+          h('button', { type: 'button', class: 'cp-btn', onclick: () => {
+            state.form = { ...defaultForm(), ...t.data, looks: typeof t.data.looks === 'object' ? t.data.looks : parseLooks(t.data.looks),
+              template: t.id, templateName: t.name };
+            document.querySelector('.cp-tab[data-tab="create"]').click();
+          } }, T('edit')),
+          h('button', { type: 'button', class: 'cp-btn danger', onclick: () => deleteTemplate(t) }, T('delete')))))) :
+        h('p', { class: 'muted' }, T('no_bot_templates')));
+
+    // party builder
+    const builder = { members: [], group: { llm: true, aggression: 0, stance: 0, quality: 0 }, replace: true, name: '', id: 0 };
+    const memberList = h('ul', { class: 'cp-list small' });
+    const pick = h('select', null, bots.map((t) => h('option', { value: t.id }, t.name)));
+    const nameInput = h('input', { type: 'text', maxlength: 64, placeholder: T('party_template_name') });
+    function drawMembers() {
+      memberList.replaceChildren(...builder.members.map((id, i) => h('li', null, h('span', null, botsById[id] ? botsById[id].name : `#${id}`),
+        h('button', { type: 'button', class: 'cp-link', onclick: () => { builder.members.splice(i, 1); drawMembers(); } }, T('remove')))));
+    }
+    const groupControls = h('div', { class: 'cp-grid' },
+      h('div', { class: 'cp-check' }, toggle(T('brain_all'), builder.group.llm, (on) => { builder.group.llm = on; })),
+      h('label', null, T('aggression'), select(aggressionOptions(), '0', (v) => { builder.group.aggression = Number(v); })),
+      h('label', null, T('stance'), select([['0', T('stance_0')], ['1', T('stance_1')]], '0', (v) => { builder.group.stance = Number(v); })),
+      h('label', null, T('gear_quality'), select(qualityOptions(), '0', (v) => { builder.group.quality = Number(v); })),
+      hasProviders() ? h('label', null, T('provider'), select([['', '—'], ...providerOptions()], '', (v) => {
+        if (v === '') delete builder.group.provider; else builder.group.provider = Number(v); })) : null,
+      h('div', { class: 'cp-check' }, toggle(T('replace_party'), true, (on) => { builder.replace = on; })));
+
+    const partyBuilder = h('div', { class: 'card' }, h('div', { class: 'label' }, T('new_party_template')),
+      bots.length ? [
+        h('div', { class: 'cp-row' }, pick, h('button', { type: 'button', class: 'cp-btn', onclick: () => {
+          if (builder.members.length >= state.me.server.max_per_player) { toast(T('party_full', { n: state.me.server.max_per_player }), true); return; }
+          builder.members.push(Number(pick.value)); drawMembers();
+        } }, T('add'))),
+        memberList, groupControls,
+        h('div', { class: 'cp-row' }, nameInput, h('button', { type: 'button', class: 'cp-btn primary', onclick: async () => {
+          if (!nameInput.value.trim() || !builder.members.length) { toast(T('party_needs'), true); return; }
+          const saved = await run(() => api('POST', '/api/companions/templates', { kind: 'party', name: nameInput.value.trim(), id: builder.id,
+            data: { members: builder.members, group: builder.group, replace: builder.replace } }), T('template_saved', { name: nameInput.value.trim() }));
+          if (saved) { await loadTemplates(); renderTemplates(); }
+        } }, T('save')))] : h('p', { class: 'muted' }, T('party_needs_bots')));
+
+    const partyList = h('div', { class: 'card' }, h('div', { class: 'label' }, T('party_templates')),
+      parties.length ? h('ul', { class: 'cp-list' }, parties.map((t) => h('li', null,
+        h('div', null, h('strong', null, t.name),
+          h('div', { class: 'muted small' }, t.data.members.map((id) => botsById[id] ? botsById[id].name : '?').join(', ')),
+          h('div', { class: 'muted small' }, [t.data.replace ? T('replaces_party') : T('adds_to_party'),
+            t.data.group.llm === undefined ? null : (t.data.group.llm ? T('brain') : T('no_brain')),
+            t.data.group.aggression === undefined ? null : aggressionName(t.data.group.aggression)].filter(Boolean).join(' · '))),
+        h('div', { class: 'cp-row' },
+          h('button', { type: 'button', class: 'cp-btn primary', onclick: () => applyTemplate(t) }, T('apply')),
+          h('button', { type: 'button', class: 'cp-btn danger', onclick: () => deleteTemplate(t) }, T('delete')))))) :
+        h('p', { class: 'muted' }, T('no_party_templates')),
+      h('p', { class: 'muted small' }, T('apply_hint')));
+
+    panel.replaceChildren(partyList, partyBuilder, botList);
+  }
+
+  function parseLooks(text) {
+    const looks = {};
+    for (const pair of String(text || '').split(',')) {
+      const [k, v] = pair.split(':').map(Number);
+      if (k && v) looks[k] = v;
+    }
+    return looks;
+  }
+
+  async function deleteTemplate(t) {
+    if (!confirm(T('confirm_delete_template', { name: t.name }))) return;
+    const done = await run(() => api('DELETE', `/api/companions/templates/${t.id}`), T('template_deleted'));
+    if (done) { await loadTemplates(); renderTemplates(); }
+  }
+
+  // ------------------------------------------------------------------ server & AI (whole server)
+
+  const SETTING_GROUPS = [
+    ['set_group_limits', ['MaxPerPlayer', 'MaxTotal', 'RaidSize']],
+    ['set_group_movement', ['FollowMinDistance', 'FollowMaxDistance', 'TeleportDistance', 'MountLevel']],
+    ['set_group_behaviour', ['Callouts', 'AnnounceInParty', 'AutoRevive', 'AutoReviveDelay', 'FreeReagents', 'FreeFood',
+      'RestoreOnLogin', 'AllowAlts', 'SyncLevel', 'AutoGear', 'GearMaxQuality']],
+    ['set_group_ai', ['LLM.Enable', 'LLM.DefaultOn', 'LLM.PartyChat', 'LLM.Callouts', 'LLM.Banter', 'LLM.MaxAge']],
+  ];
+  const settingLabel = (key) => T('set_' + key.replace('.', '_'));
+  const ENDPOINT_HINTS = { anthropic: 'https://api.anthropic.com', ollama: 'http://ollama:11434', openai: 'http://192.168.1.20:8000/v1' };
+  const MODEL_HINTS = { anthropic: 'claude-opus-5-5', ollama: 'qwen2.5:7b', openai: 'llama-3.1-8b-instruct' };
+
+  $('cp-server-open').addEventListener('click', () => openServer());
+
+  async function openServer(quiet) {
+    state.page = 'server';
+    $('cp-owner').hidden = true;
+    $('cp-empty').hidden = true;
+    $('cp-serverview').hidden = false;
+    $('cp-server-open').classList.add('on');
+    state.owner = null;
+    renderCharacters();
+    try {
+      state.server = await api('GET', '/api/companions/server');
+    } catch (err) {
+      if (!quiet) toast(errorText(err), true);
+      return;
+    }
+    state.me.providers = state.server.providers.map((p) => ({ id: p.id, name: p.name, model: p.model, enabled: p.enabled }));
+    renderServer();
+  }
+
+  async function changeSetting(key, value, reset) {
+    const done = await run(() => api('POST', '/api/companions/server/settings', reset ? { reset: [key] } : { set: { [key]: value } }), T('saved'));
+    if (done) openServer(true);
+  }
+
+  function settingControl(s) {
+    const stored = s.stored ? h('button', { type: 'button', class: 'cp-link small', title: T('setting_reset_hint'), onclick: () => changeSetting(s.key, null, true) }, T('setting_reset')) : null;
+    if (s.type === 'b')
+      return h('div', { class: 'cp-setting' }, toggle(settingLabel(s.key), s.value === '1', (on) => changeSetting(s.key, on)), stored);
+    const input = h('input', { type: 'number', value: s.value, min: s.min, max: s.max, step: s.type === 'f' ? '0.5' : '1',
+      onchange: (e) => changeSetting(s.key, e.target.value) });
+    return h('label', { class: 'cp-setting' }, h('span', null, settingLabel(s.key), ' ', h('small', { class: 'muted' }, `(${s.min}–${s.max})`)), input, stored);
+  }
+
+  function renderServer() {
+    const panel = $('cp-serverview');
+    const sv = state.server;
+    const byKey = Object.fromEntries(sv.settings.map((s) => [s.key, s]));
+    const info = sv.info || {};
+    const q = sv.queue || {};
+
+    const status = h('div', { class: 'card cp-server-status' },
+      h('div', { class: 'label' }, T('server_status')),
+      info.offline ? h('p', { class: 'muted' }, T('server_offline')) : h('div', { class: 'cp-stats' },
+        h('div', null, h('strong', null, `${info.online} / ${info.max_total}`), h('small', { class: 'muted' }, T('stat_online'))),
+        h('div', null, h('strong', null, String(info.raid_size)), h('small', { class: 'muted' }, T('stat_raid'))),
+        h('div', null, h('strong', null, info.llm ? T('on') : T('off')), h('small', { class: 'muted' }, T('stat_brain'))),
+        h('div', null, h('strong', null, String(q.answered || 0)), h('small', { class: 'muted' }, T('stat_answered'))),
+        h('div', null, h('strong', null, String(q.waiting || 0)), h('small', { class: 'muted' }, T('stat_waiting'))),
+        h('div', null, h('strong', null, String(q.expired || 0)), h('small', { class: 'muted' }, T('stat_expired')))),
+      sv.tables_missing ? h('p', { class: 'muted small' }, T('err_ai_tables_missing')) : null);
+
+    const settings = SETTING_GROUPS.map(([title, keys]) => h('div', { class: 'card' },
+      h('div', { class: 'label' }, T(title)),
+      title === 'set_group_ai' ? h('p', { class: 'muted small' }, T('set_ai_hint')) : null,
+      title === 'set_group_limits' ? h('p', { class: 'muted small' }, T('set_limits_hint')) : null,
+      h('div', { class: 'cp-grid' }, keys.filter((k) => byKey[k]).map((k) => settingControl(byKey[k])))));
+
+    panel.replaceChildren(status, ...settings, providersCard(), workersCard());
+  }
+
+  function providerRow(p) {
+    const worker = p.worker_id ? (p.worker_name || `#${p.worker_id}`) : T('this_server');
+    return h('li', { class: 'cp-provider' + (p.enabled ? '' : ' off') },
+      h('div', null,
+        h('strong', null, p.name), ' ', h('small', { class: 'cp-tag' }, T('kind_' + p.kind)),
+        h('div', { class: 'muted small' }, [p.model, p.endpoint, T('runs_on', { where: worker }),
+          T('provider_slots', { n: p.max_concurrent, w: p.weight })].filter(Boolean).join(' · ')),
+        h('div', { class: 'muted small' }, T('provider_stats', { ok: p.answered, failed: p.failed, ms: p.avg_ms, last: p.last_ok || '—' })),
+        p.last_error ? h('div', { class: 'small cp-error-text' }, p.last_error) : null),
+      h('div', { class: 'cp-row' },
+        toggle(T('enabled'), p.enabled, (on) => saveProvider({ ...p, api_key: p.has_key ? '********' : '', enabled: on })),
+        h('button', { type: 'button', class: 'cp-btn', disabled: !p.enabled, onclick: (e) => testProvider(p, e.target) }, T('test')),
+        h('button', { type: 'button', class: 'cp-btn', onclick: () => { state.providerForm = { ...p, api_key: p.has_key ? '********' : '' }; renderServer(); } }, T('edit')),
+        h('button', { type: 'button', class: 'cp-btn danger', onclick: () => deleteProvider(p) }, T('delete'))));
+  }
+
+  function providersCard() {
+    const sv = state.server;
+    return h('div', { class: 'card' },
+      h('div', { class: 'label' }, T('providers')),
+      h('p', { class: 'muted small' }, T('providers_hint')),
+      sv.providers.length ? h('ul', { class: 'cp-list' }, sv.providers.map(providerRow)) : h('p', { class: 'muted' }, T('no_providers')),
+      state.providerForm ? providerFormView() : h('div', { class: 'cp-row' },
+        h('button', { type: 'button', class: 'cp-btn primary', onclick: () => {
+          state.providerForm = { kind: 'ollama', name: '', endpoint: '', model: '', api_key: '', weight: 1, max_concurrent: 2, timeout_s: 30,
+            worker_id: 0, options: '', enabled: true };
+          renderServer();
+        } }, T('add_provider'))));
+  }
+
+  function providerFormView() {
+    const f = state.providerForm;
+    const field = (key, attrs) => h('input', { ...attrs, value: f[key] === undefined ? '' : f[key], oninput: (e) => { f[key] = e.target.value; } });
+    const workers = [['0', T('this_server')], ...state.server.workers.map((w) => [String(w.id), w.name])];
+    return h('form', { class: 'cp-provider-form', onsubmit: async (e) => { e.preventDefault(); if (await saveProvider(f)) { state.providerForm = null; openServer(true); } } },
+      h('div', { class: 'label' }, f.id ? T('edit_provider', { name: f.name }) : T('add_provider')),
+      h('div', { class: 'cp-grid' },
+        h('label', null, T('provider_name'), field('name', { maxlength: 64, required: true, placeholder: 'GPU box' })),
+        h('label', null, T('provider_kind'), select(['ollama', 'openai', 'anthropic'].map((k) => [k, T('kind_' + k)]), f.kind, (v) => { f.kind = v; renderServer(); })),
+        h('label', null, T('provider_endpoint'), field('endpoint', { maxlength: 255, placeholder: ENDPOINT_HINTS[f.kind] })),
+        h('label', null, T('provider_model'), field('model', { maxlength: 128, required: true, placeholder: MODEL_HINTS[f.kind] })),
+        h('label', null, T('provider_key'), field('api_key', { type: 'password', maxlength: 255, autocomplete: 'off', placeholder: f.kind === 'anthropic' ? 'ANTHROPIC_API_KEY' : T('optional') })),
+        h('label', null, T('provider_worker'), select(workers, String(f.worker_id || 0), (v) => { f.worker_id = Number(v); })),
+        h('label', null, T('provider_weight'), field('weight', { type: 'number', min: 1, max: 100 })),
+        h('label', null, T('provider_concurrent'), field('max_concurrent', { type: 'number', min: 1, max: 64 })),
+        h('label', null, T('provider_timeout'), field('timeout_s', { type: 'number', min: 5, max: 300 }))),
+      h('label', { class: 'cp-wide' }, T('provider_options'), h('textarea', { rows: 2, maxlength: 2000, placeholder: f.kind === 'anthropic' ? '{"effort": "low"}' : '{"temperature": 0.7, "num_ctx": 8192}',
+        oninput: (e) => { f.options = e.target.value; } }, f.options || '')),
+      h('p', { class: 'muted small' }, T('provider_hint_' + f.kind)),
+      h('div', { class: 'cp-row' },
+        h('button', { type: 'submit', class: 'cp-btn primary' }, T('save')),
+        h('button', { type: 'button', class: 'cp-btn', onclick: () => { state.providerForm = null; renderServer(); } }, T('cancel'))));
+  }
+
+  async function saveProvider(p) {
+    const body = { ...p, weight: Number(p.weight), max_concurrent: Number(p.max_concurrent), timeout_s: Number(p.timeout_s) };
+    const done = await run(() => api('POST', '/api/companions/server/providers', body), T('provider_saved', { name: p.name }));
+    if (done && !state.providerForm) openServer(true);
+    return done;
+  }
+
+  async function deleteProvider(p) {
+    if (!confirm(T('confirm_delete_provider', { name: p.name }))) return;
+    if (await run(() => api('DELETE', `/api/companions/server/providers/${p.id}`), T('provider_deleted'))) openServer(true);
+  }
+
+  async function testProvider(p, button) {
+    button.disabled = true;
+    button.textContent = T('testing');
+    try {
+      const r = await api('POST', `/api/companions/server/providers/${p.id}/test`);
+      toast(T('test_ok', { ms: r.ms, say: r.say || '…', brain: r.brain === 'local' ? T('this_server') : r.brain }));
+    } catch (err) {
+      toast(errorText(err), true);
+    }
+    openServer(true);
+  }
+
+  function workersCard() {
+    const sv = state.server;
+    const name = h('input', { type: 'text', maxlength: 64, placeholder: T('worker_name') });
+    const origin = window.location.origin;
+    return h('div', { class: 'card' },
+      h('div', { class: 'label' }, T('workers')),
+      h('p', { class: 'muted small' }, T('workers_hint')),
+      sv.workers.length ? h('ul', { class: 'cp-list' }, sv.workers.map((w) => h('li', null,
+        h('div', null, h('span', { class: 'dot ' + (w.online ? 'ok' : '') }), ' ', h('strong', null, w.name),
+          h('div', { class: 'muted small' }, w.last_seen ? T('worker_seen', { when: w.last_seen, info: w.info }) : T('worker_never'))),
+        h('button', { type: 'button', class: 'cp-btn danger', onclick: async () => {
+          if (!confirm(T('confirm_delete_worker', { name: w.name }))) return;
+          if (await run(() => api('DELETE', `/api/companions/server/workers/${w.id}`), T('worker_deleted'))) openServer(true);
+        } }, T('delete'))))) : h('p', { class: 'muted' }, T('no_workers')),
+      state.newToken ? h('div', { class: 'cp-token' },
+        h('p', null, T('worker_token_once')),
+        h('pre', null, `docker build -t forever-companions-brain docker/companions/brain\n`
+          + `docker run -d --name companions-brain --restart unless-stopped --add-host=host.docker.internal:host-gateway \\\n`
+          + `  -e BRAIN_URL=${origin} -e BRAIN_TOKEN=${state.newToken} forever-companions-brain`),
+        h('p', { class: 'muted small' }, T('worker_after')),
+        h('button', { type: 'button', class: 'cp-btn', onclick: () => { state.newToken = null; renderServer(); } }, T('done'))) : null,
+      h('form', { class: 'cp-row', onsubmit: async (e) => {
+        e.preventDefault();
+        if (!name.value.trim()) return;
+        const r = await run(() => api('POST', '/api/companions/server/workers', { name: name.value.trim() }), T('worker_created'));
+        if (r) { state.newToken = r.token; openServer(true); }
+      } }, name, h('button', { type: 'submit', class: 'cp-btn primary' }, T('add_worker'))));
+  }
+
+  start();
+})();

@@ -1,8 +1,0 @@
-diff --git a/src/server/game/Entities/Player/Player.cpp b/src/server/game/Entities/Player/Player.cpp
---- a/src/server/game/Entities/Player/Player.cpp
-+++ b/src/server/game/Entities/Player/Player.cpp
-@@ -10234,2 +10234,3 @@
--    bool const preferDrawable = GetSession() && GetSession()->IsBot();
-+    // The current forever branch does not expose a WorldSession::IsBot() API.
-+    bool const preferDrawable = false;
-     if (uint32 current = GetAmmoId())

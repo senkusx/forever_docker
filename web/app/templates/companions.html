@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="{{ lang }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>{{ server_name }} · Companions</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css?v={{ asset_version }}">
+  <link rel="stylesheet" href="/static/companions.css?v={{ asset_version }}">
+</head>
+<body class="cp">
+  <div class="backdrop" aria-hidden="true"><div class="bg scene-2 on"></div><div class="shade"></div></div>
+
+  <header class="topbar">
+    <a href="/" class="top-logo"><strong>FOREVER</strong><small>{{ texts.cp_subtitle }}</small></a>
+    <nav><a href="/">{{ texts.cp_back_site }}</a></nav>
+    <div class="langs" aria-label="Language">
+      {% for code, name in languages.items() %}<a href="?lang={{ code }}"{% if code == lang %} class="on" aria-current="true"{% endif %} hreflang="{{ code }}">{{ name }}</a>{% endfor %}
+    </div>
+    <div class="cp-user" id="cp-user" hidden><span id="cp-email"></span><button type="button" class="cp-link" id="cp-logout">{{ texts.cp_logout }}</button></div>
+  </header>
+
+  <main class="cp-main">
+    <section class="cp-login card" id="cp-login" hidden>
+      <h1>{{ texts.cp_title }}</h1>
+      <p class="muted">{{ texts.cp_login_hint }}</p>
+      <form id="cp-login-form" autocomplete="on">
+        <label>{{ texts.cp_email }}<input type="email" name="email" autocomplete="username" required></label>
+        <label>{{ texts.cp_password }}<input type="password" name="password" autocomplete="current-password" required></label>
+        <button type="submit" class="cp-btn primary">{{ texts.cp_login }}</button>
+        <p class="cp-error" id="cp-login-error" role="alert"></p>
+      </form>
+    </section>
+
+    <section class="cp-app" id="cp-app" hidden>
+      <aside class="cp-side card">
+        <div class="label">{{ texts.cp_characters }}</div>
+        <ul class="cp-chars" id="cp-chars"></ul>
+        <div class="cp-server muted" id="cp-server"></div>
+        <button type="button" class="cp-btn cp-server-btn" id="cp-server-open">{{ texts.cp_server_page }}</button>
+      </aside>
+      <div class="cp-content">
+        <div class="cp-empty card" id="cp-empty">{{ texts.cp_pick_character }}</div>
+        <div class="cp-serverview" id="cp-serverview" hidden></div>
+        <div id="cp-owner" hidden>
+          <div class="cp-owner-head card">
+            <div><h2 id="cp-owner-name"></h2><div class="muted" id="cp-owner-info"></div></div>
+            <div class="cp-tabs" role="tablist">
+              <button type="button" class="cp-tab on" data-tab="party" role="tab">{{ texts.cp_tab_party }}</button>
+              <button type="button" class="cp-tab" data-tab="create" role="tab">{{ texts.cp_tab_create }}</button>
+              <button type="button" class="cp-tab" data-tab="templates" role="tab">{{ texts.cp_tab_templates }}</button>
+            </div>
+          </div>
+          <div class="cp-panel" id="tab-party"></div>
+          <div class="cp-panel" id="tab-create" hidden></div>
+          <div class="cp-panel" id="tab-templates" hidden></div>
+        </div>
+      </div>
+    </section>
+  </main>
+  <div class="cp-toast" id="cp-toast" role="status" aria-live="polite"></div>
+
+  <script>window.CP_TEXTS = {{ js_texts | tojson }}; window.CP_LANG = {{ lang | tojson }};</script>
+  <script src="/static/companions.js?v={{ asset_version }}"></script>
+</body>
+</html>

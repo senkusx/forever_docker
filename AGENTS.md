@@ -10,10 +10,11 @@ based on the [`forever` branch of TrinityCore](https://github.com/advocaite/Trin
 |---|---|
 | `Dockerfile`, `docker/` | Builds TrinityCore from the forever branch, applies `docker/patches/*.patch`, writes the configs at start (`docker/entrypoint.sh`). |
 | `docker-compose.yml` | mysql, worldserver, bnetserver, web (website), extractor (profile `tools`). `docker-compose.traefik.yml` publishes the website through Traefik. |
-| `web/` | Website (FastAPI + Jinja): account sign-up through worldserver SOAP, status, launcher downloads, 4 languages (`web/app/i18n.py`). |
+| `web/` | Website (FastAPI + Jinja): account sign-up through worldserver SOAP, status, launcher downloads, 4 languages (`web/app/i18n.py`); companions panel `/companions` (`companions.py`, texts in `companions_i18n.py`). |
 | `app/` | Launcher (Tauri 2: Rust in `app/src-tauri/src`, UI in `app/ui`), 4 languages (`i18n.rs`, `ui/i18n.js`). |
 | `scripts/` | `gen-certs.sh` (CA + server certificate), `upload-dokploy.sh`, `pkt-dump.py` (packet log reader). |
-| `docs/` | `DOKPLOY.md` (deployment), `MACOS.md` (how the macOS launcher works). |
+| `docker/companions/` | Companion bots: the C++ module (`src/`, copied into scripts/Custom/Companions) and the optional LLM `brain/` (Claude, Ollama, OpenAI-compatible; local or remote worker via `web/app/companions_ai.py`). |
+| `docs/` | `DOKPLOY.md` (deployment), `MACOS.md` (how the macOS launcher works), `COMPANIONS.md` (bots). |
 
 ## Helping someone run their server
 
