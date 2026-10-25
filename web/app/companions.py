@@ -58,6 +58,7 @@ GROUP_KEYS = ('llm', 'aggression', 'stance', 'quality', 'provider')
 
 _attempts: dict[str, deque] = defaultdict(deque)
 _looks_cache: dict[tuple, dict] = {}
+_builds_cache: dict = {}
 
 
 class PanelError(Exception):
@@ -379,12 +380,20 @@ def build_router(db, soap_command, client_ip, templates, page_context):
                     info.update({'max_total': int(parts[6]), 'raid_size': int(parts[7]), 'online_total': int(parts[8])})
         except PanelError:
             info = {'offline': True}
+        # the meta talent build of each tree, from the worldserver (one list, kept there)
+        if not _builds_cache:
+            try:
+                for parts in await admin('builds'):
+                    if parts[0] == 'BUILD' and len(parts) >= 5:
+                        _builds_cache.setdefault(int(parts[1]), []).append({'tree': int(parts[2]), 'points': parts[3]})
+            except PanelError:
+                pass
         try:
             providers = [{'id': p['id'], 'name': p['name'], 'model': p['model'], 'enabled': p['enabled']}
                          for p in await asyncio.to_thread(ai['providers'])]
         except PanelError:
             providers = []
-        return {'email': session['email'], 'characters': characters, 'server': info, 'providers': providers,
+        return {'email': session['email'], 'characters': characters, 'server': info, 'providers': providers, 'builds': _builds_cache,
                 'classes': CLASSES, 'races': RACES, 'specs': SPECS, 'qualities': QUALITIES, 'roles': list(ROLE_WORDS)}
 
     @router.get('/api/companions/owner/{owner}')

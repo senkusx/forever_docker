@@ -12,6 +12,8 @@
 #include "DatabaseEnv.h"
 #include "GameTime.h"
 #include "Group.h"
+#include "Spell.h"
+#include "Corpse.h"
 #include "GroupMgr.h"
 #include "Log.h"
 #include "LoginQueryHolder.h"
@@ -453,6 +455,7 @@ namespace Companions
                 // finish a transfer first: logging out in the middle of one loses the player
                 while (bot->IsBeingTeleportedFar())
                     session->HandleMoveWorldportAck();
+                InterruptGroupCastsOn(bot);
                 if (bot->GetGroup())
                     bot->RemoveFromGroup(GROUP_REMOVEMETHOD_LEAVE);
                 TC_LOG_INFO("server.worldserver", "Companions: {} leaves", bot->GetName());
@@ -539,6 +542,7 @@ namespace Companions
         if (bot->GetMap() == owner->GetMap() && bot->GetDistance(owner) < 30.0f)
             return;
 
+        InterruptGroupCastsOn(bot);
         if (!bot->IsAlive())
         {
             bot->ResurrectPlayer(0.5f);
@@ -808,6 +812,46 @@ namespace Companions
     {
         auto itr = _interruptClaims.find(caster);
         return itr == _interruptClaims.end() || itr->second.first == bot || itr->second.second <= _msTime;
+    }
+
+    namespace
+    {
+        // the spell of a group member aimed at this player or at its corpse
+        template <typename Fn>
+        void ForGroupCastsOn(Player* target, Fn&& fn)
+        {
+            Group* group = target->GetGroup();
+            if (!group)
+                return;
+            ObjectGuid corpse;
+            if (Corpse* body = target->GetCorpse())
+                corpse = body->GetGUID();
+            for (GroupReference const& ref : group->GetMembers())
+            {
+                Player* member = ref.GetSource();
+                if (!member || member == target || !member->IsInWorld())
+                    continue;
+                for (CurrentSpellTypes type : { CURRENT_GENERIC_SPELL, CURRENT_CHANNELED_SPELL })
+                    if (Spell* spell = member->GetCurrentSpell(type))
+                    {
+                        ObjectGuid aimed = spell->m_targets.GetObjectTargetGUID();
+                        if (aimed == target->GetGUID() || (!corpse.IsEmpty() && aimed == corpse) || spell->m_targets.GetUnitTargetGUID() == target->GetGUID())
+                            fn(member, type);
+                    }
+            }
+        }
+    }
+
+    bool CompanionMgr::IsTargetOfGroupCast(Player* target)
+    {
+        bool found = false;
+        ForGroupCastsOn(target, [&found](Player*, CurrentSpellTypes) { found = true; });
+        return found;
+    }
+
+    void CompanionMgr::InterruptGroupCastsOn(Player* target)
+    {
+        ForGroupCastsOn(target, [](Player* member, CurrentSpellTypes type) { member->InterruptSpell(type); });
     }
 
     void CompanionMgr::ClaimCrowdControl(ObjectGuid enemy, ObjectGuid bot, uint32 durationMs)

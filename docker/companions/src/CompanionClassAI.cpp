@@ -243,12 +243,17 @@ namespace Companions
                 if (_ai.HasShield() && target->GetVictim() == Me() && _ai.Rage() >= 10 && !Has(Me(), "shield block")
                     && (_ai.IsBossFight() || _ai.HealthPct() < 70.0f) && Cast("shield block"))
                     return true;
+                // area hits never on a crowd controlled enemy
+                bool controlledNear = _ai.AnyCrowdControlledNear(Me()->GetPosition(), 10.0f);
                 if (Cast("shield slam", target) || Cast("revenge", target))
+                    return true;
+                // a pack: Thunder Clap and Demoralizing Shout put threat on all of them
+                if (nearby >= 2 && !controlledNear && !Has(target, "thunder clap") && Cast("thunder clap"))
                     return true;
                 if ((nearby >= 2 || _ai.IsBossFight()) && !Has(target, "demoralizing shout") && _ai.Rage() >= 10 && Cast("demoralizing shout"))
                     return true;
-                // area hits never on a crowd controlled enemy
-                bool controlledNear = _ai.AnyCrowdControlledNear(Me()->GetPosition(), 10.0f);
+                if (_ai.Rage() >= 25 && Cast("concussion blow", target))
+                    return true;
                 if (nearby >= 3 && !controlledNear && Cast("thunder clap"))
                     return true;
                 // the rage dump does not take the global cooldown: Sunder goes on in between
@@ -357,7 +362,11 @@ namespace Companions
 
         bool Resurrect(Player* dead) override { return Cast("redemption", dead); }
         bool Interrupt(Unit* caster) override { return Cast("hammer of justice", caster); }
-        bool Taunt(Unit* target) override { return MyRole() == Role::Tank && Cast("hand of reckoning", target); }
+        // no taunt for paladins: Judgement and Holy Strike on the loose one
+        bool Taunt(Unit* target) override
+        {
+            return MyRole() == Role::Tank && (Cast("hand of reckoning", target) || Cast("judgement", target) || (_ai.InMelee(target) && Cast("holy strike", target)));
+        }
 
         bool Emergency() override
         {
@@ -374,21 +383,43 @@ namespace Companions
         {
             if (target->GetHealthPct() < 20.0f && Cast("hammer of wrath", target))
                 return true;
-            if ((IsCreatureType(target, CREATURE_TYPE_UNDEAD) || IsCreatureType(target, CREATURE_TYPE_DEMON)) && _ai.ManaPct() > 40.0f && Cast("exorcism", target))
-                return true;
+            bool unholy = IsCreatureType(target, CREATURE_TYPE_UNDEAD) || IsCreatureType(target, CREATURE_TYPE_DEMON);
             if (MyRole() == Role::Tank)
-            {
-                if (_ai.EnemiesNear(Me()->GetPosition(), 8.0f) >= 2 && _ai.ManaPct() > 40.0f && !_ai.AnyCrowdControlledNear(Me()->GetPosition(), 10.0f)
-                    && Cast("consecration"))
-                    return true;
-                if (Buff("holy shield", Me()))
-                    return true;
-            }
+                return TankRotation(target, unholy);
+            if (unholy && _ai.ManaPct() > 40.0f && Cast("exorcism", target))
+                return true;
             if (!HasSeal() && MyRole() != Role::Healer)
                 return PutSeal();
             if (_ai.InMelee(target) && _ai.ManaPct() > 40.0f && Cast("holy strike", target))
                 return true;
             if (HasSeal() && _ai.InMelee(target) && _ai.ManaPct() > 30.0f && Cast("judgement", target))
+                return true;
+            return false;
+        }
+
+        // threat is holy damage: Righteous Fury, Seal of Fury, Judgement on cooldown, Consecration under the pack,
+        // Holy Shield and Holy Strike; Holy Wrath and Exorcism on undead and demons
+        bool TankRotation(Unit* target, bool unholy)
+        {
+            if (!Has(Me(), "righteous fury") && Cast("righteous fury"))
+                return true;
+            if (!HasSeal())
+                return PutSeal();
+            bool controlledNear = _ai.AnyCrowdControlledNear(Me()->GetPosition(), 10.0f);
+            uint32 nearby = _ai.EnemiesNear(Me()->GetPosition(), 8.0f);
+            if (_ai.IsTargetedByEnemy() && !Has(Me(), "holy shield") && Cast("holy shield"))
+                return true;
+            if (_ai.InMelee(target) && Cast("judgement", target))
+                return true;
+            if (_ai.InMelee(target) && !controlledNear && _ai.ManaPct() > 20.0f && Cast("consecration"))
+                return true;
+            if (_ai.InMelee(target) && Cast("holy strike", target))
+                return true;
+            if (nearby >= 2 && !controlledNear && unholy && _ai.ManaPct() > 30.0f && Cast("holy wrath"))
+                return true;
+            if (unholy && _ai.ManaPct() > 40.0f && Cast("exorcism", target))
+                return true;
+            if (_ai.HealthPct() < 70.0f && _ai.IsTargetedByEnemy() && Cast("templar's bulwark"))
                 return true;
             return false;
         }
@@ -1096,15 +1127,23 @@ namespace Companions
                 if (_ai.Rage() < 10 && _ai.HealthPct() > 60.0f && Cast("enrage"))
                     return true;
                 uint32 nearby = _ai.EnemiesNear(Me()->GetPosition(), 8.0f);
-                if (nearby >= 2 && !Has(target, "demoralizing roar") && Cast("demoralizing roar"))
+                bool controlledNear = _ai.AnyCrowdControlledNear(Me()->GetPosition(), 10.0f);
+                if ((nearby >= 2 || _ai.IsBossFight()) && !Has(target, "demoralizing roar") && Cast("demoralizing roar"))
                     return true;
-                if (!Has(target, "faerie fire (feral)") && Cast("faerie fire (feral)", target))
+                if (!HasAnyAura(target, { "faerie fire (feral)", "faerie fire" }) && (Cast("faerie fire (feral)", target) || Cast("faerie fire", target)))
                     return true;
-                if (nearby >= 2 && !_ai.AnyCrowdControlledNear(Me()->GetPosition(), 10.0f) && Cast("swipe"))
+                // a pack: Swipe on all; one: Lacerate stacks, then Swipe as the filler (Forever bears have no Maul)
+                if (nearby >= 2 && !controlledNear && Cast("swipe", target))
                     return true;
-                if ((_ai.AuraStacks(target, "lacerate", true) < 5 || _ai.AuraRemaining(target, "lacerate", true) < 4000) && Cast("lacerate", target))
+                // in a pack the rage goes to Swipe: Lacerate only with plenty to spare
+                if ((nearby < 2 || controlledNear || _ai.Rage() >= 35)
+                    && (_ai.AuraStacks(target, "lacerate", true) < 5 || _ai.AuraRemaining(target, "lacerate", true) < 4000) && Cast("lacerate", target))
                     return true;
-                return !NextSwingQueued() && Cast("maul", target);
+                if (!NextSwingQueued() && Knows("maul") && Cast("maul", target))
+                    return true;
+                if (Cast("primal bite", target))
+                    return true;
+                return !controlledNear && _ai.Rage() >= 20 && Cast("swipe", target);
             }
 
             if (InForm(FORM_CAT_FORM))

@@ -6,7 +6,10 @@ A server-side AI plays each one in its role:
 
 - **Tank**: leads in front of you. Warriors wait in Battle Stance, charge the pull and switch to Defensive Stance;
   taking threat back comes first (healers first): taunt, the biggest hits when it is on cooldown, Challenging Shout /
-  Roar when several got loose. Shield Slam, Revenge, Sunder, Shield Block, Demoralizing Shout, Thunder Clap, Cleave.
+  Roar when several got loose, and it keeps switching to the enemy it holds by the thinnest margin before a damage
+  dealer pulls it. Warriors: Shield Slam, Revenge, Sunder, Thunder Clap, Demoralizing Shout, Concussion Blow, Shield
+  Block, Cleave. Paladins (no taunt): Righteous Fury, Seal of Fury, Judgement, Consecration, Holy Shield, Holy Strike,
+  Holy Wrath and Exorcism on undead and demons. Bears: Swipe on packs, Lacerate, Demoralizing Roar, Faerie Fire.
 - **Healer**: heals by priority (tank first), picks the cheapest rank that covers the damage, counts the heals
   of the other healers, uses group heals, shields and HoTs, dispels and resurrects.
 - **Damage**: attacks the skull, then the cross, then your target, then the tank's target. On a pull the melee walk
@@ -47,10 +50,13 @@ accounts with GM level 3 get in (`.account set gmlevel <game account> 3 -1` from
 of your characters:
 
 - **Party**: live health, mana, item level, talents and zone of each companion. Give orders to all or one, summon or
-  dismiss, and set the role, talents (main and second tab), gear quality, aggression, stance, AI brain and
-  personality. Rename (while resting), new gear, new talents, delete. Whole-party settings: brain on or off for
+  dismiss, and set the role, talents, gear quality, aggression, stance, AI brain and personality. Changes wait on the
+  card (marked in gold) until **Apply**, which confirms what was applied and when it acts (talents and gear are
+  relearned within seconds for a companion with you). Talents: one meta build per tree, as played in classic raids
+  (for example Fury 17/34/0, Protection 8/5/38, Holy 31/20/0), or the role's one. Rename (while resting), new gear, new talents, delete. Whole-party settings: brain on or off for
   all, aggression, stance and gear quality, plus summon or dismiss all.
-- **New companion**: class, race (only the ones your faction can play), gender, custom or random name, role, talent
+- **New companion**: class, race (the ones your faction can play, with Forever's Undead and Tauren paladins, Dwarf
+  shamans and Troll druids), gender, custom or random name, role, talent
   tabs, gear quality, aggression, stance, brain and personality, and the appearance (each option picked or random).
 - **Templates**: save a companion as a template, and build party templates from them with their group settings.
   Applying a party template brings back the companions made from it, creates the missing ones and can dismiss the

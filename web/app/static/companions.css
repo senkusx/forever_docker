@@ -98,6 +98,11 @@
 .cp-toast.show { opacity: 1; transform: translate(-50%, 0); }
 .cp-toast.bad { border-color: rgba(239, 107, 107, 0.6); color: #ffd2d2; }
 
+/* changes waiting for Apply */
+.cp .card.dirty { border-color: rgba(241, 196, 91, 0.7); box-shadow: 0 0 0 1px rgba(241, 196, 91, 0.25); }
+.cp-applied { margin-top: 8px; padding: 7px 10px; border-radius: 8px; background: rgba(63, 212, 122, 0.12); color: var(--ok); font-size: 13px; font-weight: 600; }
+.cp-apply-row .muted { margin-left: 4px; }
+
 /* server & AI page */
 .cp-server-btn { width: 100%; margin-top: 12px; }
 .cp-server-btn.on { border-color: var(--blue); background: rgba(20, 142, 255, 0.18); }

@@ -30,6 +30,7 @@
 #include "SpellHistory.h"
 #include "SpellInfo.h"
 #include "SpellMgr.h"
+#include "ThreatManager.h"
 #include "WorldSession.h"
 #include <algorithm>
 #include <cmath>
@@ -358,7 +359,17 @@ namespace Companions
         if (_bot->HasUnitState(UNIT_STATE_CHARGING) || _bot->GetMotionMaster()->GetCurrentMovementGeneratorType() == EFFECT_MOTION_TYPE)
             return;
 
-        // casting or channeling: let it finish (melee keeps swinging on its own)
+        // casting or channeling: let it finish (melee keeps swinging on its own); a resurrection whose target came back
+        // or left stops, like a player who sees it
+        if (Spell* spell = _bot->GetCurrentSpell(CURRENT_GENERIC_SPELL))
+            if (spell->GetSpellInfo()->HasEffect(SPELL_EFFECT_RESURRECT) || spell->GetSpellInfo()->HasEffect(SPELL_EFFECT_RESURRECT_WITH_AURA))
+            {
+                ObjectGuid aimed = spell->m_targets.GetObjectTargetGUID();
+                WorldObject* object = aimed.IsEmpty() ? nullptr : ObjectAccessor::GetWorldObject(*_bot, aimed);
+                Unit* unit = object ? object->ToUnit() : nullptr;
+                if (!object || (unit && unit->IsAlive()))
+                    _bot->InterruptSpell(CURRENT_GENERIC_SPELL);
+            }
         if (_bot->IsNonMeleeSpellCast(false, false, true))
         {
             if (Unit* victim = _bot->GetVictim())
@@ -406,6 +417,7 @@ namespace Companions
                     _stuckTimer = 0;
                     Position pos = owner->GetPosition();
                     owner->MovePosition(pos, 2.0f, float(M_PI) + frand(-0.6f, 0.6f));
+                    CompanionMgr::InterruptGroupCastsOn(_bot);
                     _bot->NearTeleportTo(pos);
                     _movement = MoveMode::None;
                 }
@@ -620,10 +632,12 @@ namespace Companions
             }
         }
 
-        if (_deadTimer < delay)
+        // someone is resurrecting this bot right now: wait for it
+        if (_deadTimer < delay || CompanionMgr::IsTargetOfGroupCast(_bot))
             return;
 
         _deadTimer = 0;
+        CompanionMgr::InterruptGroupCastsOn(_bot);
         _bot->ResurrectPlayer(0.5f);
         _bot->SpawnCorpseBones();
         Position pos = owner->GetPosition();
@@ -896,6 +910,34 @@ namespace Companions
         }
         if (loose)
             return loose;
+
+        // before anyone pulls it off: the enemy on me with the thinnest lead over the next one (melee take it at 110%,
+        // casters at 130%), like a tank tabbing through a pack. The current target is kept unless another is clearly worse.
+        Unit* current = _bot->GetVictim();
+        Unit* thin = nullptr;
+        float thinLead = 1.25f;
+        for (Unit* enemy : _view.Enemies)
+        {
+            if (enemy->GetVictim() != _bot || IsCrowdControlTarget(enemy) || !enemy->CanHaveThreatList())
+                continue;
+            float mine = enemy->GetThreatManager().GetThreat(_bot);
+            float next = 0.0f;
+            for (ThreatReference const* ref : enemy->GetThreatManager().GetUnsortedThreatList())
+                if (ref->GetVictim() != _bot)
+                    next = std::max(next, ref->GetThreat());
+            if (next <= 0.0f)
+                continue;
+            float lead = mine / next;
+            if (enemy == current)
+                lead += 0.1f;       // no back and forth for a few points
+            if (lead < thinLead)
+            {
+                thinLead = lead;
+                thin = enemy;
+            }
+        }
+        if (thin)
+            return thin;
 
         if (Group* group = _bot->GetGroup())
         {

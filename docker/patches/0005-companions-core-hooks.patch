@@ -202,6 +202,26 @@ index 9a2e9b9..7dc48af 100644
 +};
 +
  #endif
+diff --git a/src/server/game/Spells/Spell.cpp b/src/server/game/Spells/Spell.cpp
+index 829ffd1..b1452fd 100644
+--- a/src/server/game/Spells/Spell.cpp
++++ b/src/server/game/Spells/Spell.cpp
+@@ -1814,8 +1814,13 @@ void Spell::SelectImplicitCasterObjectTargets(SpellEffectInfo const& spellEffect
+ 
+ void Spell::SelectImplicitTargetObjectTargets(SpellEffectInfo const& spellEffectInfo, SpellImplicitTargetInfo const& targetType, uint32 effMask)
+ {
+-    ASSERT(m_targets.GetObjectTarget() || m_targets.GetItemTarget() || spellEffectInfo.EffectAttributes.HasFlag(SpellEffectAttributes::DontFailSpellOnTargetingFailure),
+-        "Spell::SelectImplicitTargetObjectTargets - no explicit object or item target available!");
++    // the explicit target can leave during the cast (a corpse revived or removed while someone resurrects it):
++    // the spell then has nobody to hit instead of taking the whole server down
++    if (!m_targets.GetObjectTarget() && !m_targets.GetItemTarget() && !spellEffectInfo.EffectAttributes.HasFlag(SpellEffectAttributes::DontFailSpellOnTargetingFailure))
++    {
++        TC_LOG_DEBUG("spells", "Spell::SelectImplicitTargetObjectTargets - spell {} lost its explicit object target", m_spellInfo->Id);
++        return;
++    }
+ 
+     WorldObject* target = m_targets.GetObjectTarget();
+ 
 diff --git a/src/server/scripts/Custom/custom_script_loader.cpp b/src/server/scripts/Custom/custom_script_loader.cpp
 index 977f5fd..63baa90 100644
 --- a/src/server/scripts/Custom/custom_script_loader.cpp

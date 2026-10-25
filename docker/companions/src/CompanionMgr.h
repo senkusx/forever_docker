@@ -87,6 +87,10 @@ namespace Companions
         // only one bot interrupts a given cast
         bool CanInterrupt(ObjectGuid caster, ObjectGuid bot) const;
         void CommitInterrupt(ObjectGuid caster, ObjectGuid bot);
+        // casts of the group aimed at this player or its corpse (a resurrection): checked before a bot revives, teleports or
+        // leaves, so no cast loses its target halfway
+        static bool IsTargetOfGroupCast(Player* target);
+        static void InterruptGroupCastsOn(Player* target);
         // an enemy a bot keeps crowd controlled: the others do not hit it
         void ClaimCrowdControl(ObjectGuid enemy, ObjectGuid bot, uint32 durationMs);
         bool IsCrowdControlClaimed(ObjectGuid enemy, ObjectGuid notBy) const;

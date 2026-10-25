@@ -898,10 +898,12 @@ namespace Companions
                     return { "shield specialization", "anticipation", "improved bloodrage", "improved revenge", "last stand", "defiance",
                         "improved sunder armor", "concussion blow", "focused rage", "bastion", "shield slam", "vanguard", "improved shield wall",
                         "master of defense", "improved thunder clap", "iron will", "improved heroic strike", "deflection", "improved tactical mastery" };
-                return { "cruelty", "unbridled wrath", "booming voice", "lingering rage", "furious precision", "blood craze", "enrage",
-                    "improved execute", "death wish", "flurry", "bloodthirst", "raging blows", "gore drinker", "improved berserker rage",
-                    "improved heroic strike", "deflection", "improved rend", "improved tactical mastery", "anger management", "deep wounds",
-                    "impale", "two-handed weapon specialization" };
+                // the defining talents first: points go to them as soon as their tier opens
+                return { "cruelty", "unbridled wrath", "enrage", "flurry", "bloodthirst", "death wish", "mortal strike", "sweeping strikes",
+                    "impale", "deep wounds", "improved heroic strike", "improved tactical mastery", "anger management",
+                    "two-handed weapon specialization", "dual wield specialization", "improved execute", "booming voice", "blood craze",
+                    "lingering rage", "furious precision", "raging blows", "gore drinker", "improved berserker rage", "improved overpower",
+                    "deflection", "improved rend" };
             case CLASS_PALADIN:
                 if (role == Role::Healer)
                     return { "divine intellect", "spiritual focus", "healing light", "illumination", "divine favor", "holy power", "holy shock",
@@ -967,6 +969,45 @@ namespace Companions
         }
     }
 
+    // tabs in the game's order (checked against the Forever trees): warrior arms/fury/protection, paladin holy/protection/
+    // retribution, hunter beast mastery/marksmanship/survival, rogue assassination/combat/subtlety, priest discipline/holy/
+    // shadow, shaman elemental/enhancement/restoration, mage arcane/fire/frost, warlock affliction/demonology/destruction,
+    // druid balance/feral/restoration
+    CompanionFactory::MetaBuild const* CompanionFactory::MetaBuildFor(uint8 classId, uint32 tree)
+    {
+        static std::map<uint8, std::array<MetaBuild, 3>> const builds =
+        {
+            { CLASS_WARRIOR, {{ { { 31, 20, 0 }, Role::MeleeDps }, { { 17, 34, 0 }, Role::MeleeDps }, { { 8, 5, 38 }, Role::Tank } }} },
+            { CLASS_PALADIN, {{ { { 31, 20, 0 }, Role::Healer }, { { 14, 37, 0 }, Role::Tank }, { { 11, 5, 35 }, Role::MeleeDps } }} },
+            { CLASS_HUNTER,  {{ { { 31, 20, 0 }, Role::RangedDps }, { { 0, 31, 20 }, Role::RangedDps }, { { 0, 20, 31 }, Role::RangedDps } }} },
+            { CLASS_ROGUE,   {{ { { 31, 20, 0 }, Role::MeleeDps }, { { 21, 30, 0 }, Role::MeleeDps }, { { 21, 0, 30 }, Role::MeleeDps } }} },
+            { CLASS_PRIEST,  {{ { { 31, 20, 0 }, Role::Healer }, { { 21, 30, 0 }, Role::Healer }, { { 5, 0, 46 }, Role::RangedDps } }} },
+            { CLASS_SHAMAN,  {{ { { 30, 0, 21 }, Role::RangedDps }, { { 0, 30, 21 }, Role::MeleeDps }, { { 0, 5, 46 }, Role::Healer } }} },
+            { CLASS_MAGE,    {{ { { 31, 0, 20 }, Role::RangedDps }, { { 21, 30, 0 }, Role::RangedDps }, { { 21, 0, 30 }, Role::RangedDps } }} },
+            { CLASS_WARLOCK, {{ { { 30, 0, 21 }, Role::RangedDps }, { { 0, 31, 20 }, Role::RangedDps }, { { 0, 21, 30 }, Role::RangedDps } }} },
+            { CLASS_DRUID,   {{ { { 30, 0, 21 }, Role::RangedDps }, { { 0, 30, 21 }, Role::Tank }, { { 11, 0, 40 }, Role::Healer } }} },
+        };
+        auto itr = builds.find(classId);
+        return itr != builds.end() && tree < 3 ? &itr->second[tree] : nullptr;
+    }
+
+    uint32 CompanionFactory::MetaTreeForRole(uint8 classId, Role role)
+    {
+        switch (classId)
+        {
+            case CLASS_WARRIOR: return role == Role::Tank ? 2 : 1;
+            case CLASS_PALADIN: return role == Role::Tank ? 1 : role == Role::Healer ? 0 : 2;
+            case CLASS_HUNTER:  return 1;
+            case CLASS_ROGUE:   return 1;
+            case CLASS_PRIEST:  return role == Role::Healer ? 1 : 2;
+            case CLASS_SHAMAN:  return role == Role::Healer ? 2 : role == Role::RangedDps ? 0 : 1;
+            case CLASS_MAGE:    return 2;
+            case CLASS_WARLOCK: return 0;
+            case CLASS_DRUID:   return role == Role::Healer ? 2 : role == Role::RangedDps ? 0 : 1;
+            default:            return 0;
+        }
+    }
+
     void CompanionFactory::SpendTalents(Player* bot, Role role)
     {
         if (role == Role::Auto)
@@ -995,7 +1036,7 @@ namespace Companions
             return owned[CLASSIC_TALENT_CURRENCY] - spent[CLASSIC_TALENT_CURRENCY].Total;
         };
 
-        std::vector<std::string_view> priorities = PrioritiesFor(bot->GetClass(), role);
+        std::vector<std::string_view> priorities;
         auto priorityOf = [&](TalentNode const& node) -> uint32
         {
             for (uint32 i = 0; i < priorities.size(); ++i)
@@ -1014,6 +1055,19 @@ namespace Companions
                 if (!index.empty() && std::isdigit(static_cast<unsigned char>(index[0])))
                     chosenTabs.push_back(uint32(std::stoul(index)));
         }
+        // one tree chosen (or none: the role's tree): its meta build, points per tab. Two or more tabs: the older free order.
+        MetaBuild const* meta = nullptr;
+        if (chosenTabs.size() <= 1)
+        {
+            meta = MetaBuildFor(bot->GetClass(), chosenTabs.empty() ? MetaTreeForRole(bot->GetClass(), role) : chosenTabs.front());
+            if (meta)
+            {
+                role = meta->ForRole;   // a Fury build takes Fury's key talents, whatever the bot's role
+                chosenTabs = { 0, 1, 2 };
+                std::stable_sort(chosenTabs.begin(), chosenTabs.end(), [meta](uint32 a, uint32 b) { return meta->Points[a] > meta->Points[b]; });
+            }
+        }
+        priorities = PrioritiesFor(bot->GetClass(), role);
         std::vector<std::pair<uint32, TalentTree const*>> ranked;
         for (TalentTree const& tab : treesItr->second)
         {
@@ -1036,9 +1090,25 @@ namespace Companions
             ranked = std::move(ordered);
         }
 
+        auto treeIndex = [&](TalentTree const* tree) { return uint32(tree - treesItr->second.data()); };
+        auto spentIn = [&](TalentTree const* tree)
+        {
+            uint32 points = 0;
+            for (WorldPackets::Traits::TraitEntry const& entry : config.Entries)
+                for (TalentNode const& node : tree->Nodes)
+                    if (entry.TraitNodeID == node.NodeId && entry.TraitNodeEntryID == node.EntryId)
+                        points += entry.Rank;
+            return points;
+        };
+
         bool changed = false;
+        // with a meta build, each tab first gets its share; what a gated tab cannot take goes to the others in a second pass
+        for (uint32 pass = 0; pass < (meta ? 2u : 1u); ++pass)
         for (auto const& [score, tree] : ranked)
         {
+            uint32 cap = meta && pass == 0 && treeIndex(tree) < 3 ? meta->Points[treeIndex(tree)] : 1000;
+            if (cap == 0)
+                continue;
             std::vector<TalentNode const*> order;
             for (TalentNode const& node : tree->Nodes)
                 order.push_back(&node);
@@ -1051,7 +1121,7 @@ namespace Companions
             });
 
             uint32 guard = 0;
-            while (freePoints() > 0 && ++guard < 200)
+            while (freePoints() > 0 && spentIn(tree) < cap && ++guard < 200)
             {
                 bool spentOne = false;
                 for (TalentNode const* node : order)

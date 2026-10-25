@@ -20,7 +20,8 @@
   }
 
   const state = { me: null, owner: null, view: null, templates: { bots: [], parties: [] }, tab: 'party', form: null, looks: {}, timer: null,
-    page: 'owner', server: null, providerForm: null, newToken: null };
+    page: 'owner', server: null, providerForm: null, newToken: null,
+    drafts: {}, applied: {}, groupDraft: {}, groupApplied: null };
   const $ = (id) => document.getElementById(id);
 
   // ------------------------------------------------------------------ helpers
@@ -101,13 +102,18 @@
     return h('label', { class: 'cp-toggle' }, h('input', { type: 'checkbox', checked, onchange: (e) => onchange(e.target.checked) }), h('span', null, label));
   }
 
-  function specOptions(klass) {
+  // one meta build per talent tree (points per tree from the worldserver), or the role's one
+  function specOptions(klass, current) {
     const specs = (state.me && state.me.specs[klass]) || [];
+    const builds = (state.me && state.me.builds && state.me.builds[klass]) || [];
     const options = [['', T('spec_auto')]];
     specs.forEach((_, i) => {
-      options.push([String(i), specName(klass, i)]);
-      specs.forEach((__, j) => { if (j !== i) options.push([`${i},${j}`, `${specName(klass, i)} + ${specName(klass, j)}`]); });
+      const build = builds.find((b) => b.tree === i);
+      options.push([String(i), build ? T('spec_build', { tree: specName(klass, i), points: build.points }) : specName(klass, i)]);
     });
+    // a combination chosen before the builds existed stays visible until changed
+    if (current && !options.some(([v]) => v === current))
+      options.push([current, T('spec_custom', { tabs: current.split(',').map((i) => specName(klass, Number(i))).join(' + ') })]);
     return options;
   }
 
@@ -188,6 +194,8 @@
     $('cp-empty').hidden = true;
     $('cp-owner').hidden = false;
     state.form = null;
+    state.drafts = {};
+    state.groupDraft = {};
     await refresh();
     clearInterval(state.timer);
     state.timer = setInterval(() => { if (state.page === 'owner' && state.tab === 'party' && !document.hidden) refresh(true); }, 5000);
@@ -239,9 +247,63 @@
     if (done) refresh();
   }
 
-  async function groupSetting(changes) {
-    const done = await run(() => api('POST', `/api/companions/owner/${state.owner}/group`, changes), (r) => T('group_saved', { n: r.bots }));
-    if (done) refresh();
+  // ---- changes wait on the card until Apply: one request, then a clear confirmation of what changed and when it acts
+
+  const FIELD_LABELS = { role: 'role', spec: 'spec', quality: 'gear_quality', aggression: 'aggression', stance: 'stance', llm: 'brain',
+    provider: 'provider', personality: 'personality' };
+  const botValue = (bot, key) => (key === 'personality' ? (bot.personality || '') : key === 'spec' ? (bot.spec || '')
+    : key === 'provider' ? (bot.provider || 0) : key === 'quality' ? (bot.quality || 0) : bot[key]);
+
+  function pendingOf(bot) {
+    const draft = state.drafts[bot.guid] || {};
+    const changes = {};
+    for (const [key, value] of Object.entries(draft))
+      if (String(value) !== String(botValue(bot, key))) changes[key] = value;
+    return changes;
+  }
+
+  async function applyBot(bot, button) {
+    const changes = pendingOf(bot);
+    if (!Object.keys(changes).length) return;
+    button.disabled = true;
+    button.textContent = T('applying');
+    try {
+      await api('PATCH', `/api/companions/owner/${state.owner}/bots/${bot.guid}`, changes);
+      delete state.drafts[bot.guid];
+      const what = Object.keys(changes).map((key) => T(FIELD_LABELS[key])).join(', ');
+      const relearn = bot.live && ('spec' in changes || 'role' in changes || 'quality' in changes);
+      state.applied[bot.guid] = { text: T(relearn ? 'applied_relearn' : bot.live ? 'applied_now' : 'applied_next', { what, name: bot.name }), at: Date.now() };
+      toast(T('applied_bot', { name: bot.name }));
+      await refresh();
+    } catch (err) {
+      toast(errorText(err), true);
+      button.disabled = false;
+      button.textContent = T('apply');
+    }
+  }
+
+  async function applyGroup(button) {
+    const changes = { ...state.groupDraft };
+    if (!Object.keys(changes).length) return;
+    button.disabled = true;
+    button.textContent = T('applying');
+    try {
+      const result = await api('POST', `/api/companions/owner/${state.owner}/group`, changes);
+      state.groupDraft = {};
+      state.groupApplied = { text: T('applied_group', { n: result.bots, what: Object.keys(changes).map((key) => T(FIELD_LABELS[key])).join(', ') }), at: Date.now() };
+      toast(T('applied_group_toast', { n: result.bots }));
+      await refresh();
+    } catch (err) {
+      toast(errorText(err), true);
+      button.disabled = false;
+      button.textContent = T('apply_all');
+    }
+  }
+
+  // a confirmation stays on the card for 20 s, through the 5 s refreshes
+  function appliedLine(entry) {
+    if (!entry || Date.now() - entry.at > 20000) return null;
+    return h('div', { class: 'cp-applied', role: 'status' }, '✓ ', entry.text);
   }
 
   function bar(pct, kind) {
@@ -268,15 +330,29 @@
       h('p', { class: 'muted small' }, T('orders_hint')));
 
     const anyBrain = view.bots.some((b) => b.llm);
-    const group = h('div', { class: 'card cp-group' },
+    const gd = state.groupDraft;
+    const groupApply = h('button', { type: 'button', class: 'cp-btn primary cp-apply', disabled: !Object.keys(gd).length, onclick: (e) => applyGroup(e.target) }, T('apply_all'));
+    const groupNote = h('span', { class: 'muted small' }, Object.keys(gd).length ? T('unsaved') : T('group_hint'));
+    const setGroup = (key, value) => {
+      if (value === '' || value === null) delete state.groupDraft[key]; else state.groupDraft[key] = value;
+      const dirty = Object.keys(state.groupDraft).length > 0;
+      groupApply.disabled = !dirty;
+      groupNote.textContent = dirty ? T('unsaved') : T('group_hint');
+      group.classList.toggle('dirty', dirty);
+    };
+    const group = h('div', { class: 'card cp-group' + (Object.keys(gd).length ? ' dirty' : '') },
       h('div', { class: 'label' }, T('group_settings')),
       h('div', { class: 'cp-row' },
-        toggle(T('brain_all'), anyBrain, (on) => groupSetting({ llm: on })),
-        h('label', null, T('aggression'), select(aggressionOptions(), '', (v) => groupSetting({ aggression: Number(v) }), { 'aria-label': T('aggression') })),
-        h('label', null, T('stance'), select([['0', T('stance_0')], ['1', T('stance_1')]], '', (v) => groupSetting({ stance: Number(v) }))),
-        h('label', null, T('gear_quality'), select(qualityOptions(), '', (v) => groupSetting({ quality: Number(v) }))),
-        hasProviders() ? h('label', null, T('provider'), select([['', '—'], ...providerOptions()], '', (v) => { if (v !== '') groupSetting({ provider: Number(v) }); })) : null),
+        toggle(T('brain_all'), 'llm' in gd ? gd.llm : anyBrain, (on) => setGroup('llm', on)),
+        h('label', null, T('aggression'), select([['', '—'], ...aggressionOptions()], 'aggression' in gd ? String(gd.aggression) : '', (v) => setGroup('aggression', v === '' ? '' : Number(v)), { 'aria-label': T('aggression') })),
+        h('label', null, T('stance'), select([['', '—'], ['0', T('stance_0')], ['1', T('stance_1')]], 'stance' in gd ? String(gd.stance) : '', (v) => setGroup('stance', v === '' ? '' : Number(v)))),
+        h('label', null, T('gear_quality'), select([['', '—'], ...qualityOptions()], 'quality' in gd ? String(gd.quality) : '', (v) => setGroup('quality', v === '' ? '' : Number(v)))),
+        hasProviders() ? h('label', null, T('provider'), select([['', '—'], ...providerOptions()], 'provider' in gd ? String(gd.provider) : '', (v) => setGroup('provider', v === '' ? '' : Number(v)))) : null),
       state.me.server.llm ? null : h('p', { class: 'muted small' }, T('brain_server_off')),
+      h('div', { class: 'cp-row' }, groupApply,
+        h('button', { type: 'button', class: 'cp-btn', hidden: !Object.keys(gd).length, onclick: () => { state.groupDraft = {}; renderParty(); } }, T('discard')),
+        groupNote),
+      appliedLine(state.groupApplied),
       h('div', { class: 'cp-row' },
         h('button', { type: 'button', class: 'cp-btn', disabled: !online || !view.bots.length,
           onclick: async () => { await run(() => api('POST', `/api/companions/owner/${state.owner}/summon-all`, {}), (r) => T('summoned_n', { n: r.done })); setTimeout(() => refresh(true), 2500); } }, T('summon_all')),
@@ -292,11 +368,23 @@
   function botCard(bot, ownerIn) {
     const live = bot.live;
     const status = bot.loading ? T('state_loading') : live ? T('state_' + live.state) : T('state_offline');
-    const specs = specOptions(bot.class);
-    const personality = h('textarea', { rows: 2, maxlength: 250, placeholder: T('personality_placeholder') }, bot.personality || '');
+    const value = (key) => { const draft = state.drafts[bot.guid]; return draft && key in draft ? draft[key] : botValue(bot, key); };
     const rename = h('input', { type: 'text', value: bot.name, maxlength: 12, disabled: !!live || !bot.created, title: bot.created ? T('rename_hint') : T('rename_own') });
 
-    return h('article', { class: 'card cp-bot' + (live ? ' live' : '') },
+    const applyButton = h('button', { type: 'button', class: 'cp-btn primary cp-apply', onclick: (e) => applyBot(bot, e.target) }, T('apply'));
+    const discardButton = h('button', { type: 'button', class: 'cp-btn', onclick: () => { delete state.drafts[bot.guid]; renderParty(); } }, T('discard'));
+    const note = h('span', { class: 'muted small' });
+    const card = h('article', { class: 'card cp-bot' + (live ? ' live' : '') });
+    const refreshState = () => {
+      const dirty = Object.keys(pendingOf(bot)).length > 0;
+      applyButton.disabled = !dirty;
+      discardButton.hidden = !dirty;
+      note.textContent = dirty ? T('unsaved') : '';
+      card.classList.toggle('dirty', dirty);
+    };
+    const set = (key, v) => { (state.drafts[bot.guid] = state.drafts[bot.guid] || {})[key] = v; refreshState(); };
+
+    card.append(...[
       h('header', null,
         h('div', null,
           h('h3', null, bot.name, bot.created ? null : h('small', { class: 'cp-tag' }, T('your_character'))),
@@ -307,15 +395,17 @@
         h('div', { class: 'muted small' }, T('live_line', { ilvl: live.item_level, spells: live.spells, zone: live.zone || '?' })),
         live.talents ? h('div', { class: 'muted small cp-talents' }, live.talents) : null) : null,
       h('div', { class: 'cp-grid' },
-        h('label', null, T('role'), select(roleOptions(), bot.role, (v) => editBot(bot, { role: v }, T('role_saved')))),
-        h('label', null, T('spec'), select(specs, bot.spec || '', (v) => editBot(bot, { spec: v }, live ? T('respec_soon') : T('saved')))),
-        h('label', null, T('gear_quality'), select(qualityOptions(), String(bot.quality || 0), (v) => editBot(bot, { quality: Number(v) }))),
-        h('label', null, T('aggression'), select(aggressionOptions(), String(bot.aggression), (v) => editBot(bot, { aggression: Number(v) }))),
-        h('label', null, T('stance'), select([['0', T('stance_0')], ['1', T('stance_1')]], String(bot.stance), (v) => editBot(bot, { stance: Number(v) }))),
-        h('div', { class: 'cp-check' }, toggle(T('brain'), bot.llm, (on) => editBot(bot, { llm: on }))),
-        hasProviders() && bot.llm ? h('label', null, T('provider'), select(providerOptions(), String(bot.provider || 0), (v) => editBot(bot, { provider: Number(v) }))) : null),
-      h('div', { class: 'cp-row' }, personality,
-        h('button', { type: 'button', class: 'cp-btn', onclick: () => editBot(bot, { personality: personality.value }) }, T('save'))),
+        h('label', null, T('role'), select(roleOptions(), value('role'), (v) => set('role', v))),
+        h('label', null, T('spec'), select(specOptions(bot.class, bot.spec || ''), value('spec'), (v) => set('spec', v))),
+        h('label', null, T('gear_quality'), select(qualityOptions(), String(value('quality')), (v) => set('quality', Number(v)))),
+        h('label', null, T('aggression'), select(aggressionOptions(), String(value('aggression')), (v) => set('aggression', Number(v)))),
+        h('label', null, T('stance'), select([['0', T('stance_0')], ['1', T('stance_1')]], String(value('stance')), (v) => set('stance', Number(v)))),
+        h('div', { class: 'cp-check' }, toggle(T('brain'), value('llm'), (on) => set('llm', on))),
+        hasProviders() ? h('label', null, T('provider'), select(providerOptions(), String(value('provider')), (v) => set('provider', Number(v)))) : null),
+      h('label', { class: 'cp-wide' }, T('personality'),
+        h('textarea', { rows: 2, maxlength: 250, placeholder: T('personality_placeholder'), oninput: (e) => set('personality', e.target.value) }, value('personality'))),
+      h('div', { class: 'cp-row cp-apply-row' }, applyButton, discardButton, note),
+      appliedLine(state.applied[bot.guid]),
       bot.created ? h('div', { class: 'cp-row' }, rename,
         h('button', { type: 'button', class: 'cp-btn', disabled: !!live, onclick: () => editBot(bot, { name: rename.value.trim() }, T('renamed')) }, T('rename'))) : null,
       h('footer', { class: 'cp-row' },
@@ -325,7 +415,9 @@
         h('button', { type: 'button', class: 'cp-btn', disabled: !live, onclick: () => botAction(bot, 'respec') }, T('respec')),
         h('button', { type: 'button', class: 'cp-btn', onclick: () => saveBotTemplate(templateFromBot(bot)) }, T('save_template')),
         h('button', { type: 'button', class: 'cp-btn danger', disabled: !!live, title: bot.created ? null : T('forget_hint'), onclick: () => botAction(bot, 'delete') },
-          bot.created ? T('delete') : T('forget'))));
+          bot.created ? T('delete') : T('forget')))].filter(Boolean));
+    refreshState();
+    return card;
   }
 
   const templateFromBot = (bot) => ({

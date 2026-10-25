@@ -481,6 +481,21 @@ namespace Companions
         return true;
     }
 
+    // .bot admin builds: COMP|BUILD|class|tree|a/b/c|role, the meta build of every talent tree
+    static bool HandleBuilds(ChatHandler* handler)
+    {
+        for (uint8 classId : { CLASS_WARRIOR, CLASS_PALADIN, CLASS_HUNTER, CLASS_ROGUE, CLASS_PRIEST, CLASS_SHAMAN, CLASS_MAGE, CLASS_WARLOCK, CLASS_DRUID })
+            for (uint32 tree = 0; tree < 3; ++tree)
+                if (CompanionFactory::MetaBuild const* meta = CompanionFactory::MetaBuildFor(classId, tree))
+                {
+                    std::ostringstream ss;
+                    ss << "COMP|BUILD|" << uint32(classId) << "|" << tree << "|" << meta->Points[0] << "/" << meta->Points[1] << "/" << meta->Points[2]
+                       << "|" << uint32(meta->ForRole);
+                    handler->SendSysMessage(ss.str());
+                }
+        return true;
+    }
+
     // .bot admin config list: COMP|SET|key|value|type|min|max|stored
     static bool HandleConfigList(ChatHandler* handler)
     {
@@ -538,6 +553,7 @@ namespace Companions
             { "tabs",       HandleTabs,       PERM_ADMIN, Console::Yes },
             { "races",      HandleRaces,      PERM_ADMIN, Console::Yes },
             { "config",     configTable },
+            { "builds",     HandleBuilds,     PERM_ADMIN, Console::Yes },
         };
         return table;
     }
