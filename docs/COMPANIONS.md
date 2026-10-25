@@ -17,7 +17,8 @@ A server-side AI plays each one in its role:
   (casters, hunters), interrupt casts, use AoE only when no crowd-controlled enemy is near, and keep an add out of a
   pack of three or more by themselves (polymorph, banish, hibernate, scare beast), calling it out like players do.
   Hunters feign death and rogues feint when they pull aggro; cooldowns go on bosses or on `burst`.
-- **Everyone**: buffs the group (Fortitude, Arcane Intellect, Mark of the Wild, blessings, totems...), follows you
+- **Everyone**: steps out of fire and other hostile ground effects (Flamestrike, Rain of Fire, Blizzard, Consecration,
+  traps, the area triggers of newer content) at once, even mid-cast, and keeps out of them while they last. Buffs the group (Fortitude, Arcane Intellect, Mark of the Wild, blessings, totems...), follows you
   loosely like players do, each in its part of the group (tank in front, melee beside you, healers and casters a
   little further back), shuffling now and then, calls out what matters (out of mana, low health, adds, a loose moon, someone down, a rare or a
   dangerous elite nearby), mounts when you mount, eats and drinks after fights, accepts resurrections, ready checks and shared
@@ -207,7 +208,8 @@ All of these (but `Enable` and the account) can be changed live in the web panel
 From the worldserver console (`docker compose attach worldserver`) or SOAP, `.bot test` drives a headless stand-in
 owner: `login <character>`, `party <owner> [role]`, `raid <owner> [size]`, `say <owner> <text>` (a party line), `create <owner> <class> [role]`, `go <owner> <map> <x> <y> <z>`,
 `fight <owner>` (attack the nearest enemy), `pull <owner>` (the tank pulls the nearest one), `spawn <owner> <entry>
-[count]` (enemies in front of the group for 5 minutes), `status <owner>`, `order <owner> <order>`, `why <bot>` (what it sees),
+[count]` (enemies in front of the group for 5 minutes), `fire <bot> [spell]` (a hostile ground effect under it), `give <bot>
+<item>` / `equip <bot> <it|name>` (loot decisions), `status <owner>`, `order <owner> <order>`, `why <bot>` (what it sees),
 `spells <bot>`, `kill <bot>`, `logout <owner>`. `why <bot>` also shows where it stands around you and its last casts. Administrators only (the permission of `.server shutdown`).
 
 ## Good to know

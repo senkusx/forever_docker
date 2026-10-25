@@ -512,6 +512,7 @@ namespace Companions
                 { "kill",   HandleTestKill,   rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "give",   HandleTestGive,   rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "equip",  HandleTestEquip,  rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
+                { "fire",   HandleTestFire,   rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
             };
             static ChatCommandTable botTable =
             {
@@ -1152,6 +1153,26 @@ namespace Companions
             return true;
         }
 
+        // .bot test fire <bot> [spell]: a hostile caster drops a ground effect (Flamestrike) under the bot
+        static bool HandleTestFire(ChatHandler* handler, std::string botName, Optional<uint32> spellId)
+        {
+            Player* bot = ObjectAccessor::FindPlayerByName(botName);
+            if (!bot || !sCompanionMgr->GetAI(bot))
+                return true;
+            Position where = bot->GetPosition();
+            Position spot = where;
+            bot->MovePosition(spot, 20.0f, 0.0f);
+            TempSummon* caster = bot->SummonCreature(10477, spot, TEMPSUMMON_TIMED_DESPAWN, 30s);
+            if (!caster)
+                return true;
+            caster->SetReactState(REACT_PASSIVE);
+            caster->SetImmuneToPC(true);
+            caster->SetFaction(14);     // hostile to all
+            caster->CastSpell(where, spellId.value_or(2120), CastSpellExtraArgs(TRIGGERED_FULL_MASK));
+            handler->PSendSysMessage("Companions test: fire under %s at %.1f %.1f", bot->GetName().c_str(), where.GetPositionX(), where.GetPositionY());
+            return true;
+        }
+
         // .bot test equip <bot> <it|name|upgrades>: what the "equip" order answers
         static bool HandleTestEquip(ChatHandler* handler, std::string botName, Tail what)
         {
@@ -1194,8 +1215,8 @@ namespace Companions
                 float angle = Position::NormalizeOrientation(view.Owner->GetAbsoluteAngle(bot) - view.Owner->GetOrientation());
                 if (angle > float(M_PI))
                     angle -= 2.0f * float(M_PI);
-                handler->PSendSysMessage("  role %s, at %.0f degrees, %.1f yards from the owner", RoleName(ai->GetEffectiveRole()),
-                    angle * 180.0f / float(M_PI), bot->GetExactDist2d(view.Owner));
+                handler->PSendSysMessage("  role %s, at %.0f degrees, %.1f yards from the owner, position %.1f %.1f", RoleName(ai->GetEffectiveRole()),
+                    angle * 180.0f / float(M_PI), bot->GetExactDist2d(view.Owner), bot->GetPositionX(), bot->GetPositionY());
             }
             Unit* victim = bot->GetVictim();
             handler->PSendSysMessage("  form %u rage %d, victim %s at %.1f (melee %u), casts: %s", uint32(bot->GetShapeshiftForm()), ai->Rage(),

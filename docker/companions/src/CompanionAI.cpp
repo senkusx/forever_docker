@@ -10,6 +10,9 @@
 #include "CompanionLLM.h"
 #include "CompanionMgr.h"
 #include "Creature.h"
+#include "GameObject.h"
+#include "DynamicObject.h"
+#include "AreaTrigger.h"
 #include "GameTime.h"
 #include "GridNotifiers.h"
 #include "GridNotifiersImpl.h"
@@ -355,6 +358,11 @@ namespace Companions
                 sCompanionFactory->RestockConsumables(_bot);
             }
         }
+
+        // standing in fire (or any hostile ground effect): out first, even in the middle of a cast, like a player who sees the
+        // floor light up
+        if (AvoidGroundEffects())
+            return;
 
         // charging (Charge, Intercept, Feral Charge) or thrown back: any new movement order would fight the effect and stutter
         if (_bot->HasUnitState(UNIT_STATE_CHARGING) || _bot->GetMotionMaster()->GetCurrentMovementGeneratorType() == EFFECT_MOTION_TYPE)
@@ -1183,6 +1191,104 @@ namespace Companions
         return _class->CrowdControl(pick);
     }
 
+    bool CompanionAI::AvoidGroundEffects()
+    {
+        Position center;
+        float radius = 0.0f;
+        uint32 lasts = 8000;
+        bool danger = false;
+
+        // zones it left: forgotten when they end
+        TimePoint now = GameTime::Now();
+        _dangerZones.erase(std::remove_if(_dangerZones.begin(), _dangerZones.end(), [now](DangerZone const& zone) { return zone.Until <= now; }),
+            _dangerZones.end());
+
+        // persistent area spells (Rain of Fire, Blizzard, Consecration, Flamestrike...): their aura on us belongs to a dynamic
+        // object; traps (fire, lava) put theirs from a game object
+        for (auto const& [spellId, application] : _bot->GetAppliedAuras())
+        {
+            Aura const* aura = application->GetBase();
+            if (application->IsPositive())
+                continue;
+            if (aura->GetType() == DYNOBJ_AURA_TYPE)
+            {
+                DynamicObject* area = aura->GetDynobjOwner();
+                Unit* caster = aura->GetCaster();
+                if (!area || (caster && !caster->IsHostileTo(_bot)))
+                    continue;
+                center = area->GetPosition();
+                radius = std::max(area->GetRadius(), 3.0f);
+                lasts = aura->GetDuration() > 0 ? uint32(aura->GetDuration()) : 10000;
+                danger = true;
+                break;
+            }
+            if (aura->GetCasterGUID().IsGameObject())
+                if (GameObject* trap = ObjectAccessor::GetGameObject(*_bot, aura->GetCasterGUID()))
+                {
+                    center = trap->GetPosition();
+                    radius = 5.0f;
+                    danger = true;
+                    break;
+                }
+        }
+        // ground effects of newer content are area triggers
+        if (!danger)
+            for (AreaTrigger* trigger : _bot->GetInsideAreaTriggers())
+            {
+                Unit* caster = trigger->GetCaster();
+                if (!caster || !caster->IsHostileTo(_bot))
+                    continue;
+                center = trigger->GetPosition();
+                radius = std::max(trigger->GetMaxSearchRadius(), 3.0f);
+                danger = true;
+                break;
+            }
+        if (!danger)
+            return false;
+        // remember it, so that following, resting spots and chasing keep out of it while it lasts
+        auto known = std::find_if(_dangerZones.begin(), _dangerZones.end(), [&](DangerZone const& zone) { return zone.Center.GetExactDist2d(center) < 1.0f; });
+        TimePoint until = now + Milliseconds(std::clamp<uint32>(lasts, 2000, 30000));
+        if (known != _dangerZones.end())
+            known->Until = until;
+        else
+            _dangerZones.push_back({ center, radius, until });
+        _loitering = false;
+        if (now < _avoidUntil && _bot->isMoving())
+            return true;    // on its way out
+
+        // the nearest way out: straight away from the middle, else a little to either side; in sight, on the ground
+        float away = center.GetExactDist2d(_bot) > 0.5f ? center.GetAbsoluteAngle(_bot)
+            : (_view.Owner ? center.GetAbsoluteAngle(_view.Owner) : frand(0.0f, 2.0f * float(M_PI)));
+        float const out = radius + 3.0f;
+        Position dest = _bot->GetPosition();
+        for (float turn : { 0.0f, 0.6f, -0.6f, 1.2f, -1.2f, 2.0f, -2.0f, float(M_PI) })
+        {
+            float x = center.GetPositionX() + std::cos(away + turn) * out;
+            float y = center.GetPositionY() + std::sin(away + turn) * out;
+            float z = _bot->GetPositionZ();
+            _bot->UpdateAllowedPositionZ(x, y, z);
+            if (_bot->IsWithinLOS(x, y, z + 1.5f) && std::fabs(z - _bot->GetPositionZ()) < 6.0f)
+            {
+                dest.Relocate(x, y, z);
+                break;
+            }
+        }
+        if (_bot->IsNonMeleeSpellCast(false, false, true))
+            _bot->InterruptNonMeleeSpells(false);
+        _bot->GetMotionMaster()->MovePoint(0, dest);
+        _movement = MoveMode::Point;
+        _avoidUntil = GameTime::Now() + Milliseconds(2500);
+        return true;
+    }
+
+    bool CompanionAI::InDangerZone(Position const& pos, float margin) const
+    {
+        for (DangerZone const& zone : _dangerZones)
+            if (zone.Center.GetExactDist2d(pos) < zone.Radius + margin)
+                return true;
+        return false;
+    }
+
     // the tank goes for a pull: the melee walk with it instead of waiting at the leader's side
     bool CompanionAI::FollowPullingTank()
     {
@@ -1602,6 +1708,18 @@ namespace Companions
         bool melee = role == Role::Tank || role == Role::MeleeDps;
         EngageTarget(target, melee);
 
+        // a ground effect still burning nearby: stay out of it (melee go in only for a target standing outside it)
+        if (!_dangerZones.empty() && (!melee || InDangerZone(target->GetPosition(), 1.0f)))
+        {
+            if (_movement == MoveMode::Chase)
+            {
+                StopMovement();
+                _movement = MoveMode::None;
+            }
+            FaceTarget(target);
+            return;
+        }
+
         // just landed from a charge: the client still shows its end, a new chase right now would make it jump
         if (GameTime::Now() < _chargeSettleUntil)
             return;
@@ -1825,6 +1943,8 @@ namespace Companions
                 continue;
             // a slope or a wall shortened the move: not a spot on the owner's toes
             if (owner->GetExactDist2d(pos) < reach + minDist * 0.75f && attempt < 7)
+                continue;
+            if (InDangerZone(pos, 2.0f) && attempt < 7)
                 continue;
             bool crowded = std::any_of(taken.begin(), taken.end(), [&pos](Position const& p) { return p.GetExactDist2d(pos) < 2.0f; });
             if (crowded && attempt < 7)

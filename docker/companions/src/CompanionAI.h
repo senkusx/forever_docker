@@ -232,6 +232,8 @@ namespace Companions
         // where this bot stands around the owner: tank in front, melee beside, healers and casters behind
         void FormationSlot(bool travelling, float& angle, float& halfWidth, float& minDist, float& maxDist) const;
         bool FollowPullingTank();
+        bool AvoidGroundEffects();      // out of fire, poison clouds and other hostile ground effects
+        bool InDangerZone(Position const& pos, float margin) const;
         void HandleLoot();              // roll Need on upgrades, Pass on the rest; put on what it won
         Item* ScanBags();
         bool AutoCrowdControl(Unit* killTarget);   // a pack: control one add, like a mage sheeps without being asked
@@ -305,6 +307,9 @@ namespace Companions
         ObjectGuid _waitingFor;         // melee waiting for the tank to take this enemy
         TimePoint _ccCheckAt = { };
         TimePoint _chargeSettleUntil = { };
+        TimePoint _avoidUntil = { };
+        struct DangerZone { Position Center; float Radius; TimePoint Until; };
+        std::vector<DangerZone> _dangerZones;   // ground effects it stepped out of, while they last
         uint32 _ccCasts = 0;            // casts on the current assignment: two that do not hold and it gives up
         float _formationSide = 1.0f;    // melee: left or right of the owner
         std::deque<std::pair<TimePoint, std::string>> _recentCasts;
