@@ -49,7 +49,7 @@ namespace Companions
         constexpr int32 CLASSIC_TALENT_CURRENCY = 3820;
         constexpr uint32 SKILL_RIDING_ID = 762;
 
-        // classic race/class combinations (playercreateinfo also lists the later races)
+        // classic race/class combinations (playercreateinfo also lists every race for the other classes)
         struct RaceClasses { uint8 Race; std::vector<uint8> Classes; };
         std::vector<RaceClasses> const ClassicCombos =
         {
@@ -514,8 +514,12 @@ namespace Companions
     std::vector<uint8> CompanionFactory::RacesFor(Team team, uint8 classId) const
     {
         std::vector<uint8> races;
+        // the classic pairs, plus Forever's additions for the hybrid classes (Undead and Tauren paladins, Dwarf shamans,
+        // Troll druids) as its playercreateinfo lists them; the other classes list every race there (retail leftovers)
+        bool forever = classId == CLASS_PALADIN || classId == CLASS_SHAMAN || classId == CLASS_DRUID;
         for (RaceClasses const& combo : ClassicCombos)
-            if ((team == ALLIANCE) == IsAllianceRace(combo.Race) && IsClassicCombo(combo.Race, classId) && sObjectMgr->GetPlayerInfo(combo.Race, classId))
+            if ((team == ALLIANCE) == IsAllianceRace(combo.Race) && (forever || IsClassicCombo(combo.Race, classId))
+                && sObjectMgr->GetPlayerInfo(combo.Race, classId))
                 races.push_back(combo.Race);
         return races;
     }

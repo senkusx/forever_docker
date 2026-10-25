@@ -354,6 +354,10 @@ namespace Companions
             }
         }
 
+        // charging (Charge, Intercept, Feral Charge) or thrown back: any new movement order would fight the effect and stutter
+        if (_bot->HasUnitState(UNIT_STATE_CHARGING) || _bot->GetMotionMaster()->GetCurrentMovementGeneratorType() == EFFECT_MOTION_TYPE)
+            return;
+
         // casting or channeling: let it finish (melee keeps swinging on its own)
         if (_bot->IsNonMeleeSpellCast(false, false, true))
         {
@@ -742,6 +746,7 @@ namespace Companions
     void CompanionAI::OrderCrowdControl(ObjectGuid target)
     {
         _ccTarget = target;
+        _ccCasts = 0;
         _ccSince = GameTime::Now();
         _ccUntil = _ccSince + Seconds(40);
         sCompanionMgr->ClaimCrowdControl(target, _bot->GetGUID(), 5000);   // time to cast it
@@ -751,6 +756,22 @@ namespace Companions
     {
         // a few seconds to cast it: after that, an enemy nobody controls is fair game again
         return _ccTarget == unit->GetGUID() && GameTime::Now() < _ccUntil && Elapsed(_ccSince) < 5000;
+    }
+
+    // someone of the group (players, bots, pets) is hitting it: no point controlling it
+    bool CompanionAI::AttackedByGroup(Unit const* unit) const
+    {
+        for (Player* member : _view.Members)
+        {
+            if (member == _bot)
+                continue;
+            if (member->GetVictim() == unit)
+                return true;
+            if (Unit* pet = member->GetGuardianPet())
+                if (pet->GetVictim() == unit)
+                    return true;
+        }
+        return false;
     }
 
     bool CompanionAI::Bursting() const
@@ -982,10 +1003,15 @@ namespace Companions
         if (!_ccTarget.IsEmpty())
         {
             Unit* cc = GameTime::Now() < _ccUntil ? ObjectAccessor::GetUnit(*_bot, _ccTarget) : nullptr;
-            if (!cc || !IsValidEnemy(cc))
+            // like a player: someone hits it, or it broke twice already, then it dies with the rest
+            if (!cc || !IsValidEnemy(cc) || (!cc->HasBreakableByDamageCrowdControlAura() && (AttackedByGroup(cc) || _ccCasts >= 2)))
+            {
                 _ccTarget.Clear();
+                _ccCasts = 0;
+            }
             else if (!cc->HasBreakableByDamageCrowdControlAura() && _class->CrowdControl(cc))
             {
+                ++_ccCasts;
                 _ccSince = GameTime::Now();
                 sCompanionMgr->ClaimCrowdControl(_ccTarget, _bot->GetGUID(), 5000);
                 return;
@@ -1005,7 +1031,8 @@ namespace Companions
             ObjectGuid moon = group->GetTargetIcon(ICON_MOON);
             if (!moon.IsEmpty())
                 if (Unit* ccTarget = ObjectAccessor::GetUnit(*_bot, moon))
-                    if (IsValidEnemy(ccTarget) && !ccTarget->HasBreakableByDamageCrowdControlAura() && _class->CrowdControl(ccTarget))
+                    if (IsValidEnemy(ccTarget) && !ccTarget->HasBreakableByDamageCrowdControlAura() && !AttackedByGroup(ccTarget)
+                        && _class->CrowdControl(ccTarget))
                         return;
         }
 
@@ -1087,7 +1114,7 @@ namespace Companions
         Unit* pick = nullptr;
         for (Unit* enemy : _view.Enemies)
         {
-            if (enemy == killTarget || enemy == tankTarget || IsCrowdControlTarget(enemy) || enemy->GetHealthPct() < 60.0f
+            if (enemy == killTarget || enemy == tankTarget || IsCrowdControlTarget(enemy) || AttackedByGroup(enemy) || enemy->GetHealthPct() < 90.0f
                 || !_class->CanCrowdControl(enemy) || _bot->GetDistance(enemy) > 30.0f)
                 continue;
             if (Creature* creature = enemy->ToCreature())

@@ -146,6 +146,7 @@ namespace Companions
         ObjectGuid GetPullTarget() const { return _pulling ? _forcedTarget : ObjectGuid::Empty; }
         // an enemy this bot was told to crowd control: the others leave it alone while it does
         bool IsAssignedCrowdControl(Unit const* unit) const;
+        bool AttackedByGroup(Unit const* unit) const;
         std::string RecentCasts() const;    // test harness: what it did lately
 
         // ---- helpers for ClassAI ----
@@ -293,6 +294,7 @@ namespace Companions
         TimePoint _burstUntil = { };
         ObjectGuid _waitingFor;         // melee waiting for the tank to take this enemy
         TimePoint _ccCheckAt = { };
+        uint32 _ccCasts = 0;            // casts on the current assignment: two that do not hold and it gives up
         float _formationSide = 1.0f;    // melee: left or right of the owner
         std::deque<std::pair<TimePoint, std::string>> _recentCasts;
         // situational callouts to the party, like players make them (out of mana, adds, a rare...)

@@ -589,14 +589,16 @@ namespace Companions
             uint32 const tanksWanted = size > 10 ? 2 : 1;
             uint32 const healersWanted = size <= MAX_GROUP_SIZE ? 1 : (size + 4) / 5;
             bool alliance = owner->GetTeam() == ALLIANCE;
+            // Forever gives both factions paladins and shamans: the faction's classic one first, the other in raids
             uint8 const hybrid = alliance ? CLASS_PALADIN : CLASS_SHAMAN;
+            uint8 const otherHybrid = alliance ? CLASS_SHAMAN : CLASS_PALADIN;
             std::vector<std::pair<uint8, Role>> wanted;
-            uint8 const tankClasses[] = { CLASS_WARRIOR, alliance ? CLASS_PALADIN : CLASS_DRUID, CLASS_DRUID };
+            uint8 const tankClasses[] = { CLASS_WARRIOR, CLASS_PALADIN, CLASS_DRUID };
             for (uint32 i = tanks; i < tanksWanted; ++i)
                 wanted.emplace_back(tankClasses[i % 3], Role::Tank);
-            uint8 const healClasses[] = { CLASS_PRIEST, CLASS_DRUID, hybrid, CLASS_PRIEST };
+            uint8 const healClasses[] = { CLASS_PRIEST, CLASS_DRUID, hybrid, CLASS_PRIEST, otherHybrid };
             for (uint32 i = healers; i < healersWanted; ++i)
-                wanted.emplace_back(healClasses[i % 4], Role::Healer);
+                wanted.emplace_back(healClasses[i % 5], Role::Healer);
             static uint8 const dpsClasses[] = { CLASS_MAGE, CLASS_ROGUE, CLASS_HUNTER, CLASS_WARLOCK, CLASS_DRUID, CLASS_WARRIOR };
             for (uint8 classId : dpsClasses)
                 if (std::find(classes.begin(), classes.end(), classId) == classes.end())
@@ -606,8 +608,9 @@ namespace Companions
             // a raid: more of every damage dealer
             for (uint32 i = 0; wanted.size() < size; ++i)
             {
-                uint8 classId = i % 7 == 6 ? hybrid : dpsClasses[i % 7];
-                wanted.emplace_back(classId, classId == hybrid ? Role::MeleeDps : DpsRoleForClass(classId));
+                uint8 classId = i % 8 == 6 ? otherHybrid : i % 8 == 7 ? hybrid : dpsClasses[i % 8];
+                bool isHybrid = classId == CLASS_PALADIN || classId == CLASS_SHAMAN;
+                wanted.emplace_back(classId, isHybrid ? Role::MeleeDps : DpsRoleForClass(classId));
             }
 
             uint32 free = members < size ? size - members : 0;
