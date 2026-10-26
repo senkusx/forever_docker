@@ -1617,7 +1617,7 @@ namespace Companions
             }
             else if (wanted == "upgrades" || wanted == "all" || wanted == "everything")
             {
-                if (sCompanionFactory->IsUpgrade(_bot, item->GetTemplate(), GetEffectiveRole()))
+                if (sCompanionFactory->IsUpgrade(_bot, item, GetEffectiveRole()))
                     candidates.push_back(item);
             }
             else if (ToLower(item->GetTemplate()->GetName(LOCALE_enUS)).find(wanted) != std::string::npos)
@@ -1653,7 +1653,9 @@ namespace Companions
             LootRoll* roll = rolls.front();
             uint32 itemId = roll->GetItemId();
             ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemId);
-            bool need = proto && sCompanionFactory->IsUpgrade(_bot, proto, GetEffectiveRole());
+            // judged with the stats this drop rolled, against what it wears and carries
+            LootItem const* rolled = roll->GetLootItem();
+            bool need = proto && rolled && sCompanionFactory->IsUpgrade(_bot, *rolled, GetEffectiveRole());
             if (need && roll->PlayerVote(_bot, RollVote::Need))
             {
                 _wantedLoot.push_back(itemId);

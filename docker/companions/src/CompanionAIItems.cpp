@@ -184,14 +184,15 @@ namespace Companions
         _tradeBegun.Clear();
         _giveTo.Clear();
         Player* trader = ObjectAccessor::FindConnectedPlayer(with);
-        Item* received = ScanBags();
+        ScanBags();         // what came with the trade becomes "it"
+        Item* received = _lastNewItem.IsEmpty() ? nullptr : _bot->GetItemByGuid(_lastNewItem);
         if (!received)
             return;
         ItemTemplate const* proto = received->GetTemplate();
         std::string name = proto ? proto->GetName(LOCALE_enUS) : "that";
         std::string line;
         if (proto && proto->GetInventoryType() != INVTYPE_NON_EQUIP)
-            line = sCompanionFactory->IsUpgrade(_bot, proto, GetEffectiveRole())
+            line = sCompanionFactory->IsUpgrade(_bot, received, GetEffectiveRole())
                 ? "Thanks for " + name + "! Say \"equip it\" and I'll put it on."
                 : "Thanks for " + name + ". I'll keep it in my bags.";
         else
@@ -357,20 +358,26 @@ namespace Companions
         return false;
     }
 
-    bool CompanionAI::WantsLoot(ItemTemplate const* proto) const
+    bool CompanionAI::WantsLoot(LootItem const& item) const
     {
+        ItemTemplate const* proto = sObjectMgr->GetItemTemplate(item.itemid);
         if (!proto)
+            return false;
+        // no room for it in its bags: it stays for the others
+        ItemPosCountVec dest;
+        if (_bot->CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, item.itemid, item.count) != EQUIP_ERR_OK)
             return false;
         if (_lootMode == 1)
             return true;
-        // what it can use: food, drink, potions, bandages at its level, ammunition for its bow or gun, gear it would wear
+        // what it can use: food, drink, potions, bandages at its level, ammunition for its bow or gun, gear better than what
+        // it wears and carries, judged with the stats this drop rolled
         uint32 const itemClass = proto->GetClass();
         if (itemClass == ITEM_CLASS_CONSUMABLE)
             return proto->GetBaseRequiredLevel() <= int32(_bot->GetLevel()) && proto->GetSubClass() != ITEM_SUBCLASS_CONSUMABLE_OTHER;
         if (itemClass == ITEM_CLASS_PROJECTILE)
             return _bot->GetClass() == CLASS_HUNTER;
         if (itemClass == ITEM_CLASS_WEAPON || itemClass == ITEM_CLASS_ARMOR)
-            return sCompanionFactory->IsUpgrade(_bot, proto, GetEffectiveRole());
+            return sCompanionFactory->IsUpgrade(_bot, item, GetEffectiveRole());
         return false;
     }
 
@@ -379,8 +386,7 @@ namespace Companions
         if (loot->gold)
             return true;
         for (LootItem const& item : loot->items)
-            if (!item.is_looted && !item.is_blocked && item.type == LootItemType::Item && item.AllowedForPlayer(_bot, loot)
-                && WantsLoot(sObjectMgr->GetItemTemplate(item.itemid)))
+            if (!item.is_looted && !item.is_blocked && item.type == LootItemType::Item && item.AllowedForPlayer(_bot, loot) && WantsLoot(item))
                 return true;
         return false;
     }
@@ -388,6 +394,10 @@ namespace Companions
     // what a player's client does: open it, take the coins and what it wants, close it (the rest stays for the others)
     void CompanionAI::LootCorpse(Creature* corpse)
     {
+        std::vector<ObjectGuid> before;
+        for (BagItem const& entry : BagItems(_bot))
+            before.push_back(entry.Value->GetGUID());
+
         WorldSession* session = _bot->GetSession();
         WorldPackets::Loot::LootUnit open{ WorldPacket(CMSG_LOOT_UNIT) };
         open.Unit = corpse->GetGUID();
@@ -402,8 +412,7 @@ namespace Companions
             }
             std::vector<uint32> wanted;
             for (LootItem const& item : loot->items)
-                if (!item.is_looted && !item.is_blocked && item.type == LootItemType::Item && item.AllowedForPlayer(_bot, loot)
-                    && WantsLoot(sObjectMgr->GetItemTemplate(item.itemid)))
+                if (!item.is_looted && !item.is_blocked && item.type == LootItemType::Item && item.AllowedForPlayer(_bot, loot) && WantsLoot(item))
                     wanted.push_back(item.LootListId);
             for (uint32 listId : wanted)
             {
@@ -416,8 +425,15 @@ namespace Companions
         WorldPackets::Loot::LootRelease close{ WorldPacket(CMSG_LOOT_RELEASE) };
         close.Unit = corpse->GetGUID();
         session->HandleLootReleaseOpcode(close);
-        if (Item* item = ScanBags())
-            if (ItemTemplate const* proto = item->GetTemplate(); proto && sCompanionFactory->IsUpgrade(_bot, proto, GetEffectiveRole()))
-                CompanionFactory::EquipFromBags(_bot, item);    // its own loot: an upgrade goes on at once
+
+        // its own loot: what came into its bags and beats what it wears goes on at once
+        std::vector<Item*> received;
+        for (BagItem const& entry : BagItems(_bot))
+            if (std::find(before.begin(), before.end(), entry.Value->GetGUID()) == before.end())
+                received.push_back(entry.Value);
+        for (Item* item : received)
+            if (sCompanionFactory->IsUpgrade(_bot, item, GetEffectiveRole()) && CompanionFactory::EquipFromBags(_bot, item))
+                Say("Equipped " + std::string(item->GetTemplate()->GetName(LOCALE_enUS)) + ".");
+        ScanBags();
     }
 }

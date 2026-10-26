@@ -6,6 +6,7 @@
 #include "CompanionAdmin.h"
 #include "CharacterCache.h"
 #include "Item.h"
+#include "ItemEnchantmentMgr.h"
 #include "Chat.h"
 #include "ChatCommand.h"
 #include "CompanionAI.h"
@@ -1525,7 +1526,8 @@ namespace Companions
             return true;
         }
 
-        // .bot test give <bot> <item>: into its bags, with what the loot roll would decide (Need on an upgrade)
+        // .bot test give <bot> <item>: into its bags with random stats rolled like a drop's, with what the loot roll would
+        // decide (Need on an upgrade) and the score of what it wears there
         static bool HandleTestGive(ChatHandler* handler, std::string botName, uint32 itemId)
         {
             Player* bot = ObjectAccessor::FindPlayerByName(botName);
@@ -1533,12 +1535,20 @@ namespace Companions
             ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemId);
             if (!ai || !proto)
                 return true;
+            Item* item = nullptr;
             ItemPosCountVec dest;
             if (bot->CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, itemId, 1) == EQUIP_ERR_OK)
-                bot->StoreNewItem(dest, itemId, true);
-            handler->PSendSysMessage("Companions test: %s gets %s - upgrade (would roll Need): %s, score %.1f", bot->GetName().c_str(),
-                proto->GetName(LOCALE_enUS), sCompanionFactory->IsUpgrade(bot, proto, ai->GetEffectiveRole()) ? "yes" : "no",
-                sCompanionFactory->ScoreTemplate(proto, bot, ai->GetEffectiveRole()));
+                item = bot->StoreNewItem(dest, itemId, true, GenerateItemRandomBonusListId(itemId));
+            Role const role = ai->GetEffectiveRole();
+            std::string worn;
+            for (uint8 slot : CompanionFactory::SlotsFor(proto))
+                if (Item* current = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
+                    worn += Trinity::StringFormat(" {} {:.1f};", current->GetTemplate()->GetName(LOCALE_enUS), sCompanionFactory->ScoreItem(current, bot, role));
+            handler->PSendSysMessage("Companions test: %s gets %s - upgrade (would roll Need): %s, score %.1f (template %.1f), wears:%s",
+                bot->GetName().c_str(), proto->GetName(LOCALE_enUS),
+                (item ? sCompanionFactory->IsUpgrade(bot, item, role) : sCompanionFactory->IsUpgrade(bot, proto, role)) ? "yes" : "no",
+                item ? sCompanionFactory->ScoreItem(item, bot, role) : -1.0f, sCompanionFactory->ScoreTemplate(proto, bot, role),
+                worn.empty() ? " nothing" : worn.c_str());
             return true;
         }
 

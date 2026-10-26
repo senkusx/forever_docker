@@ -25,6 +25,7 @@ class Group;
 class Item;
 struct ItemTemplate;
 struct Loot;
+struct LootItem;
 class Player;
 class SpellInfo;
 class Unit;
@@ -298,7 +299,7 @@ namespace Companions
         void UpdateAmbient();
         bool UsePreferred(Unit* target);    // the abilities it was asked to use more
         bool HealPreferred(Unit* target, uint32 deficit);
-        bool WantsLoot(ItemTemplate const* proto) const;
+        bool WantsLoot(LootItem const& item) const;
         bool WantsSomething(Loot const* loot) const;
         void LootCorpse(Creature* corpse);
         bool AmbientGrind();

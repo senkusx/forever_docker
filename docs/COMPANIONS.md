@@ -337,7 +337,8 @@ bots see it and what each one does), `invite <owner> <name>` (a /invite), `order
   lines; they catch up with you when they get stuck. With `EXTRACT_MMAPS=1` (re-run the extractor, it takes
   hours) and `MMAP_PATHFINDING=1` they find their way around walls.
 - Loot: with group loot a companion rolls **Need** only on a clear upgrade it can use (at least 5% better than what it
-  wears in that slot) and puts it on; it passes on everything else, the greed rolls are yours. With master loot it keeps
+  wears in that slot, and better than any piece for that slot in its bags, judged with the stats that drop rolled, so a
+  green "of the Bear" counts with its stats) and puts it on; it passes on everything else, the greed rolls are yours. With master loot it keeps
   what you give it in its bags until you say `equip it`. Gear it looted or was given is kept when it regears.
 - Missing items: Forever's loot tables name 1,416 vanilla items its client data lacks (the boss loot of Blackrock Depths
   and Molten Core, Onyxia's tier 2 helms, ...), so those rows never dropped. The client still has their icons and

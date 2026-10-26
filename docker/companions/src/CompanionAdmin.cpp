@@ -735,8 +735,8 @@ namespace Companions
                 ItemTemplate const* proto = item->GetTemplate();
                 if (!proto)
                     return;
-                bool equippable = proto->GetInventoryType() != INVTYPE_NON_EQUIP && player->CanUseItem(proto) == EQUIP_ERR_OK;
-                bool upgrade = equippable && sCompanionFactory->IsUpgrade(player, proto, ai->GetEffectiveRole());
+                bool equippable = proto->GetInventoryType() != INVTYPE_NON_EQUIP && player->CanUseItem(item) == EQUIP_ERR_OK;
+                bool upgrade = equippable && sCompanionFactory->IsUpgrade(player, item, ai->GetEffectiveRole());
                 handler->SendSysMessage(itemLine("BAG", std::to_string(bag) + "|" + std::to_string(slot), item->GetGUID().GetCounter(), proto,
                     item->GetCount(), "|" + std::to_string(equippable) + "|" + std::to_string(upgrade) + "|" + std::to_string(item->IsSoulBound())));
             };

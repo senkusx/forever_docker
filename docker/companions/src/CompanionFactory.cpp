@@ -17,6 +17,7 @@
 #include "ItemEnchantmentMgr.h"
 #include "ItemTemplate.h"
 #include "Log.h"
+#include "Loot.h"
 #include "Map.h"
 #include "MotionMaster.h"
 #include "ObjectMgr.h"
@@ -1293,25 +1294,32 @@ namespace Companions
 
     CompanionFactory::GearItem CompanionFactory::MakeGear(ItemTemplate const* proto)
     {
+        BonusData bonus;
+        bonus.Initialize(proto);
+        return MakeGear(proto, bonus, proto->GetBaseItemLevel());
+    }
+
+    // the stats come from the bonus data: the template's, plus what the item rolled (random "of the Bear" stats, bonuses)
+    CompanionFactory::GearItem CompanionFactory::MakeGear(ItemTemplate const* proto, BonusData const& bonus, uint32 itemLevel)
+    {
         GearItem item;
-        uint32 itemLevel = proto->GetBaseItemLevel();
         uint32 invType = proto->GetInventoryType();
         item.Entry = proto->GetId();
         item.Proto = proto;
         item.InventoryType = invType == INVTYPE_ROBE ? INVTYPE_CHEST : invType;
         item.Class = proto->GetClass();
         item.SubClass = proto->GetSubClass();
-        item.Quality = proto->GetQuality();
+        item.Quality = bonus.Quality;
         item.ItemLevel = itemLevel;
         item.ReqLevel = proto->GetBaseRequiredLevel() > 0 ? uint32(proto->GetBaseRequiredLevel()) : 0;
 
-        float points = GetRandomPropertyPoints(itemLevel, proto->GetQuality(), proto->GetInventoryType(), proto->GetSubClass());
+        float points = GetRandomPropertyPoints(itemLevel, bonus.Quality, proto->GetInventoryType(), proto->GetSubClass());
         for (uint32 i = 0; i < MAX_ITEM_PROTO_STATS; ++i)
         {
-            int32 stat = proto->GetStatModifierBonusStat(i);
-            if (stat < 0 || !proto->GetStatPercentEditor(i))
+            int32 stat = bonus.ItemStatType[i];
+            if (stat < 0 || !bonus.StatPercentEditor[i])
                 continue;
-            float value = float(proto->GetStatPercentEditor(i)) * points * 0.0001f;
+            float value = float(bonus.StatPercentEditor[i]) * points * 0.0001f;
             if (value > 0.0f)
                 item.Stats.emplace_back(stat, value);
         }
@@ -1325,6 +1333,27 @@ namespace Companions
     float CompanionFactory::ScoreTemplate(ItemTemplate const* proto, Player* bot, Role role) const
     {
         return proto ? ScoreItem(MakeGear(proto), bot, role) : -1.0f;
+    }
+
+    float CompanionFactory::ScoreItem(Item const* item, Player* bot, Role role) const
+    {
+        ItemTemplate const* proto = item ? item->GetTemplate() : nullptr;
+        return proto ? ScoreItem(MakeGear(proto, *item->GetBonus(), item->GetItemLevel(bot)), bot, role) : -1.0f;
+    }
+
+    float CompanionFactory::ScoreLoot(LootItem const& item, Player* bot, Role role) const
+    {
+        ItemTemplate const* proto = sObjectMgr->GetItemTemplate(item.itemid);
+        if (!proto)
+            return -1.0f;
+        // what the item will be once taken: the loot's bonus lists and the random stats it rolled when it dropped
+        BonusData bonus;
+        bonus.Initialize(proto);
+        for (int32 bonusListId : item.BonusListIDs)
+            bonus.AddBonusList(bonusListId);
+        if (item.randomBonusListId)
+            bonus.AddBonusList(item.randomBonusListId);
+        return ScoreItem(MakeGear(proto, bonus, uint32(std::max<int32>(1, int32(proto->GetBaseItemLevel()) + bonus.ItemLevelBonus))), bot, role);
     }
 
     // the equipment slots an item would go to, and what it competes with there
@@ -1359,14 +1388,39 @@ namespace Companions
 
     bool CompanionFactory::IsUpgrade(Player* bot, ItemTemplate const* proto, Role role) const
     {
-        if (!proto || bot->CanUseItem(proto) != EQUIP_ERR_OK)
-            return false;
-        std::vector<uint8> slots = SlotsFor(proto);
-        if (slots.empty())
+        if (role == Role::Auto)
+            if (CompanionAI* ai = sCompanionMgr->GetAI(bot))
+                role = ai->GetEffectiveRole();
+        return IsUpgrade(bot, proto, ScoreTemplate(proto, bot, role), nullptr, role);
+    }
+
+    bool CompanionFactory::IsUpgrade(Player* bot, Item const* item, Role role) const
+    {
+        if (!item || item->IsEquipped())
             return false;
         if (role == Role::Auto)
             if (CompanionAI* ai = sCompanionMgr->GetAI(bot))
                 role = ai->GetEffectiveRole();
+        return IsUpgrade(bot, item->GetTemplate(), ScoreItem(item, bot, role), item, role);
+    }
+
+    bool CompanionFactory::IsUpgrade(Player* bot, LootItem const& item, Role role) const
+    {
+        if (role == Role::Auto)
+            if (CompanionAI* ai = sCompanionMgr->GetAI(bot))
+                role = ai->GetEffectiveRole();
+        return IsUpgrade(bot, sObjectMgr->GetItemTemplate(item.itemid), ScoreLoot(item, bot, role), nullptr, role);
+    }
+
+    // better than what it wears in that slot (its weaker one for rings) and than any piece for that slot in its bags
+    // (self: the item being judged when it is one of them)
+    bool CompanionFactory::IsUpgrade(Player* bot, ItemTemplate const* proto, float score, Item const* self, Role role) const
+    {
+        if (!proto || score <= 0.0f || !CanWear(bot, proto))
+            return false;
+        std::vector<uint8> slots = SlotsFor(proto);
+        if (slots.empty())
+            return false;
         // a weapon only against the same kind of weapon (a two-hander does not replace sword and board by itself)
         auto group = [](uint32 invType)
         {
@@ -1380,18 +1434,49 @@ namespace Companions
                 default: return 0;
             }
         };
-        float score = ScoreTemplate(proto, bot, role);
+        uint32 const kind = group(proto->GetInventoryType());
         float worst = std::numeric_limits<float>::max();
         for (uint8 slot : slots)
         {
             Item* current = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot);
             if (!current)
-                return score > 0.0f;
-            if (group(proto->GetInventoryType()) != group(current->GetTemplate()->GetInventoryType()))
+            {
+                worst = 0.0f;
+                break;
+            }
+            if (kind != group(current->GetTemplate()->GetInventoryType()))
                 return false;
-            worst = std::min(worst, ScoreTemplate(current->GetTemplate(), bot, role));
+            worst = std::min(worst, ScoreItem(current, bot, role));
         }
-        return score > worst * 1.05f + 0.5f;
+        if (score <= worst * 1.05f + 0.5f)
+            return false;
+
+        // what it carries: a piece for the same slot in its bags that is at least as good is the one to put on
+        bool carriesBetter = false;
+        bot->ForEachItem(ItemSearchLocation::Inventory, [&](Item* carried)
+        {
+            ItemTemplate const* other = carried->GetTemplate();
+            if (carried == self || !other || SlotsFor(other) != slots || group(other->GetInventoryType()) != kind
+                || !CanWear(bot, other))
+                return ItemSearchCallbackResult::Continue;
+            float const carriedScore = ScoreItem(carried, bot, role);
+            // a loot item as good as one it has is not needed; of two equal pieces in the bags one is the upgrade
+            if (carriedScore > score || (carriedScore == score && (!self || carried->GetGUID() < self->GetGUID())))
+            {
+                carriesBetter = true;
+                return ItemSearchCallbackResult::Stop;
+            }
+            return ItemSearchCallbackResult::Continue;
+        });
+        return !carriesBetter;
+    }
+
+    bool CompanionFactory::CanWear(Player* bot, ItemTemplate const* proto)
+    {
+        if (!proto || bot->CanUseItem(proto) != EQUIP_ERR_OK)
+            return false;
+        uint32 const skill = proto->GetSkill();
+        return !skill || bot->HasSkill(skill);
     }
 
     bool CompanionFactory::EquipFromBags(Player* bot, Item* item)
@@ -1411,7 +1496,7 @@ namespace Companions
                 Role role = Role::Auto;
                 if (CompanionAI* ai = sCompanionMgr->GetAI(bot))
                     role = ai->GetEffectiveRole();
-                uint8 weaker = sCompanionFactory->ScoreTemplate(ring1->GetTemplate(), bot, role) <= sCompanionFactory->ScoreTemplate(ring2->GetTemplate(), bot, role)
+                uint8 weaker = sCompanionFactory->ScoreItem(ring1, bot, role) <= sCompanionFactory->ScoreItem(ring2, bot, role)
                     ? EQUIPMENT_SLOT_FINGER1 : EQUIPMENT_SLOT_FINGER2;
                 dest = (INVENTORY_SLOT_BAG_0 << 8) | weaker;
             }
@@ -1467,7 +1552,7 @@ namespace Companions
                     continue;
                 if (!subClasses.empty() && std::find(subClasses.begin(), subClasses.end(), item.SubClass) == subClasses.end())
                     continue;
-                if (bot->CanUseItem(item.Proto) != EQUIP_ERR_OK)
+                if (!CanWear(bot, item.Proto))
                     continue;
                 float score = ScoreItem(item, bot, role);
                 if (score > bestScore)
@@ -1486,7 +1571,7 @@ namespace Companions
         if (current && current->GetEntry() == entry)
             return true;
         // something looted or given that is at least as good stays
-        if (current && role != Role::Auto && ScoreTemplate(current->GetTemplate(), bot, role) >= ScoreTemplate(sObjectMgr->GetItemTemplate(entry), bot, role))
+        if (current && role != Role::Auto && ScoreItem(current, bot, role) >= ScoreTemplate(sObjectMgr->GetItemTemplate(entry), bot, role))
             return true;
         if (current)
             bot->DestroyItem(INVENTORY_SLOT_BAG_0, slot, true);
@@ -1600,9 +1685,9 @@ namespace Companions
         // the weapons worn now (looted, given) stay when they are at least as good as the pool's
         if (Item* mainHand = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_MAINHAND); mainHand && bestMain)
         {
-            float worn = ScoreTemplate(mainHand->GetTemplate(), bot, role);
+            float worn = ScoreItem(mainHand, bot, role);
             if (Item* offHand = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_OFFHAND))
-                worn += ScoreTemplate(offHand->GetTemplate(), bot, role) * (dualWield ? 0.6f : 1.0f);
+                worn += ScoreItem(offHand, bot, role) * (dualWield ? 0.6f : 1.0f);
             if (worn >= bestScore && mainHand->GetEntry() != bestMain)
                 bestMain = 0;
         }
@@ -1711,7 +1796,7 @@ namespace Companions
                     continue;
                 if (armorType && item.Class == ITEM_CLASS_ARMOR && item.SubClass != BestArmorSubClass(classId, uint8(level)))
                     continue;
-                if (bot->CanUseItem(item.Proto) != EQUIP_ERR_OK)
+                if (!CanWear(bot, item.Proto))
                     continue;
                 // stats of its class; items with a random enchantment get one that fits when they are made
                 if (!item.Stats.empty() && !StatsFit(item.Stats, classId, role))

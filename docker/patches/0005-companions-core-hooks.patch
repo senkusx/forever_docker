@@ -193,14 +193,15 @@ index 8088797..7be6f03 100644
  {
      return m_loot->GetGUID() == lootObject && m_lootItem->LootListId == lootListId;
 diff --git a/src/server/game/Loot/Loot.h b/src/server/game/Loot/Loot.h
-index edf57ad..3fd75b4 100644
+index edf57ad..cf0c8c2 100644
 --- a/src/server/game/Loot/Loot.h
 +++ b/src/server/game/Loot/Loot.h
-@@ -262,6 +262,7 @@ public:
+@@ -262,6 +262,8 @@ public:
      bool UpdateRoll();
  
      bool IsLootItem(ObjectGuid const& lootObject, uint32 lootListId) const;
 +    uint32 GetItemId() const;           // companions: what is rolled for
++    LootItem const* GetLootItem() const { return m_lootItem; }   // companions: with its random stats
  
  private:
      void SendStartRoll();

@@ -17,9 +17,12 @@
 #include <unordered_map>
 #include <vector>
 
+class Item;
 class Player;
+struct BonusData;
 struct ChrCustomizationChoiceEntry;
 struct ItemTemplate;
+struct LootItem;
 
 namespace Companions
 {
@@ -56,10 +59,21 @@ namespace Companions
         // one build per talent tree, the way it was played in classic raids: points per tab, e.g. Fury warrior 17/34/0
         struct MetaBuild { uint32 Points[3]; Role ForRole; };
         static MetaBuild const* MetaBuildFor(uint8 classId, uint32 tree);
-        // loot: worth a Need roll (clearly better than what it wears there), and putting it on from the bags
+        // loot: worth a Need roll (clearly better than what it wears there, and than what it carries for that slot), and
+        // putting it on from the bags. An item is judged with the stats it rolled (a green "of the Bear" has none on its
+        // template), the template only when there is no item yet
         float ScoreTemplate(ItemTemplate const* proto, Player* bot, Role role) const;
+        float ScoreItem(Item const* item, Player* bot, Role role) const;
+        float ScoreLoot(LootItem const& item, Player* bot, Role role) const;
         bool IsUpgrade(Player* bot, ItemTemplate const* proto, Role role) const;
+        bool IsUpgrade(Player* bot, Item const* item, Role role) const;
+        bool IsUpgrade(Player* bot, LootItem const& item, Role role) const;
+        // what it can wear at all: level, class and race, and its weapon or armor skill (Player::CanUseItem with only a
+        // template leaves that one to the item, so a druid "could use" an axe)
+        static bool CanWear(Player* bot, ItemTemplate const* proto);
         static bool EquipFromBags(Player* bot, Item* item);
+        // the equipment slots an item would go to
+        static std::vector<uint8> SlotsFor(ItemTemplate const* proto);
         static uint32 MetaTreeForRole(uint8 classId, Role role);
         void Update();      // world thread
         bool IsClassicCombo(uint8 race, uint8 classId) const;
@@ -129,8 +143,9 @@ namespace Companions
         void LoadGearPool();
         void LoadTalentTrees();
         float ScoreItem(GearItem const& item, Player* bot, Role role) const;
+        bool IsUpgrade(Player* bot, ItemTemplate const* proto, float score, Item const* self, Role role) const;
         static GearItem MakeGear(ItemTemplate const* proto);
-        static std::vector<uint8> SlotsFor(ItemTemplate const* proto);
+        static GearItem MakeGear(ItemTemplate const* proto, BonusData const& bonus, uint32 itemLevel);
         GearItem const* BestFor(Player* bot, Role role, std::vector<uint32> const& invTypes, std::vector<uint32> const& subClasses,
             uint32 exclude = 0) const;
         bool EquipEntry(Player* bot, uint8 slot, uint32 entry, Role role = Role::Auto);   // a role: keeps a better worn item
