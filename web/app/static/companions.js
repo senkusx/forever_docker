@@ -250,7 +250,7 @@
   // ---- changes wait on the card until Apply: one request, then a clear confirmation of what changed and when it acts
 
   const FIELD_LABELS = { role: 'role', spec: 'spec', quality: 'gear_quality', aggression: 'aggression', stance: 'stance', llm: 'brain',
-    provider: 'provider', personality: 'personality' };
+    provider: 'provider', personality: 'personality', loot: 'loot_mode', potions: 'use_potions', autocc: 'auto_cc' };
   const botValue = (bot, key) => (key === 'personality' ? (bot.personality || '') : key === 'spec' ? (bot.spec || '')
     : key === 'provider' ? (bot.provider || 0) : key === 'quality' ? (bot.quality || 0) : bot[key]);
 
@@ -401,7 +401,10 @@
         h('label', null, T('aggression'), select(aggressionOptions(), String(value('aggression')), (v) => set('aggression', Number(v)))),
         h('label', null, T('stance'), select([['0', T('stance_0')], ['1', T('stance_1')]], String(value('stance')), (v) => set('stance', Number(v)))),
         h('div', { class: 'cp-check' }, toggle(T('brain'), value('llm'), (on) => set('llm', on))),
-        hasProviders() ? h('label', null, T('provider'), select(providerOptions(), String(value('provider')), (v) => set('provider', Number(v)))) : null),
+        hasProviders() ? h('label', null, T('provider'), select(providerOptions(), String(value('provider')), (v) => set('provider', Number(v)))) : null,
+        h('label', null, T('loot_mode'), select([0, 1, 2].map((m) => [String(m), T('loot_' + m)]), String(value('loot')), (v) => set('loot', Number(v)))),
+        h('div', { class: 'cp-check' }, toggle(T('use_potions'), value('potions'), (on) => set('potions', on))),
+        h('div', { class: 'cp-check' }, toggle(T('auto_cc'), value('autocc'), (on) => set('autocc', on)))),
       h('label', { class: 'cp-wide' }, T('personality'),
         h('textarea', { rows: 2, maxlength: 250, placeholder: T('personality_placeholder'), oninput: (e) => set('personality', e.target.value) }, value('personality'))),
       h('div', { class: 'cp-row cp-apply-row' }, applyButton, discardButton, note),
@@ -413,11 +416,136 @@
           : h('button', { type: 'button', class: 'cp-btn primary', disabled: !ownerIn || bot.loading, title: ownerIn ? null : T('owner_must_play'), onclick: () => botAction(bot, 'summon') }, T('summon')),
         h('button', { type: 'button', class: 'cp-btn', disabled: !live, onclick: () => botAction(bot, 'regear') }, T('regear')),
         h('button', { type: 'button', class: 'cp-btn', disabled: !live, onclick: () => botAction(bot, 'respec') }, T('respec')),
+        h('button', { type: 'button', class: 'cp-btn', onclick: () => openDetails(bot) }, T('details')),
         h('button', { type: 'button', class: 'cp-btn', onclick: () => saveBotTemplate(templateFromBot(bot)) }, T('save_template')),
         h('button', { type: 'button', class: 'cp-btn danger', disabled: !!live, title: bot.created ? null : T('forget_hint'), onclick: () => botAction(bot, 'delete') },
           bot.created ? T('delete') : T('forget')))].filter(Boolean));
     refreshState();
     return card;
+  }
+
+  // ------------------------------------------------------------------ details of one companion
+
+  const STAT_ORDER = ['strength', 'agility', 'stamina', 'intellect', 'spirit', 'armor', 'attack_power', 'ranged_attack_power', 'spell_power',
+    'healing_power', 'melee_crit', 'ranged_crit', 'dodge', 'parry', 'block', 'fire_resistance', 'nature_resistance', 'frost_resistance',
+    'shadow_resistance', 'arcane_resistance'];
+  const PERCENT_STATS = new Set(['melee_crit', 'ranged_crit', 'dodge', 'parry', 'block']);
+  const title = (text) => String(text).replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase());
+  const money = (copper) => `${Math.floor(copper / 10000)}g ${Math.floor(copper / 100) % 100}s ${copper % 100}c`;
+  const escClose = (e) => { if (e.key === 'Escape') closeDetails(); };
+
+  function closeDetails() {
+    if (!state.details) return;
+    state.details.overlay.remove();
+    state.details = null;
+    document.removeEventListener('keydown', escClose);
+  }
+
+  async function openDetails(bot) {
+    closeDetails();
+    const box = h('div', { class: 'card cp-modal-box', role: 'dialog', 'aria-modal': 'true', 'aria-label': bot.name });
+    const overlay = h('div', { class: 'cp-modal', onclick: (e) => { if (e.target === overlay) closeDetails(); } }, box);
+    document.body.append(overlay);
+    document.addEventListener('keydown', escClose);
+    state.details = { bot, overlay, box, tab: state.detailsTab || 'gear', data: null };
+    renderDetails();
+    await loadDetails();
+  }
+
+  async function loadDetails() {
+    const d = state.details;
+    if (!d) return;
+    try {
+      d.data = await api('GET', `/api/companions/owner/${state.owner}/bots/${d.bot.guid}/inspect`);
+    } catch (err) {
+      toast(errorText(err), true);
+    }
+    if (state.details === d) renderDetails();
+  }
+
+  async function itemAction(action, item) {
+    if (action === 'destroy' && !window.confirm(T('destroy_confirm', { name: item.name }))) return;
+    const d = state.details;
+    const done = await run(() => api('POST', `/api/companions/owner/${state.owner}/bots/${d.bot.guid}/item`,
+      { action, item: action === 'unequip' ? item.slot : item.item }), T('item_done'));
+    if (done) await loadDetails();
+  }
+
+  async function setPref(spell, kind) {
+    const d = state.details;
+    const done = await run(() => api('POST', `/api/companions/owner/${state.owner}/bots/${d.bot.guid}/pref`, { kind, spell }), T('pref_saved'));
+    if (done) await loadDetails();
+  }
+
+  function itemName(item) {
+    return h('span', { class: 'cp-item q' + item.quality }, item.name, item.count > 1 ? ` ×${item.count}` : null);
+  }
+
+  function detailsBody(tab, data) {
+    if (!data) return h('p', { class: 'muted' }, T('loading'));
+    const online = data.online;
+    if (tab === 'gear') {
+      if (!data.gear.length) return h('p', { class: 'muted' }, T('no_items'));
+      return h('table', { class: 'cp-table' }, h('tbody', null, data.gear.sort((a, b) => a.slot - b.slot).map((item) =>
+        h('tr', null, h('td', { class: 'muted' }, T('slot_' + item.slot)), h('td', null, itemName(item)), h('td', { class: 'muted' }, `ilvl ${item.ilvl}`),
+          h('td', null, online ? h('button', { type: 'button', class: 'cp-btn small', onclick: () => itemAction('unequip', item) }, T('unequip')) : null)))));
+    }
+    if (tab === 'bags') {
+      if (!data.bags.length) return h('p', { class: 'muted' }, T('no_items'));
+      return h('table', { class: 'cp-table' }, h('tbody', null, data.bags.map((item) =>
+        h('tr', null, h('td', null, itemName(item), item.upgrade ? h('small', { class: 'cp-tag up' }, T('upgrade_tag')) : null,
+          item.bound ? h('small', { class: 'cp-tag' }, T('bound_tag')) : null),
+          h('td', { class: 'muted' }, item.ilvl ? `ilvl ${item.ilvl}` : ''),
+          h('td', { class: 'cp-row' },
+            online && item.equippable ? h('button', { type: 'button', class: 'cp-btn small primary', onclick: () => itemAction('equip', item) }, T('equip')) : null,
+            online ? h('button', { type: 'button', class: 'cp-btn small danger', onclick: () => itemAction('destroy', item) }, T('destroy')) : null)))));
+    }
+    if (tab === 'stats') {
+      if (!online) return h('p', { class: 'muted' }, T('details_offline'));
+      const rows = [[T('health'), `${data.health} / ${data.max_health}`], [T('power'), `${data.power} / ${data.max_power}`], [T('money'), money(data.money)],
+        ...STAT_ORDER.filter((k) => k in data.stats).map((k) => [T('stat_' + k), PERCENT_STATS.has(k) ? `${data.stats[k].toFixed(2)}%` : String(Math.round(data.stats[k]))])];
+      return h('dl', { class: 'cp-stats' }, rows.map(([k, v]) => [h('dt', null, k), h('dd', null, v)]));
+    }
+    if (tab === 'talents') {
+      if (!online) return h('p', { class: 'muted' }, T('details_offline'));
+      if (!data.talents.length) return h('p', { class: 'muted' }, T('no_talents'));
+      const tabs = [...new Set(data.talents.map((t) => t.tab))].sort();
+      return h('div', { class: 'cp-talent-tabs' }, tabs.map((t) => {
+        const list = data.talents.filter((x) => x.tab === t);
+        const points = list.reduce((n, x) => n + x.rank, 0);
+        return h('section', null, h('h4', null, `${specName(data.class, t)} · ${points}`),
+          h('ul', null, list.map((x) => h('li', null, title(x.name), h('span', { class: 'muted' }, ` ${x.rank}/${x.max}`)))));
+      }));
+    }
+    // abilities: what it was told about each one
+    if (!online) return h('p', { class: 'muted' }, T('details_offline'));
+    const prefs = Object.fromEntries((data.prefs || []).map((p) => [p.spell, p]));
+    return h('div', null,
+      h('p', { class: 'muted small' }, T('abilities_hint')),
+      h('table', { class: 'cp-table' }, h('tbody', null, data.spells.map((spell) => {
+        const pref = prefs[spell];
+        const current = pref ? (pref.kind === 'avoid' ? 'avoid' : 'prefer') : 'allow';
+        return h('tr', null, h('td', null, title(spell), pref && pref.reason ? h('div', { class: 'muted small' }, pref.reason) : null,
+          pref && pref.below ? h('div', { class: 'muted small' }, T('pref_below', { pct: pref.below })) : null),
+          h('td', null, select([['allow', T('pref_normal')], ['prefer', T('pref_more')], ['avoid', T('pref_never')]], current, (v) => setPref(spell, v))));
+      }))),
+      (data.prefs || []).length ? h('button', { type: 'button', class: 'cp-btn', onclick: () => setPref('*', 'allow') }, T('prefs_reset')) : null);
+  }
+
+  function renderDetails() {
+    const d = state.details;
+    if (!d) return;
+    const data = d.data;
+    const tabs = ['gear', 'bags', 'stats', 'talents', 'abilities'];
+    d.box.replaceChildren(
+      h('header', { class: 'cp-modal-head' },
+        h('div', null, h('h3', null, d.bot.name),
+          h('div', { class: 'muted' }, `${data && data.level ? data.level : d.bot.level} ${raceName(d.bot.race)} ${className(d.bot.class)}`)),
+        h('button', { type: 'button', class: 'cp-btn', onclick: closeDetails }, T('close'))),
+      data && !data.online ? h('p', { class: 'muted small' }, T('details_offline')) : null,
+      h('div', { class: 'cp-tabs', role: 'tablist' }, tabs.map((t) => h('button', { type: 'button', role: 'tab', class: 'cp-tab' + (d.tab === t ? ' on' : ''),
+        onclick: () => { d.tab = state.detailsTab = t; renderDetails(); } }, T('details_' + t)))),
+      h('div', { class: 'cp-modal-body' }, detailsBody(d.tab, data)));
   }
 
   const templateFromBot = (bot) => ({

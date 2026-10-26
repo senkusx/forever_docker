@@ -130,3 +130,24 @@
   .cp-bots { grid-template-columns: 1fr; }
   .cp-user span { display: none; }
 }
+
+/* details of one companion: gear, bags, stats, talents, abilities */
+.cp-modal { position: fixed; inset: 0; z-index: 50; background: rgba(0, 0, 0, 0.6); display: flex; align-items: flex-start; justify-content: center;
+  padding: 6vh 16px; overflow-y: auto; }
+.cp .cp-modal-box, .cp-modal-box { width: min(760px, 100%); background: #10141c; }
+.cp-modal-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.cp-modal-body { margin-top: 12px; max-height: 62vh; overflow-y: auto; }
+.cp-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.cp-table td { padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.cp-table td .cp-row { margin-top: 0; justify-content: flex-end; }
+.cp-table select { width: auto; }
+.cp-btn.small { padding: 4px 9px; font-size: 12px; }
+.cp-tag.up { color: var(--ok, #6bd18f); border-color: rgba(107, 209, 143, 0.45); margin-left: 6px; }
+.cp-item { font-weight: 600; }
+.cp-item.q0 { color: #9d9d9d; } .cp-item.q1 { color: #ffffff; } .cp-item.q2 { color: #1eff00; } .cp-item.q3 { color: #0070dd; }
+.cp-item.q4 { color: #a335ee; } .cp-item.q5 { color: #ff8000; } .cp-item.q6 { color: #e6cc80; }
+.cp-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr) minmax(70px, auto)); gap: 4px 14px; margin: 0; font-size: 13.5px; }
+.cp-stats dt { color: var(--muted); } .cp-stats dd { margin: 0; text-align: right; font-weight: 600; }
+.cp-talent-tabs { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
+.cp-talent-tabs ul { margin: 0; padding-left: 18px; font-size: 13.5px; }
+@media (max-width: 600px) { .cp-stats { grid-template-columns: 1fr auto; } }

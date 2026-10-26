@@ -1142,6 +1142,24 @@ namespace Companions
         EnsureHunterPet(bot);
     }
 
+    std::vector<CompanionFactory::TalentLine> CompanionFactory::ListTalents(Player* bot) const
+    {
+        std::vector<TalentLine> lines;
+        UF::TraitConfig const* ufConfig = bot->GetTraitConfig(*bot->m_activePlayerData->ActiveCombatTraitConfigID);
+        auto treesItr = _talentTrees.find(bot->GetClass());
+        if (!ufConfig || treesItr == _talentTrees.end())
+            return lines;
+        WorldPackets::Traits::TraitConfig config(*ufConfig);
+        std::unordered_map<int32, int32> ranks;
+        for (WorldPackets::Traits::TraitEntry const& entry : config.Entries)
+            ranks[entry.TraitNodeID] += entry.Rank;
+        for (uint32 tab = 0; tab < treesItr->second.size(); ++tab)
+            for (TalentNode const& node : treesItr->second[tab].Nodes)
+                if (auto itr = ranks.find(node.NodeId); itr != ranks.end() && itr->second > 0)
+                    lines.push_back({ tab, node.Name, itr->second, node.MaxRanks });
+        return lines;
+    }
+
     std::string CompanionFactory::DescribeTalents(Player* bot) const
     {
         UF::TraitConfig const* ufConfig = bot->GetTraitConfig(*bot->m_activePlayerData->ActiveCombatTraitConfigID);

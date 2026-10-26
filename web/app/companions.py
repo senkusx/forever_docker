@@ -142,7 +142,8 @@ def build_router(db, soap_command, client_ip, templates, page_context):
 
     def bots_of(owner: int):
         return query('SELECT b.guid, c.name, c.race, c.class, c.gender, c.level, b.role, b.active, b.created, b.llm, b.personality, '
-                     'b.spec, b.gear_quality, b.aggression, b.stance, b.template_id, b.llm_provider FROM characters.companion_bots b '
+                     'b.spec, b.gear_quality, b.aggression, b.stance, b.template_id, b.llm_provider, b.loot_mode, b.potions, b.auto_cc '
+                     'FROM characters.companion_bots b '
                      'JOIN characters.characters c ON c.guid = b.guid WHERE b.owner_guid = %s AND c.deleteDate IS NULL ORDER BY c.name',
                      (owner,))
 
@@ -172,6 +173,7 @@ def build_router(db, soap_command, client_ip, templates, page_context):
             'level': row['level'], 'role': ROLES.get(row['role'], 'auto'), 'llm': bool(row['llm']), 'personality': row['personality'],
             'spec': row['spec'], 'quality': row['gear_quality'], 'aggression': row['aggression'], 'stance': row['stance'],
             'template': row['template_id'], 'provider': row['llm_provider'], 'created': bool(row['created']), 'active': bool(row['active']),
+            'loot': int(row.get('loot_mode') or 0), 'potions': bool(row.get('potions', 1)), 'autocc': bool(row.get('auto_cc', 1)),
             'live': live,
         }
 
@@ -237,6 +239,12 @@ def build_router(db, soap_command, client_ip, templates, page_context):
             out['provider'] = max(int(data.get('provider') or 0), 0)
         if has('personality') or not partial:
             out['personality'] = clean_text(data.get('personality'))
+        if has('loot'):
+            out['loot'] = min(max(int(data.get('loot') or 0), 0), 2)
+        if has('potions'):
+            out['potions'] = bool(data.get('potions'))
+        if has('autocc'):
+            out['autocc'] = bool(data.get('autocc'))
         if has('name') or not partial:
             name = str(data.get('name') or '').strip()
             if name and not NAME_RE.match(name):
@@ -462,11 +470,73 @@ def build_router(db, soap_command, client_ip, templates, page_context):
             await admin(f"set {owner} {bot} role {ROLE_WORDS[changes['role']]}")
         if 'spec' in changes:
             await admin(f"set {owner} {bot} spec {changes['spec'] or '-'}")
-        for key in ('llm', 'quality', 'aggression', 'stance', 'provider'):
+        for key in ('llm', 'quality', 'aggression', 'stance', 'provider', 'loot', 'potions', 'autocc'):
             if key in changes:
                 await admin(f'set {owner} {bot} {key} {int(changes[key])}')
         if 'personality' in changes:
             await admin(f"set {owner} {bot} personality {changes['personality'] or ' '}")
+        return {'ok': True}
+
+    def parse_inspect(lines):
+        out = {'online': False, 'stats': {}, 'gear': [], 'bags': [], 'talents': [], 'spells': [], 'prefs': []}
+        for p in lines:
+            kind = p[0]
+            if kind == 'INSPECT' and len(p) >= 14:
+                out.update({'online': p[1] == '1', 'level': int(p[2]), 'class': int(p[3]), 'race': int(p[4]), 'role': ROLES.get(int(p[5]), 'auto'),
+                            'health': int(p[6]), 'max_health': int(p[7]), 'power': int(p[8]), 'max_power': int(p[9]), 'money': int(p[10]),
+                            'loot': int(p[11]), 'potions': p[12] == '1', 'autocc': p[13] == '1'})
+            elif kind == 'STAT' and len(p) >= 3:
+                out['stats'][p[1]] = float(p[2])
+            elif kind == 'GEAR' and len(p) >= 8:
+                out['gear'].append({'slot': int(p[1]), 'item': int(p[2]), 'entry': int(p[3]), 'name': p[4], 'quality': int(p[5]), 'ilvl': int(p[6])})
+            elif kind == 'BAG' and len(p) >= 12:
+                out['bags'].append({'bag': int(p[1]), 'slot': int(p[2]), 'item': int(p[3]), 'entry': int(p[4]), 'name': p[5], 'quality': int(p[6]),
+                                    'ilvl': int(p[7]), 'count': int(p[8]), 'equippable': p[9] == '1', 'upgrade': p[10] == '1', 'bound': p[11] == '1'})
+            elif kind == 'TALENT' and len(p) >= 5:
+                out['talents'].append({'tab': int(p[1]), 'name': p[2], 'rank': int(p[3]), 'max': int(p[4])})
+            elif kind == 'SPELL' and len(p) >= 2:
+                out['spells'].append(p[1])
+            elif kind == 'PREF' and len(p) >= 3:
+                out['prefs'].append({'kind': p[1], 'spell': p[2], 'below': int(p[3] or 0) if len(p) > 3 else 0, 'reason': p[4] if len(p) > 4 else ''})
+        return out
+
+    SPELL_RE = re.compile(r"^[a-z' :-]{2,60}$")
+
+    @router.get('/api/companions/owner/{owner}/bots/{bot}/inspect')
+    @guarded
+    async def inspect_bot(request: Request, owner: int, bot: int):
+        """Gear, bags, stats, talents, spells and what it was told about them."""
+        session = session_of(request)
+        await asyncio.to_thread(owned_character, session, owner)
+        await asyncio.to_thread(owned_bot, owner, bot)
+        return parse_inspect(await admin(f'inspect {owner} {bot}'))
+
+    @router.post('/api/companions/owner/{owner}/bots/{bot}/item')
+    @guarded
+    async def bot_item(request: Request, owner: int, bot: int):
+        session = session_of(request)
+        await asyncio.to_thread(owned_character, session, owner)
+        await asyncio.to_thread(owned_bot, owner, bot)
+        data = await request.json()
+        action = str(data.get('action') or '')
+        if action not in ('equip', 'unequip', 'destroy'):
+            raise PanelError('bad_request')
+        await admin(f"item {owner} {bot} {action} {int(data.get('item') or 0)}")
+        return {'ok': True}
+
+    @router.post('/api/companions/owner/{owner}/bots/{bot}/pref')
+    @guarded
+    async def bot_pref(request: Request, owner: int, bot: int):
+        """prefer / avoid / allow a spell ("allow *" forgets them all)."""
+        session = session_of(request)
+        await asyncio.to_thread(owned_character, session, owner)
+        await asyncio.to_thread(owned_bot, owner, bot)
+        data = await request.json()
+        kind = str(data.get('kind') or '')
+        spell = str(data.get('spell') or '').strip().lower()
+        if kind not in ('prefer', 'avoid', 'allow') or not (spell == '*' and kind == 'allow' or SPELL_RE.match(spell)):
+            raise PanelError('bad_request')
+        await admin(f'set {owner} {bot} {kind} {spell}')
         return {'ok': True}
 
     @router.post('/api/companions/owner/{owner}/bots/{bot}/{action}')

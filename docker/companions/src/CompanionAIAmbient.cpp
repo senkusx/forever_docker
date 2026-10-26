@@ -104,7 +104,7 @@ namespace Companions
             if (_bot->GetStandState() != UNIT_STAND_STATE_STAND)
                 _bot->SetStandState(UNIT_STAND_STATE_STAND);
         }
-        if (UpdateHealing(false) || UpdateEatDrink() || UpdateBuffs(false) || _class->OutOfCombat())
+        if (UpdateHealing(false) || UpdateLooting() || UpdateEatDrink() || UpdateBuffs(false) || _class->OutOfCombat())
             return;
 
         TimePoint const now = GameTime::Now();

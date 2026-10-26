@@ -7,6 +7,8 @@
 #include "CharacterCache.h"
 #include "CompanionAI.h"
 #include "CompanionAmbient.h"
+#include "CompanionPersonality.h"
+#include "CompanionPlan.h"
 #include "CompanionConfig.h"
 #include "CompanionFactory.h"
 #include "CompanionLLM.h"
@@ -77,6 +79,11 @@ namespace Companions
         EnsureColumn("companion_bots", "template_id", "INT UNSIGNED NOT NULL DEFAULT 0");
         // added with the AI providers (0 = any)
         EnsureColumn("companion_bots", "llm_provider", "INT UNSIGNED NOT NULL DEFAULT 0");
+        // added with spell preferences, looting and potions
+        EnsureColumn("companion_bots", "prefs", "VARCHAR(1024) NOT NULL DEFAULT ''");
+        EnsureColumn("companion_bots", "loot_mode", "TINYINT UNSIGNED NOT NULL DEFAULT 0");
+        EnsureColumn("companion_bots", "potions", "TINYINT UNSIGNED NOT NULL DEFAULT 1");
+        EnsureColumn("companion_bots", "auto_cc", "TINYINT UNSIGNED NOT NULL DEFAULT 1");
         CompanionLLM::EnsureTables();
     }
 
@@ -117,7 +124,7 @@ namespace Companions
     {
         _records.clear();
         QueryResult result = CharacterDatabase.Query("SELECT b.guid, b.owner_guid, b.role, b.active, b.created, b.llm, b.personality, "
-            "b.spec, b.gear_quality, b.aggression, b.stance, b.template_id, b.llm_provider FROM companion_bots b JOIN characters c ON c.guid = b.guid JOIN characters o ON o.guid = b.owner_guid WHERE c.deleteDate IS NULL");
+            "b.spec, b.gear_quality, b.aggression, b.stance, b.template_id, b.llm_provider, b.prefs, b.loot_mode, b.potions, b.auto_cc FROM companion_bots b JOIN characters c ON c.guid = b.guid JOIN characters o ON o.guid = b.owner_guid WHERE c.deleteDate IS NULL");
         if (!result)
             return;
         do
@@ -137,6 +144,10 @@ namespace Companions
             record.StanceMode = Stance(std::min<uint8>(fields[10].GetUInt8(), uint8(Stance::Stay)));
             record.TemplateId = fields[11].GetUInt32();
             record.LLMProvider = fields[12].GetUInt32();
+            record.Prefs = fields[13].GetString();
+            record.LootMode = std::min<uint8>(fields[14].GetUInt8(), 2);
+            record.UsePotions = fields[15].GetBool();
+            record.AutoCC = fields[16].GetBool();
             _records[record.Guid] = record;
         } while (result->NextRow());
     }
@@ -147,10 +158,13 @@ namespace Companions
         CharacterDatabase.EscapeString(personality);
         std::string spec = record.Spec;
         CharacterDatabase.EscapeString(spec);
-        CharacterDatabase.PExecute("REPLACE INTO companion_bots (guid, owner_guid, role, active, created, llm, personality, spec, gear_quality, aggression, stance, template_id, llm_provider) "
-            "VALUES ({}, {}, {}, {}, {}, {}, '{}', '{}', {}, {}, {}, {}, {})",
+        std::string prefs = record.Prefs;
+        CharacterDatabase.EscapeString(prefs);
+        CharacterDatabase.PExecute("REPLACE INTO companion_bots (guid, owner_guid, role, active, created, llm, personality, spec, gear_quality, aggression, stance, template_id, llm_provider, "
+            "prefs, loot_mode, potions, auto_cc) VALUES ({}, {}, {}, {}, {}, {}, '{}', '{}', {}, {}, {}, {}, {}, '{}', {}, {}, {})",
             record.Guid.GetCounter(), record.Owner.GetCounter(), uint32(record.BotRole), uint32(record.Active), uint32(record.Created),
-            uint32(record.UseLLM), personality, spec, uint32(record.GearQuality), uint32(record.AggressionMode), uint32(record.StanceMode), record.TemplateId, record.LLMProvider);
+            uint32(record.UseLLM), personality, spec, uint32(record.GearQuality), uint32(record.AggressionMode), uint32(record.StanceMode), record.TemplateId, record.LLMProvider,
+            prefs, uint32(record.LootMode), uint32(record.UsePotions), uint32(record.AutoCC));
     }
 
     void CompanionMgr::AddRecord(BotRecord const& record)
@@ -435,6 +449,7 @@ namespace Companions
         _sessions[botGuid] = session;
         auto ai = std::make_unique<CompanionAI>(bot, ObjectGuid::Empty, DpsRoleForClass(bot->GetClass()));
         ai->SetAmbient(home, city);
+        ai->SetLootMode(1);     // alone in the world: it takes everything off its kills
         _ais[botGuid] = std::move(ai);
         // left the world dead last time: back on its feet
         if (!bot->IsAlive())
@@ -491,6 +506,7 @@ namespace Companions
         record.Created = true;
         record.Active = true;
         record.UseLLM = config.LLMDefaultOn;
+        record.Personality = Personality::Random(bot->GetRace(), bot->GetClass());
         AddRecord(record);
         ai->BecomeCompanion(inviter->GetGUID());
         sCompanionAmbient->Forget(bot->GetGUID());
@@ -522,6 +538,16 @@ namespace Companions
         {
             _ais[botGuid]->SetAggression(record->AggressionMode);
             _ais[botGuid]->SetStance(record->StanceMode);
+            _ais[botGuid]->LoadPrefs(record->Prefs);
+            // a voice of its own when its player wrote none
+            if (record->Personality.empty())
+            {
+                record->Personality = Personality::Random(bot->GetRace(), bot->GetClass());
+                SaveRecord(*record);
+            }
+            _ais[botGuid]->SetLootMode(record->LootMode);
+            _ais[botGuid]->SetUsePotions(record->UsePotions);
+            _ais[botGuid]->SetAutoCC(record->AutoCC);
         }
         bot->SetPassOnGroupLoot(false);    // the AI answers each roll: Need on its upgrades, Pass on the rest
         if (record)
@@ -807,6 +833,7 @@ namespace Companions
 
         ProcessLogouts();
         sCompanionAmbient->Update(diff);
+        sPlans->Update(diff);
 
         std::vector<PendingPrepare> prepares;
         prepares.swap(_prepareQueue);

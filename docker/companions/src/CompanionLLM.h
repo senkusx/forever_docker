@@ -40,6 +40,7 @@ namespace Companions::CompanionLLM
     // "e3": an enemy as the brain numbers them for this owner's group
     bool IsEnemyRef(std::string const& word);
     Unit* ResolveEnemy(Player* commander, std::string const& word);
+    uint32 RefOf(ObjectGuid owner, ObjectGuid enemy);   // the number of that enemy for this owner (E<n>)
 }
 
 #endif

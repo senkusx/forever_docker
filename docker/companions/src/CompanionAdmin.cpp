@@ -14,14 +14,19 @@
 #include "CompanionMgr.h"
 #include "DatabaseEnv.h"
 #include "DB2Stores.h"
+#include "Bag.h"
 #include "Item.h"
 #include "ObjectAccessor.h"
 #include "ObjectMgr.h"
 #include "Player.h"
 #include "RBAC.h"
+#include "SpellInfo.h"
+#include "SpellMgr.h"
 #include "RealmList.h"
 #include "Realm.h"
 #include "WorldSession.h"
+#include <array>
+#include <cmath>
 #include <sstream>
 
 using namespace Trinity::ChatCommands;
@@ -334,6 +339,43 @@ namespace Companions
         }
         else if (key == "template")
             record->TemplateId = uint32(std::strtoul(text.c_str(), nullptr, 10));
+        else if (key == "loot")
+        {
+            record->LootMode = uint8(std::min<unsigned long>(std::strtoul(text.c_str(), nullptr, 10), 2));
+            if (ai)
+                ai->SetLootMode(record->LootMode);
+        }
+        else if (key == "potions")
+        {
+            record->UsePotions = text == "1" || text == "on";
+            if (ai)
+                ai->SetUsePotions(record->UsePotions);
+        }
+        else if (key == "autocc")
+        {
+            record->AutoCC = text == "1" || text == "on";
+            if (ai)
+                ai->SetAutoCC(record->AutoCC);
+        }
+        else if (key == "prefer" || key == "avoid" || key == "allow")
+        {
+            // "prefer frost nova", "avoid arcane explosion", "allow rend", "allow *" (all of them)
+            if (!ai)
+            {
+                Error(handler, "summon the companion first");
+                return true;
+            }
+            if (key == "allow" && text == "*")
+                ai->ClearPrefs();
+            else if (key == "allow")
+                ai->ClearPref(ToLower(text));
+            else if (!ai->SetPref(ToLower(text), key == "avoid", 0, "set in the web panel"))
+            {
+                Error(handler, "it does not know that spell");
+                return true;
+            }
+            record->Prefs = ai->SavePrefs();
+        }
         else if (key == "provider")
             record->LLMProvider = uint32(std::strtoul(text.c_str(), nullptr, 10));
         else
@@ -510,6 +552,204 @@ namespace Companions
         return true;
     }
 
+    // .bot admin inspect <owner> <bot>: everything about one companion for the web panel
+    //   COMP|INSPECT|online|level|class|race|role|health|maxhealth|power|maxpower|money|loot|potions|autocc
+    //   COMP|STAT|key|value   COMP|GEAR|slot|item|entry|name|quality|itemlevel
+    //   COMP|BAG|bag|slot|item|entry|name|quality|count|equippable|upgrade|bound
+    //   COMP|TALENT|tab|name|rank|max   COMP|SPELL|name   COMP|PREF|kind|spell|below|reason
+    static bool HandleInspect(ChatHandler* handler, uint64 owner, uint64 bot)
+    {
+        BotRecord* record = OwnedRecord(handler, owner, bot);
+        if (!record)
+            return true;
+        ObjectGuid guid = PlayerGuid(bot);
+        CompanionAI* ai = sCompanionMgr->GetAI(guid);
+        Player* player = ai ? ai->GetBot() : nullptr;
+        auto itemLine = [](char const* kind, std::string const& where, ObjectGuid::LowType low, ItemTemplate const* proto, uint32 count,
+            std::string const& extra) -> std::string
+        {
+            std::ostringstream ss;
+            ss << "COMP|" << kind << "|" << where << "|" << low << "|" << proto->GetId() << "|" << Clean(proto->GetName(LOCALE_enUS)) << "|"
+               << proto->GetQuality() << "|" << proto->GetBaseItemLevel() << "|" << count << extra;
+            return ss.str();
+        };
+
+        if (!player)
+        {
+            // not in the game: what its bags hold, from the database
+            CharacterCacheEntry const* cache = sCharacterCache->GetCharacterCacheByGuid(guid);
+            std::ostringstream head;
+            head << "COMP|INSPECT|0|" << (cache ? uint32(cache->Level) : 0) << "|" << (cache ? uint32(cache->Class) : 0) << "|"
+                 << (cache ? uint32(cache->Race) : 0) << "|" << uint32(record->BotRole) << "|0|0|0|0|0|" << uint32(record->LootMode) << "|"
+                 << uint32(record->UsePotions) << "|" << uint32(record->AutoCC);
+            handler->SendSysMessage(head.str());
+            std::unordered_map<ObjectGuid::LowType, uint32> bagSlots;
+            if (QueryResult result = CharacterDatabase.PQuery("SELECT ci.bag, ci.slot, ci.item, ii.itemEntry, ii.count FROM character_inventory ci "
+                "JOIN item_instance ii ON ii.guid = ci.item WHERE ci.guid = {} ORDER BY ci.bag, ci.slot", bot))
+            {
+                std::vector<std::array<uint64, 5>> rows;
+                do
+                {
+                    Field* f = result->Fetch();
+                    rows.push_back({ f[0].GetUInt64(), f[1].GetUInt8(), f[2].GetUInt64(), f[3].GetUInt32(), f[4].GetUInt32() });
+                } while (result->NextRow());
+                for (auto const& row : rows)
+                    if (row[0] == 0 && row[1] >= INVENTORY_SLOT_BAG_START && row[1] < INVENTORY_SLOT_BAG_END)
+                        bagSlots[row[2]] = uint32(row[1]);
+                for (auto const& row : rows)
+                {
+                    ItemTemplate const* proto = sObjectMgr->GetItemTemplate(uint32(row[3]));
+                    if (!proto)
+                        continue;
+                    if (row[0] == 0 && row[1] < EQUIPMENT_SLOT_END)
+                        handler->SendSysMessage(itemLine("GEAR", std::to_string(row[1]), row[2], proto, 1, ""));
+                    else if (row[0] == 0 && row[1] >= INVENTORY_SLOT_ITEM_START && row[1] < INVENTORY_SLOT_ITEM_END)
+                        handler->SendSysMessage(itemLine("BAG", "255|" + std::to_string(row[1]), row[2], proto, uint32(row[4]), "|0|0|0"));
+                    else if (row[0] != 0)
+                        handler->SendSysMessage(itemLine("BAG", std::to_string(bagSlots[row[0]]) + "|" + std::to_string(row[1]), row[2], proto,
+                            uint32(row[4]), "|0|0|0"));
+                }
+            }
+        }
+        else
+        {
+            Powers power = player->GetPowerType();
+            std::ostringstream head;
+            head << "COMP|INSPECT|1|" << uint32(player->GetLevel()) << "|" << uint32(player->GetClass()) << "|" << uint32(player->GetRace()) << "|"
+                 << uint32(ai->GetEffectiveRole()) << "|" << player->GetHealth() << "|" << player->GetMaxHealth() << "|" << player->GetPower(power)
+                 << "|" << player->GetMaxPower(power) << "|" << player->GetMoney() << "|" << uint32(record->LootMode) << "|"
+                 << uint32(record->UsePotions) << "|" << uint32(record->AutoCC);
+            handler->SendSysMessage(head.str());
+
+            auto stat = [&](char const* key, float value)
+            {
+                std::ostringstream ss;
+                ss.setf(std::ios::fixed);
+                ss.precision(value == std::floor(value) ? 0 : 2);
+                ss << "COMP|STAT|" << key << "|" << value;
+                handler->SendSysMessage(ss.str());
+            };
+            stat("strength", player->GetStat(STAT_STRENGTH));
+            stat("agility", player->GetStat(STAT_AGILITY));
+            stat("stamina", player->GetStat(STAT_STAMINA));
+            stat("intellect", player->GetStat(STAT_INTELLECT));
+            stat("spirit", player->GetStat(STAT_SPIRIT));
+            stat("armor", float(player->GetArmor()));
+            stat("attack_power", player->GetTotalAttackPowerValue(BASE_ATTACK));
+            stat("ranged_attack_power", player->GetTotalAttackPowerValue(RANGED_ATTACK));
+            stat("spell_power", float(player->SpellBaseDamageBonusDone(SPELL_SCHOOL_MASK_MAGIC)));
+            stat("healing_power", float(player->SpellBaseHealingBonusDone(SPELL_SCHOOL_MASK_ALL)));
+            stat("melee_crit", *player->m_activePlayerData->CritPercentage);
+            stat("ranged_crit", *player->m_activePlayerData->RangedCritPercentage);
+            stat("dodge", *player->m_activePlayerData->DodgePercentage);
+            stat("parry", *player->m_activePlayerData->ParryPercentage);
+            stat("block", *player->m_activePlayerData->BlockPercentage);
+            stat("fire_resistance", float(player->GetResistance(SPELL_SCHOOL_FIRE)));
+            stat("nature_resistance", float(player->GetResistance(SPELL_SCHOOL_NATURE)));
+            stat("frost_resistance", float(player->GetResistance(SPELL_SCHOOL_FROST)));
+            stat("shadow_resistance", float(player->GetResistance(SPELL_SCHOOL_SHADOW)));
+            stat("arcane_resistance", float(player->GetResistance(SPELL_SCHOOL_ARCANE)));
+
+            for (uint8 slot = EQUIPMENT_SLOT_START; slot < EQUIPMENT_SLOT_END; ++slot)
+                if (Item* item = player->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
+                    if (ItemTemplate const* proto = item->GetTemplate())
+                        handler->SendSysMessage(itemLine("GEAR", std::to_string(slot), item->GetGUID().GetCounter(), proto, 1, ""));
+            auto bagItem = [&](Item* item, uint8 bag, uint8 slot)
+            {
+                ItemTemplate const* proto = item->GetTemplate();
+                if (!proto)
+                    return;
+                bool equippable = proto->GetInventoryType() != INVTYPE_NON_EQUIP && player->CanUseItem(proto) == EQUIP_ERR_OK;
+                bool upgrade = equippable && sCompanionFactory->IsUpgrade(player, proto, ai->GetEffectiveRole());
+                handler->SendSysMessage(itemLine("BAG", std::to_string(bag) + "|" + std::to_string(slot), item->GetGUID().GetCounter(), proto,
+                    item->GetCount(), "|" + std::to_string(equippable) + "|" + std::to_string(upgrade) + "|" + std::to_string(item->IsSoulBound())));
+            };
+            for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
+                if (Item* item = player->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
+                    bagItem(item, INVENTORY_SLOT_BAG_0, slot);
+            for (uint8 bag = INVENTORY_SLOT_BAG_START; bag < INVENTORY_SLOT_BAG_END; ++bag)
+                if (Bag* container = player->GetBagByPos(bag))
+                    for (uint32 slot = 0; slot < container->GetBagSize(); ++slot)
+                        if (Item* item = container->GetItemByPos(uint8(slot)))
+                            bagItem(item, bag, uint8(slot));
+
+            for (CompanionFactory::TalentLine const& talent : sCompanionFactory->ListTalents(player))
+                handler->SendSysMessage("COMP|TALENT|" + std::to_string(talent.Tab) + "|" + Clean(talent.Name) + "|" + std::to_string(talent.Rank)
+                    + "|" + std::to_string(talent.MaxRank));
+            // the abilities a player sees in the spell book (no passives, no hidden helper spells)
+            for (std::string const& name : ai->Spells().Names())
+            {
+                SpellInfo const* info = sSpellMgr->GetSpellInfo(ai->SpellIdOf(name), DIFFICULTY_NONE);
+                if (!info || info->IsPassive() || info->HasAttribute(SPELL_ATTR0_DO_NOT_DISPLAY_SPELLBOOK_AURA_ICON_COMBAT_LOG) || name.rfind("activate ", 0) == 0
+                    || name == "attack" || name == "attacking" || name == "closing" || name == "opening")
+                    continue;
+                handler->SendSysMessage("COMP|SPELL|" + Clean(name));
+            }
+        }
+
+        // what it was told about its spells (from the record when it is not in the game)
+        std::string prefs = ai ? ai->SavePrefs() : record->Prefs;
+        std::istringstream in(prefs);
+        std::string entry;
+        while (std::getline(in, entry, ';'))
+            if (!entry.empty())
+                handler->SendSysMessage("COMP|PREF|" + entry);
+        return true;
+    }
+
+    // .bot admin item <owner> <bot> <equip|unequip|destroy> <item guid|slot>
+    static bool HandleItem(ChatHandler* handler, uint64 owner, uint64 bot, std::string action, uint64 what)
+    {
+        if (!OwnedRecord(handler, owner, bot))
+            return true;
+        CompanionAI* ai = sCompanionMgr->GetAI(PlayerGuid(bot));
+        Player* player = ai ? ai->GetBot() : nullptr;
+        if (!player || player->IsInCombat())
+        {
+            Error(handler, player ? "it is fighting" : "summon the companion first");
+            return true;
+        }
+        if (action == "unequip")
+        {
+            Item* item = what < EQUIPMENT_SLOT_END ? player->GetItemByPos(INVENTORY_SLOT_BAG_0, uint8(what)) : nullptr;
+            ItemPosCountVec dest;
+            if (!item || player->CanStoreItem(NULL_BAG, NULL_SLOT, dest, item, false) != EQUIP_ERR_OK)
+            {
+                Error(handler, item ? "no room in its bags" : "nothing there");
+                return true;
+            }
+            player->RemoveItem(INVENTORY_SLOT_BAG_0, uint8(what), true);
+            player->StoreItem(dest, item, true);
+        }
+        else
+        {
+            Item* item = player->GetItemByGuid(ObjectGuid::Create<HighGuid::Item>(what));
+            if (!item || item->IsEquipped())
+            {
+                Error(handler, "no such item in its bags");
+                return true;
+            }
+            if (action == "equip")
+            {
+                if (!CompanionFactory::EquipFromBags(player, item))
+                {
+                    Error(handler, "it cannot wear that");
+                    return true;
+                }
+            }
+            else if (action == "destroy")
+                player->DestroyItem(item->GetBagSlot(), item->GetSlot(), true);
+            else
+            {
+                Error(handler, "unknown action");
+                return true;
+            }
+        }
+        player->SaveToDB();
+        Ok(handler);
+        return true;
+    }
+
     // .bot admin mechanics [entry]: COMP|MECH|rules|encounters, then a creature's rules and note
     static bool HandleMechanics(ChatHandler* handler, Optional<uint32> entry)
     {
@@ -587,6 +827,8 @@ namespace Companions
             { "builds",     HandleBuilds,     PERM_ADMIN, Console::Yes },
             { "items",      HandleItems,      PERM_ADMIN, Console::Yes },
             { "mechanics",  HandleMechanics,  PERM_ADMIN, Console::Yes },
+            { "inspect",    HandleInspect,    PERM_ADMIN, Console::Yes },
+            { "item",       HandleItem,       PERM_ADMIN, Console::Yes },
         };
         return table;
     }

@@ -42,6 +42,9 @@ namespace Companions
         static bool IsChoiceAvailable(ChrCustomizationChoiceEntry const* choice, uint8 race);
         // talent tabs of a class: number of talents and the first talent names, for the web panel
         std::vector<std::pair<uint32, std::string>> DescribeTabs(uint8 classId) const;
+        // the talents it has, by tab: (tab, name, rank, max rank)
+        struct TalentLine { uint32 Tab; std::string Name; int32 Rank; int32 MaxRank; };
+        std::vector<TalentLine> ListTalents(Player* bot) const;
         // one build per talent tree, the way it was played in classic raids: points per tab, e.g. Fury warrior 17/34/0
         struct MetaBuild { uint32 Points[3]; Role ForRole; };
         static MetaBuild const* MetaBuildFor(uint8 classId, uint32 tree);

@@ -55,7 +55,12 @@ of your characters:
   card (marked in gold) until **Apply**, which confirms what was applied and when it acts (talents and gear are
   relearned within seconds for a companion with you). Talents: one meta build per tree, as played in classic raids
   (for example Fury 17/34/0, Protection 8/5/38, Holy 31/20/0), or the role's one. Rename (while resting), new gear, new talents, delete. Whole-party settings: brain on or off for
-  all, aggression, stance and gear quality, plus summon or dismiss all.
+  all, aggression, stance and gear quality, plus summon or dismiss all. Also per companion: looting (what it can use,
+  everything, nothing), potions when low, crowd control of extra adds on its own.
+- **Details** (on each companion): its gear (take a piece off), its bags (equip, destroy; upgrades marked), its stats
+  (health, mana, attributes, armor, attack and spell power, crit, dodge, parry, block, resistances), its talents by tree,
+  and its abilities, each set to normal, use more or never use (with what players said about it). Stats, talents and
+  abilities need it in the game; gear and bags show either way.
 - **New companion**: class, race (the ones your faction can play, with Forever's Undead and Tauren paladins, Dwarf
   shamans and Troll druids), gender, custom or random name, role, talent
   tabs, gear quality, aggression, stance, brain and personality, and the appearance (each option picked or random).
@@ -95,9 +100,42 @@ Type them in party chat. Start with a bot's name to talk to one bot ("Jaina stay
 | `rest` | eat and drink to full |
 | `cast <spell> [on me / on target]` | cast a spell now ("cast polymorph on target") |
 | `tactics` | the encounter in a sentence or two: your target's, else the boss they fight |
+| `plan <steps>` | several steps carried out in order (see below); `plan` shows it, `cancel plan` stops it |
+| `prefer <spell> [below 30]` / `avoid <spell>` / `allow <spell>` / `prefs [clear]` | lasting changes to how it uses an ability (see below) |
+| `give me <item\|potions\|food\|drink\|bandages\|junk>` | it opens a trade with you and puts it in |
+| `loot all\|useful\|off`, `potions on\|off`, `autocc on\|off` | what it picks up from its corpses, potions when low, crowd control of extra adds on its own |
 | `status` | health, mana, role |
 | `gear` | look again for the best gear |
 | `dismiss` | leave |
+
+Plain words work too, without the brain: "go all out", "hold up", "fall back", "help me", "take a breather" are the
+orders they mean.
+
+**Plans.** Several steps in one go, said plainly or as an order:
+
+- "attack this pack, then wait for full mana and then we attack the other pack when we have full health and mana and
+  everyone confirmed they're ready" becomes: pull your target's pack, rest to full, wait until every player of the
+  group says `ready` (or `r`, `go`), pull the next pack;
+- "when we attack this pack, I want the mage (or a name) to polymorph this mob": the mage keeps your target controlled,
+  the tank pulls another one of the pack, and the controlled one dies last;
+- the order form, the one the brain writes: `plan pull p1, jaina cc e5; rest; ready; pull next` (P1, P2... are the packs
+  around, E1, E2... the creatures, both numbered for the brain; `next` is the nearest pack when the step comes;
+  `rest 80`, `wait 10`).
+
+**What you tell them about their abilities** stays with them (and shows in the web panel): "Jaina, use more Frost Nova
+because the adds keep reaching the healer", "stop using Curse of Recklessness, it pulls extra mobs", "Shield Wall when
+you drop below 30%". A spell to use more gets the first chance whenever it helps (an area spell with enemies around,
+a buff that is not up, below the health named); one to avoid is never cast on their own (`cast <spell>` still does).
+
+**Items.** Open a trade with a companion and it accepts once you accept; ask for something and it opens the trade
+(`give me your potions`). It thanks you for what you hand over and tells you whether it would wear it (`equip it`).
+Companions loot the corpses that fall to them under your loot rules: coins and what they can use (food, drink,
+potions, ammunition, gear better than theirs, which they put on). In fights they drink a healing potion or use a
+healthstone below 30% health, a mana potion below 15% mana.
+
+**Personality.** Each companion gets a personality of its own (a gruff veteran, a cheerful newcomer, a sarcastic
+trickster, a pirate, a lore nerd...) unless you write one in the web panel; the brain speaks in it, and their short
+answers without the brain ("Following.", "More Frost Nova, got it.") are said in that voice too.
 
 Other players in your group can ask your companions for help (`heal me`, `Jaina dispel me`, `protect Bob`,
 `assist Bob`); following, roles and stance stay yours.

@@ -22,6 +22,8 @@
 class Creature;
 class Group;
 class Item;
+struct ItemTemplate;
+struct Loot;
 class Player;
 class SpellInfo;
 class Unit;
@@ -52,6 +54,15 @@ namespace Companions
         Player* Owner = nullptr;
         Player* Tank = nullptr;         // the bot with the tank role, else the owner
         std::vector<Unit*> Enemies;     // hostile units in combat with a member
+    };
+
+    // what a player told a bot about one of its abilities ("use more frost nova, adds keep reaching the healer")
+    struct SpellPref
+    {
+        std::string Spell;          // lower case, as the spell book names it
+        bool Avoid = false;         // never cast it on its own
+        uint8 BelowPct = 0;         // prefer it only below this much health (0 = whenever it helps)
+        std::string Reason;
     };
 
     enum class HealUrgency : uint8
@@ -126,6 +137,7 @@ namespace Companions
         void OrderCast(std::string spell, ObjectGuid target) { _pendingCast = std::move(spell); _pendingCastTarget = target; }
         // tactics (players or the AI brain): keep this enemy crowd controlled, interrupt this caster, use cooldowns now
         void OrderCrowdControl(ObjectGuid target);
+        void ReleaseCrowdControl() { _ccTarget.Clear(); _ccCasts = 0; }
         void OrderInterrupt(ObjectGuid target) { _interruptTarget = target; _interruptUntil = GameTime::Now() + Seconds(30); }
         void OrderBurst() { _burstUntil = GameTime::Now() + Seconds(20); }
         // buffs asked for: a blessing of choice for someone ("salvation on me"), or the buffs again now ("rebuff me intellect")
@@ -212,6 +224,28 @@ namespace Companions
         bool IsAmbientCity() const { return _ambientCity; }
         void BecomeCompanion(ObjectGuid owner);
         std::string AmbientLine() const;    // test harness: what it is doing
+
+        // ---- spell preferences (CompanionAIPrefs.cpp) ----
+        void LoadPrefs(std::string const& text);
+        std::string SavePrefs() const;
+        std::vector<SpellPref> const& Prefs() const { return _prefs; }
+        bool SetPref(std::string const& spell, bool avoid, uint8 belowPct, std::string const& reason);
+        bool ClearPref(std::string const& spell);
+        void ClearPrefs() { _prefs.clear(); }
+        std::string MatchSpell(std::string const& text) const;     // the longest spell it knows named in the text
+        bool IsAvoided(std::string_view name) const;
+        std::string PrefsLine() const;      // for the brain and "prefs": what it was told
+        // behaviour settings of its record
+        void SetUsePotions(bool on) { _usePotions = on; }
+        void SetAutoCC(bool on) { _autoCC = on; }
+        void SetLootMode(uint8 mode) { _lootMode = mode; }
+        uint8 GetLootMode() const { return _lootMode; }
+        // ---- items (CompanionAIItems.cpp) ----
+        void UpdateTrade();                 // answers trade windows: opens, gives what was asked, accepts
+        bool OrderGive(Player* to, std::string const& what, std::string& reply);   // "give me your potions"
+        bool UpdateLooting();               // walks to its corpses and takes what it can use
+        bool UsePotion();                   // in combat: a potion or healthstone when low
+        void OnTradeFinished();             // thanks the trader, tells what it will do with it
         void OnRevived();
 
     private:
@@ -260,6 +294,11 @@ namespace Companions
         bool EnsureReagents(SpellInfo const* info);
         bool NeedsRest() const;
         void UpdateAmbient();
+        bool UsePreferred(Unit* target);    // the abilities it was asked to use more
+        bool HealPreferred(Unit* target, uint32 deficit);
+        bool WantsLoot(ItemTemplate const* proto) const;
+        bool WantsSomething(Loot const* loot) const;
+        void LootCorpse(Creature* corpse);
         bool AmbientGrind();
         bool AmbientVisit();
         bool AmbientWander(float range);
@@ -350,6 +389,25 @@ namespace Companions
         Position _activitySpot;
         ObjectGuid _activityTarget;
         uint32 _activityDwell = 0;      // ms to stay once there
+        // preferences and behaviour settings
+        std::vector<SpellPref> _prefs;
+        std::unordered_map<std::string, TimePoint> _prefTried;
+        bool _allowAvoided = false;     // an explicit "cast <spell>" order overrides "avoid"
+        bool _usePotions = true;
+        bool _autoCC = true;
+        uint8 _lootMode = 0;
+        TimePoint _potionAt = { };
+        // trading and looting
+        ObjectGuid _giveTo;             // a trade it opened to hand something over
+        std::string _giveWhat;
+        TimePoint _giveUntil = { };
+        bool _giveFilled = false;
+        ObjectGuid _tradeBegun;         // the trade window it opened for that player
+        ObjectGuid _tradeDone;          // accepted: thanks once the trade is over
+        ObjectGuid _lootCorpse;
+        TimePoint _lootUntil = { };
+        TimePoint _lootScanAt = { };
+        std::vector<ObjectGuid> _looted;
         uint32 _ccCasts = 0;            // casts on the current assignment: two that do not hold and it gives up
         float _formationSide = 1.0f;    // melee: left or right of the owner
         std::deque<std::pair<TimePoint, std::string>> _recentCasts;

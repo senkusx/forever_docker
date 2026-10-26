@@ -13,6 +13,8 @@
 #include "CompanionLLM.h"
 #include "CompanionMechanics.h"
 #include "CompanionMgr.h"
+#include "CompanionPersonality.h"
+#include "CompanionPlan.h"
 #include "CompanionAmbient.h"
 #include "CompanionScaling.h"
 #include "Group.h"
@@ -28,10 +30,12 @@
 #include "Player.h"
 #include "RBAC.h"
 #include "PartyPackets.h"
+#include "TradeData.h"
 #include "ScriptMgr.h"
 #include "Spell.h"
 #include "TemporarySummon.h"
 #include "WorldSession.h"
+#include <cstring>
 #include <sstream>
 
 using namespace Trinity::ChatCommands;
@@ -155,6 +159,115 @@ namespace Companions
         }
     }
 
+    // ------------------------------------------------------------------ preferences and loose phrasing
+
+    namespace
+    {
+        // what a player says about an ability: "use more frost nova because adds reach the healer", "stop using arcane
+        // explosion", "use shield wall when you drop below 30%", "you can use rend again"
+        struct SpokenPref
+        {
+            std::string Kind;       // prefer, avoid, allow
+            std::string Text;       // the part naming the spell
+            uint8 BelowPct = 0;
+            std::string Reason;
+        };
+
+        bool ReadPreference(std::string const& message, SpokenPref& out)
+        {
+            std::string lower = " " + ToLower(message) + " ";
+            for (char const* because : { " because ", " since ", " cause ", " cuz ", " so that ", " as it ", " as they ", ", it ", ", they ",
+                ", that ", " - " })
+                if (size_t at = lower.find(because); at != std::string::npos)
+                {
+                    out.Reason = lower.substr(at + std::strlen(because));
+                    lower = lower.substr(0, at) + " ";
+                    break;
+                }
+            while (!out.Reason.empty() && (out.Reason.back() == ' ' || out.Reason.back() == '.' || out.Reason.back() == '!'))
+                out.Reason.pop_back();
+            auto has = [&](char const* text) { return lower.find(text) != std::string::npos; };
+            if (has(" don't use ") || has(" dont use ") || has(" do not use ") || has(" stop using ") || has(" stop casting ")
+                || has(" never use ") || has(" no more ") || has(" quit using ") || has(" use less ") || has(" avoid ") || has(" stop with "))
+                out.Kind = "avoid";
+            else if (has(" use ") && (has(" again ") || has(" you can use ")))
+                out.Kind = "allow";
+            else if (has(" use more ") || has(" cast more ") || has(" more often ") || has(" spam ") || has(" prefer ")
+                || (has(" use ") && has(" more ")) || (has(" use ") && (has(" below ") || has(" under "))))
+                out.Kind = "prefer";
+            else
+                return false;
+            for (char const* below : { " below ", " under ", " at " })
+                if (size_t at = lower.find(below); at != std::string::npos)
+                {
+                    unsigned long pct = std::strtoul(lower.c_str() + at + std::strlen(below), nullptr, 10);
+                    if (pct > 0 && pct < 100)
+                        out.BelowPct = uint8(pct);
+                }
+            out.Text = lower;
+            return true;
+        }
+
+        // loose phrasing for the orders players use most ("go all out" = burst)
+        std::string Canonical(std::string const& text)
+        {
+            std::string lower = ToLower(text);
+            while (!lower.empty() && (lower.back() == '!' || lower.back() == '.' || lower.back() == '?' || lower.back() == ' '))
+                lower.pop_back();
+            static std::pair<char const*, char const*> const phrases[] = {
+                { "go all out", "burst" }, { "all out", "burst" }, { "blow cooldowns", "burst" }, { "pop cooldowns", "burst" },
+                { "nuke it", "burst" }, { "burn it", "burst" }, { "burn it down", "burst" }, { "all in", "burst" },
+                { "hold up", "stay" }, { "hang on", "stay" }, { "wait here", "stay" }, { "hold position", "stay" }, { "stay here", "stay" },
+                { "let's go", "follow" }, { "lets go", "follow" }, { "move out", "follow" }, { "follow me", "follow" },
+                { "on me", "come" }, { "come here", "come" }, { "get over here", "come" }, { "to me", "come" },
+                { "back off", "retreat" }, { "fall back", "retreat" }, { "pull back", "retreat" }, { "run away", "retreat" }, { "get out", "retreat" },
+                { "take a breather", "rest" }, { "take five", "rest" }, { "drink up", "rest" }, { "med up", "rest" }, { "catch your breath", "rest" },
+                { "help me", "protect me" }, { "save me", "protect me" }, { "get it off me", "protect me" }, { "it's on me", "protect me" },
+                { "heal me", "heal me" }, { "need heals", "heal me" }, { "stop attacking", "stop" }, { "hold fire", "stop" }, { "cease fire", "stop" },
+                { "spread out", "spread" }, { "group up", "stack" }, { "stack up", "stack" },
+            };
+            for (auto const& [phrase, order] : phrases)
+                if (lower == phrase)
+                    return order;
+            return "";
+        }
+    }
+
+    bool Commands::SpeechPreference(Player* commander, std::vector<Player*> const& bots, std::string const& message, bool quiet)
+    {
+        SpokenPref pref;
+        if (!ReadPreference(message, pref))
+            return false;
+        bool any = false;
+        for (Player* bot : bots)
+        {
+            CompanionAI* ai = sCompanionMgr->GetAI(bot);
+            BotRecord* record = sCompanionMgr->GetRecord(bot->GetGUID());
+            if (!ai || !record)
+                continue;
+            std::string spell = ai->MatchSpell(pref.Text);
+            if (spell.empty())
+                continue;
+            any = true;
+            if (pref.Kind == "allow")
+                ai->ClearPref(spell);
+            else
+                ai->SetPref(spell, pref.Kind == "avoid", pref.BelowPct, pref.Reason);
+            record->Prefs = ai->SavePrefs();
+            sCompanionMgr->SaveRecord(*record);
+            if (!quiet)
+            {
+                std::string name = spell;
+                for (size_t i = 0; i < name.size(); ++i)
+                    if (i == 0 || name[i - 1] == ' ')
+                        name[i] = char(std::toupper(static_cast<unsigned char>(name[i])));
+                ai->Say(Personality::Line(bot, pref.Kind == "avoid" ? "avoid" : (pref.Kind == "allow" ? "ok" : "prefer"), name));
+            }
+        }
+        (void)commander;
+        return any;
+    }
+
     // ------------------------------------------------------------------ orders
 
     std::string Commands::OrdersHelp()
@@ -163,7 +276,10 @@ namespace Companions
                "pull, stop, retreat, assist [name], heal <name|me>, dispel <name|me>, protect <name|me>, cc <marker>, interrupt <marker>, "
                "taunt <marker>, burst, bless <name|me> salvation|might|wisdom|kings|light, rebuff <name|me> [buff], equip <item|it|upgrades>, "
                "spread, stack, normal, passive, aggressive, "
-               "role tank|heal|dps, rest, cast <spell> [on me|on target|on <name>], tactics, status, gear, dismiss, help";
+               "role tank|heal|dps, rest, cast <spell> [on me|on target|on <name>], tactics, status, gear, dismiss, help. "
+               "Also: plan <steps> (pull p1|next, <bot> cc <marker>; rest; ready; wait 10), prefer|avoid|allow <spell> [below 30], prefs [clear], "
+               "give me <item|potions|food>, loot all|useful|off, potions on|off, autocc on|off; or say it plainly "
+               "(\"use more frost nova\", \"attack this pack, then rest and pull the next one when we're ready\").";
     }
 
     bool Commands::ExecuteOrder(Player* commander, std::vector<Player*> const& bots, std::string const& text, bool quiet)
@@ -171,6 +287,11 @@ namespace Companions
         std::vector<std::string> words = Split(ToLower(text));
         if (words.empty() || bots.empty())
             return false;
+        if (std::string canonical = Canonical(text); !canonical.empty())
+            return ExecuteOrder(commander, bots, canonical, quiet);
+        // "stop using arcane explosion" is about an ability, not the "stop" order
+        if (words.size() >= 3 && words[0] != "prefer" && words[0] != "avoid" && words[0] != "allow" && SpeechPreference(commander, bots, text, quiet))
+            return true;
 
         std::string const& order = words[0];
         auto forEach = [&](auto&& fn)
@@ -183,17 +304,17 @@ namespace Companions
         if (order == "follow" || order == "f")
         {
             forEach([](Player*, CompanionAI* ai) { ai->SetStance(Stance::Follow); });
-            Ack(bots, quiet, "Following.");
+            Ack(bots, quiet, Personality::Line(bots.front(), "follow"));
         }
         else if (order == "stay" || order == "hold" || order == "wait")
         {
             forEach([](Player*, CompanionAI* ai) { ai->SetStance(Stance::Stay); });
-            Ack(bots, quiet, "Holding here.");
+            Ack(bots, quiet, Personality::Line(bots.front(), "stay"));
         }
         else if (order == "come" || order == "here" || order == "regroup")
         {
             forEach([](Player*, CompanionAI* ai) { ai->OrderComeHere(); });
-            Ack(bots, quiet, "On my way.");
+            Ack(bots, quiet, Personality::Line(bots.front(), "come"));
         }
         else if ((order == "attack" || order == "kill" || order == "focus") && words.size() >= 2
             && (IconIndex(words[1]) >= 0 || CompanionLLM::IsEnemyRef(words[1])))
@@ -203,7 +324,7 @@ namespace Companions
             if (!target || !target->IsAlive())
                 return true;
             forEach([&](Player*, CompanionAI* ai) { ai->OrderAttack(target->GetGUID(), false); });
-            Ack(bots, quiet, "Focusing " + target->GetName() + ".");
+            Ack(bots, quiet, Personality::Line(bots.front(), "focus", target->GetName()));
         }
         else if ((order == "cc" || order == "sheep" || order == "control") && words.size() >= 2)
         {
@@ -328,7 +449,7 @@ namespace Companions
         else if (order == "burst" || order == "cooldowns" || order == "bloodlust")
         {
             forEach([](Player*, CompanionAI* ai) { ai->OrderBurst(); });
-            Ack(bots, quiet, "Everything I've got!");
+            Ack(bots, quiet, Personality::Line(bots.front(), "burst"));
         }
         else if (order == "assist" && words.size() >= 2)
         {
@@ -404,7 +525,7 @@ namespace Companions
         else if (order == "stop" || order == "halt" || order == "back")
         {
             forEach([](Player*, CompanionAI* ai) { ai->OrderStop(); });
-            Ack(bots, quiet, "Stopping.");
+            Ack(bots, quiet, Personality::Line(bots.front(), "ok"));
         }
         else if (order == "passive")
         {
@@ -445,7 +566,7 @@ namespace Companions
         else if (order == "rest" || order == "drink" || order == "eat")
         {
             forEach([](Player*, CompanionAI* ai) { ai->OrderRest(); });
-            Ack(bots, quiet, "Taking a break.");
+            Ack(bots, quiet, Personality::Line(bots.front(), "rest"));
         }
         else if (order == "cast" && words.size() >= 2)
         {
@@ -494,6 +615,115 @@ namespace Companions
         {
             forEach([](Player* bot, CompanionAI* ai) { ai->Say("See you."); sCompanionMgr->Dismiss(bot->GetGUID(), false); });
         }
+        else if (order == "plan")
+        {
+            // "plan pull p1, jaina cc e5; rest; ready; pull next" (the brain writes plans this way too)
+            std::string steps = Join(words, 1);
+            if (steps.empty())
+                Ack(bots, false, "Plan: " + sPlans->Describe(commander->GetGUID()) + ".");
+            else if (!sPlans->StartOrder(commander, bots, steps, quiet))
+                Ack(bots, quiet, "I didn't get that plan.");
+        }
+        else if ((order == "prefer" || order == "avoid" || order == "allow" || order == "unprefer") && words.size() >= 2)
+        {
+            // "prefer frost nova [below 30] [because ...]", "avoid arcane explosion", "allow rend"
+            std::string kind = order == "unprefer" ? "allow" : order;
+            std::string spoken = (kind == "prefer" ? "use more " : kind == "avoid" ? "don't use " : "you can use again ") + Join(words, 1);
+            if (!SpeechPreference(commander, bots, spoken, quiet))
+                Ack(bots, quiet, "None of us knows that spell.");
+        }
+        else if (order == "prefs" || order == "preferences")
+        {
+            bool clear = words.size() >= 2 && words[1] == "clear";
+            forEach([&](Player* bot, CompanionAI* ai)
+            {
+                if (clear)
+                {
+                    ai->ClearPrefs();
+                    if (BotRecord* record = sCompanionMgr->GetRecord(bot->GetGUID()))
+                    {
+                        record->Prefs.clear();
+                        sCompanionMgr->SaveRecord(*record);
+                    }
+                }
+                else if (!quiet)
+                    ai->Say(ai->PrefsLine().empty() ? "Nobody told me anything about my spells." : "I was told: " + ai->PrefsLine() + ".");
+            });
+            if (clear)
+                Ack(bots, quiet, Personality::Line(bots.front(), "ok"));
+        }
+        else if (order == "give" || order == "hand" || (order == "trade" && words.size() >= 2))
+        {
+            // "give me your potions", "give bob the sword", "trade me food": the first of these bots that has it opens a trade
+            Player* to = commander;
+            size_t i = 1;
+            if (words.size() > 1 && (words[1] == "me" || words[1] == "us"))
+                i = 2;
+            else if (words.size() > 1)
+                if (Player* member = NamedMember(commander, words[1]); member && member != commander)
+                {
+                    to = member;
+                    i = 2;
+                }
+            while (i < words.size() && (words[i] == "your" || words[i] == "the" || words[i] == "some" || words[i] == "over" || words[i] == "a"
+                || words[i] == "an" || words[i] == "my" || words[i] == "all"))
+                ++i;
+            std::string what = Join(words, i);
+            if (what.empty())
+                return false;
+            std::string reply;
+            for (Player* bot : bots)
+            {
+                CompanionAI* ai = sCompanionMgr->GetAI(bot);
+                if (ai && ai->OrderGive(to, what, reply))
+                {
+                    if (!quiet)
+                        ai->Say(reply);
+                    return true;
+                }
+            }
+            if (!quiet && !reply.empty())
+                if (CompanionAI* ai = sCompanionMgr->GetAI(bots.front()))
+                    ai->Say(reply);
+        }
+        else if (order == "loot" && words.size() >= 2)
+        {
+            // "loot all", "loot useful", "loot off"
+            uint8 mode = (words[1] == "all" || words[1] == "everything") ? 1 : (words[1] == "off" || words[1] == "none" || words[1] == "nothing") ? 2 : 0;
+            forEach([&](Player* bot, CompanionAI* ai)
+            {
+                ai->SetLootMode(mode);
+                if (BotRecord* record = sCompanionMgr->GetRecord(bot->GetGUID()))
+                {
+                    record->LootMode = mode;
+                    sCompanionMgr->SaveRecord(*record);
+                }
+            });
+            Ack(bots, quiet, mode == 1 ? "I'll take everything I can carry." : mode == 2 ? "Hands off the loot, got it." : "I'll only pick up what I can use.");
+        }
+        else if ((order == "potions" || order == "autocc") && words.size() >= 2)
+        {
+            bool on = words[1] == "on" || words[1] == "yes" || words[1] == "1";
+            forEach([&](Player* bot, CompanionAI* ai)
+            {
+                BotRecord* record = sCompanionMgr->GetRecord(bot->GetGUID());
+                if (order == "potions")
+                {
+                    ai->SetUsePotions(on);
+                    if (record)
+                        record->UsePotions = on;
+                }
+                else
+                {
+                    ai->SetAutoCC(on);
+                    if (record)
+                        record->AutoCC = on;
+                }
+                if (record)
+                    sCompanionMgr->SaveRecord(*record);
+            });
+            Ack(bots, quiet, Personality::Line(bots.front(), "ok"));
+        }
         else if (order == "help")
         {
             ChatHandler(commander->GetSession()).SendSysMessage(OrdersHelp());
@@ -528,6 +758,7 @@ namespace Companions
                 { "near",   HandleTestNear,   rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "ambient", HandleTestAmbient, rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "invite", HandleTestInvite, rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
+                { "packs",  HandleTestPacks,  rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "order",  HandleTestOrder,  rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "spells", HandleTestSpells, rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "why",    HandleTestWhy,    rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
@@ -1123,6 +1354,8 @@ namespace Companions
             handler->PSendSysMessage("%s: level %u, %u%% health, map %u (%.1f %.1f %.1f), %s", puppet->GetName().c_str(), uint32(puppet->GetLevel()),
                 uint32(puppet->GetHealthPct()), puppet->GetMapId(), puppet->GetPositionX(), puppet->GetPositionY(), puppet->GetPositionZ(),
                 puppet->IsInCombat() ? "in combat" : "idle");
+            if (sPlans->HasPlan(puppet->GetGUID()))
+                handler->PSendSysMessage("plan: %s", sPlans->Describe(puppet->GetGUID()).c_str());
             for (Player* bot : sCompanionMgr->GetBotsOf(puppet->GetGUID()))
             {
                 CompanionAI* ai = sCompanionMgr->GetAI(bot);
@@ -1178,6 +1411,14 @@ namespace Companions
                         handler->PSendSysMessage("  %s, level %u %s, class %u | %.0f yards | %s%s", bot->GetName().c_str(), uint32(bot->GetLevel()),
                             bot->GetTeam() == ALLIANCE ? "Alliance" : "Horde", uint32(bot->GetClass()), bot->GetDistance(puppet),
                             ai->AmbientLine().c_str(), bot->IsInCombat() ? " | fighting" : "");
+            return true;
+        }
+
+        // the packs a plan sees around the stand-in (P1, P2...)
+        static bool HandleTestPacks(ChatHandler* handler, std::string owner)
+        {
+            if (Player* puppet = Puppet(handler, owner))
+                handler->SendSysMessage(sPlans->PackLines(puppet));
             return true;
         }
 
@@ -1305,6 +1546,14 @@ namespace Companions
                 victim ? victim->GetName().c_str() : "-", victim ? bot->GetDistance(victim) : 0.0f, uint32(victim && ai->InMelee(victim)),
                 ai->RecentCasts().c_str());
             handler->PSendSysMessage("  mechanics: %s", ai->MechanicsLine().c_str());
+            if (TradeData* trade = bot->GetTradeData())
+            {
+                uint32 items = 0;
+                for (uint8 slot = 0; slot < TRADE_SLOT_TRADED_COUNT; ++slot)
+                    items += trade->GetItem(TradeSlots(slot)) ? 1 : 0;
+                handler->PSendSysMessage("  trading with %s: %u items offered, %s", trade->GetTrader()->GetName().c_str(), items,
+                    trade->IsAccepted() ? "accepted" : "not accepted");
+            }
             return true;
         }
 
@@ -1343,6 +1592,8 @@ namespace Companions
         if (!group || msg.empty() || msg[0] == '.' || msg[0] == '!')
             return;
         CompanionLLM::RecordChat(group, player->GetName(), msg);
+        if (sPlans->OnChat(player, msg))
+            return;
 
         // the speaker's own companions take any order; the other companions of the group help on request
         std::vector<Player*> own = sCompanionMgr->GetBotsOf(player->GetGUID());
@@ -1353,6 +1604,9 @@ namespace Companions
                     if (ai->GetOwnerGUID() != player->GetGUID())
                         others.push_back(member);
         if (own.empty() && others.empty())
+            return;
+        // instructions in several steps ("attack this pack, then rest, then...") before the one-word orders they start with
+        if (!own.empty() && sPlans->StartNatural(player, own, msg, false))
             return;
         std::vector<Player*> all = own;
         all.insert(all.end(), others.begin(), others.end());
@@ -1390,6 +1644,13 @@ namespace Companions
                     addressed = bot;
                     break;
                 }
+        }
+
+        // instructions in plain words: a plan in several steps, or what to do with an ability
+        if (!own.empty())
+        {
+            if (SpeechPreference(player, named && std::find(own.begin(), own.end(), named) != own.end() ? std::vector<Player*>{ named } : own, msg, false))
+                return;
         }
 
         // talk: the brain hears it for every companion of the group and decides who answers (often nobody)
@@ -1468,6 +1729,8 @@ namespace Companions
                     receiver->Whisper("I'm adventuring with someone else right now.", LANG_UNIVERSAL, player);
                 return;
             }
+            if (sPlans->StartNatural(player, sCompanionMgr->GetBotsOf(player->GetGUID()), msg, false))
+                return;
             if (Commands::ExecuteOrder(player, { receiver }, msg, true))
                 return;
             if (!CompanionLLM::OnChatToBot(receiver, player, "whisper", msg))

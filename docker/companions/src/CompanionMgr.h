@@ -40,6 +40,11 @@ namespace Companions
         Stance StanceMode = Stance::Follow;
         uint32 TemplateId = 0;      // web panel template the bot was made from
         uint32 LLMProvider = 0;     // AI provider answering for it (0 = any)
+        // what players told it about its abilities: "prefer|frost nova|0|adds reach the healer;avoid|arcane explosion|0|"
+        std::string Prefs;
+        uint8 LootMode = 0;         // 0 what it can use, 1 everything, 2 nothing
+        bool UsePotions = true;     // potions and healthstones from its bags when low
+        bool AutoCC = true;         // controls an extra add of a pack on its own
     };
 
     class CompanionMgr

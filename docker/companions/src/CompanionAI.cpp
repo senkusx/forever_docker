@@ -330,6 +330,7 @@ namespace Companions
 
         HandleRequests();
         BuildView();
+        UpdateTrade();
 
         bool const combat = !_view.Enemies.empty();
         if (combat && !_inCombat)
@@ -1001,6 +1002,8 @@ namespace Companions
 
         if (_class->Emergency())
             return;
+        if (UsePotion())
+            return;
 
         if (role == Role::Healer || _class->CanHeal())
             if (UpdateHealing(true))
@@ -1130,6 +1133,10 @@ namespace Companions
 
         MoveForCombat(role == Role::Healer ? nullptr : target);
 
+        // what a player asked it to use more
+        if (UsePreferred(target))
+            return;
+
         if (role == Role::Healer)
         {
             // nothing to heal: help with damage while mana is comfortable
@@ -1173,6 +1180,8 @@ namespace Companions
             return;
         if (UpdateDispels())
             return;
+        if (UpdateLooting())
+            return;
         if (UpdateEatDrink())
             return;
         if (UpdateBuffs(false))
@@ -1189,7 +1198,7 @@ namespace Companions
     bool CompanionAI::AutoCrowdControl(Unit* killTarget)
     {
         Role role = GetEffectiveRole();
-        if (role == Role::Tank || role == Role::Healer || _bot->GetClass() == CLASS_ROGUE || GameTime::Now() < _ccCheckAt)
+        if (!_autoCC || role == Role::Tank || role == Role::Healer || _bot->GetClass() == CLASS_ROGUE || GameTime::Now() < _ccCheckAt)
             return false;
         _ccCheckAt = GameTime::Now() + Seconds(2);
         // adds a boss fight wants controlled (Firesworn banished, Flamewakers sheeped...) count from two
@@ -1432,7 +1441,10 @@ namespace Companions
             return true;
         }
 
-        return _class->Heal(best, urgency, uint32(std::min<uint64>(missing, std::numeric_limits<uint32>::max())));
+        uint32 const deficit = uint32(std::min<uint64>(missing, std::numeric_limits<uint32>::max()));
+        if (HealPreferred(best, deficit))
+            return true;
+        return _class->Heal(best, urgency, deficit);
     }
 
     uint32 CompanionAI::DispellableMask(Unit* target) const
@@ -1729,7 +1741,10 @@ namespace Companions
             Say("I don't know " + spell + ".");
             return false;
         }
-        if (!Cast(spell, target))
+        _allowAvoided = true;     // asked for by name: that overrides "never use it"
+        bool cast = Cast(spell, target);
+        _allowAvoided = false;
+        if (!cast)
         {
             Say("I can't cast " + spell + " right now.");
             return false;
@@ -2156,6 +2171,9 @@ namespace Companions
         SpellInfo const* info = sSpellMgr->GetSpellInfo(spellId, DIFFICULTY_NONE);
         if (!target)
             target = _bot;
+        // a player told it never to use this one
+        if (!_prefs.empty() && info->SpellName && IsAvoided(ToLower(info->SpellName->Str[LOCALE_enUS])))
+            return false;
 
         if (GetConfig().FreeReagents)
             EnsureReagents(info);

@@ -10,6 +10,7 @@
 #include "CompanionConfig.h"
 #include "CompanionMechanics.h"
 #include "CompanionMgr.h"
+#include "CompanionPlan.h"
 #include "Creature.h"
 #include "DatabaseEnv.h"
 #include "DB2Stores.h"
@@ -47,15 +48,6 @@ namespace Companions::CompanionLLM
         struct TacticsState { uint32 LastMs = 0; uint32 CombatSinceMs = 0; size_t Enemies = 0; };
         std::unordered_map<ObjectGuid, TacticsState> _tactics;
 
-        uint32 RefOf(ObjectGuid owner, ObjectGuid enemy)
-        {
-            std::vector<ObjectGuid>& refs = _enemyRefs[owner];
-            auto itr = std::find(refs.begin(), refs.end(), enemy);
-            if (itr != refs.end())
-                return uint32(itr - refs.begin()) + 1;
-            refs.push_back(enemy);
-            return uint32(refs.size());
-        }
 
         char const* CreatureTypeName(uint32 type)
         {
@@ -454,6 +446,16 @@ namespace Companions::CompanionLLM
         Insert(nullptr, bot, "event", "party", kind, detail, { bot }, ProviderOf(bot));
     }
 
+    uint32 RefOf(ObjectGuid owner, ObjectGuid enemy)
+    {
+        std::vector<ObjectGuid>& refs = _enemyRefs[owner];
+        auto itr = std::find(refs.begin(), refs.end(), enemy);
+        if (itr != refs.end())
+            return uint32(itr - refs.begin()) + 1;
+        refs.push_back(enemy);
+        return uint32(refs.size());
+    }
+
     bool IsEnemyRef(std::string const& word)
     {
         return word.size() >= 2 && word.size() <= 3 && (word[0] == 'e' || word[0] == 'E')
@@ -555,6 +557,8 @@ namespace Companions::CompanionLLM
                 ss << ", attacking " << target->GetName();
             if (record && !record->Personality.empty())
                 ss << ". Personality: " << record->Personality;
+            if (memberAI && !memberAI->PrefsLine().empty())
+                ss << ". Told about its abilities: " << memberAI->PrefsLine();
             ss << "\n";
         }
 
@@ -646,6 +650,10 @@ namespace Companions::CompanionLLM
                             }
             }
         }
+
+        // packs not fighting yet (numbered for plans: "plan pull p2"), and the plan going on
+        if (owner)
+            ss << sPlans->PackLines(owner);
 
         // what a player would notice around: elites and rares not yet fighting
         {
