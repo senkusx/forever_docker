@@ -339,13 +339,20 @@ bots see it and what each one does), `invite <owner> <name>` (a /invite), `order
 - Loot: with group loot a companion rolls **Need** only on a clear upgrade it can use (at least 5% better than what it
   wears in that slot) and puts it on; it passes on everything else, the greed rolls are yours. With master loot it keeps
   what you give it in its bags until you say `equip it`. Gear it looted or was given is kept when it regears.
+- Missing items: Forever's loot tables name 1,416 vanilla items its client data lacks (the boss loot of Blackrock Depths
+  and Molten Core, Onyxia's tier 2 helms, ...), so those rows never dropped. The client still has their icons and
+  models; `docker/sql/hotfixes/2026_10_26_90_hotfixes_companions_vanilla_items.sql` adds the rest (name in 9 languages
+  where TrinityCore's 3.3.5 database has them, stats, equip and proc spells, item sets) as hotfixes, which the server loads
+  and sends to the game. Weapon damage follows the client's damage tables like Forever's own weapons, so a few vanilla
+  weapons that sat below the curve (mostly ones with a proc) hit somewhat harder.
 - Dungeon and raid loot: `docker/sql/world/2026_10_25_90_world_companions_vanilla_loot.sql` adds the vanilla loot
-  Forever's tables lack, for 302 creatures of the classic dungeons (Ragefire Chasm to Dire Maul, Scholomance, Stratholme)
-  and of Molten Core, Blackwing Lair, Zul'Gurub, both Ahn'Qiraj raids and Lord Kazzak (boss drops, recipes, the Qiraji idols, world
-  drops of the level range...) and for the dungeon chests that lack items, from TrinityCore's 3.3.5 database where these
-  places are unchanged. Only items the Forever client knows, never replacing Forever's own loot, each item on the creature
-  that drops it. Onyxia and Naxxramas are left out (remade at level 80 in that database); the Forever dungeons (Ruins of
-  Lordaeron, Hall of Thanes) already have their own boss loot. The worldserver's updater applies it.
+  Forever's tables lack for the classic dungeons (Ragefire Chasm to Dire Maul, Scholomance, Stratholme), Molten Core,
+  Blackwing Lair, Zul'Gurub, both Ahn'Qiraj raids and the world bosses, including creatures the scripts summon (the
+  Ring of Law, ...) and the chests there, from TrinityCore's 3.3.5 database where these places are unchanged. It never
+  replaces Forever's loot: a missing item gets the chance it has in that database, a shared list Forever has only part of
+  becomes a list of the missing items at their own chances, and a creature without any loot list (the High Priestess of
+  Thaurissan) gets one. Onyxia and Naxxramas are left out (remade at level 80 in that database); the Forever dungeons
+  (Ruins of Lordaeron, Hall of Thanes) already have their own boss loot. The worldserver's updater applies both files.
 - The companions you create live on the account `COMPANIONS` (nobody can log into it).
 - How it works: a small core patch (`docker/patches/0005-companions-core-hooks.patch`) lets a session without a
   client exist (`WorldSession::IsBot`), gives each bot a per-update hook and exposes the login loader. The module

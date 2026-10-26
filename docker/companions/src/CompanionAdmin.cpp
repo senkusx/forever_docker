@@ -15,7 +15,10 @@
 #include "DatabaseEnv.h"
 #include "DB2Stores.h"
 #include "Bag.h"
+#include "CreatureData.h"
 #include "Item.h"
+#include "Loot.h"
+#include "LootMgr.h"
 #include "ObjectAccessor.h"
 #include "ObjectMgr.h"
 #include "Player.h"
@@ -25,8 +28,10 @@
 #include "RealmList.h"
 #include "Realm.h"
 #include "WorldSession.h"
+#include <algorithm>
 #include <array>
 #include <cmath>
+#include <map>
 #include <sstream>
 
 using namespace Trinity::ChatCommands;
@@ -590,6 +595,39 @@ namespace Companions
         return true;
     }
 
+    // .bot admin loot <creature entry> [kills]: what the creature's loot list gives over that many kills (data imports
+    // check against it). COMP|LOOT|entry|lootid|kills, then COMP|DROP|item|name|quality|quest|times per item
+    static bool HandleLoot(ChatHandler* handler, uint32 entry, Optional<uint32> kills)
+    {
+        CreatureTemplate const* creature = sObjectMgr->GetCreatureTemplate(entry);
+        CreatureDifficulty const* difficulty = creature ? creature->GetDifficulty(DIFFICULTY_NONE) : nullptr;
+        LootTemplate const* loot = difficulty ? LootTemplates_Creature.GetLootFor(difficulty->LootID) : nullptr;
+        if (!loot)
+        {
+            handler->SendSysMessage("COMP|ERROR|no loot list");
+            return true;
+        }
+        uint32 rolls = std::clamp<uint32>(kills.value_or(100), 1, 10000);
+        std::map<uint32, std::pair<bool, uint32>> drops;     // item -> quest item, times
+        for (uint32 i = 0; i < rolls; ++i)
+        {
+            Loot corpse(nullptr, ObjectGuid::Empty, LOOT_CORPSE, nullptr);
+            loot->Process(corpse, true, LOOT_MODE_DEFAULT, 0);
+            for (LootItem const& item : corpse.items)
+            {
+                auto& drop = drops[item.itemid];
+                drop.first = item.needs_quest;
+                ++drop.second;
+            }
+        }
+        handler->SendSysMessage(Trinity::StringFormat("COMP|LOOT|{}|{}|{}", entry, difficulty->LootID, rolls));
+        for (auto const& [item, drop] : drops)
+            if (ItemTemplate const* proto = sObjectMgr->GetItemTemplate(item))
+                handler->SendSysMessage(Trinity::StringFormat("COMP|DROP|{}|{}|{}|{}|{}", item, Clean(proto->GetName(LOCALE_enUS)),
+                    proto->GetQuality(), drop.first ? 1 : 0, drop.second));
+        return true;
+    }
+
     // .bot admin inspect <owner> <bot>: everything about one companion for the web panel
     //   COMP|INSPECT|online|level|class|race|role|health|maxhealth|power|maxpower|money|loot|potions|autocc
     //   COMP|STAT|key|value   COMP|GEAR|slot|item|entry|name|quality|itemlevel
@@ -889,6 +927,7 @@ namespace Companions
             { "config",     configTable },
             { "builds",     HandleBuilds,     PERM_ADMIN, Console::Yes },
             { "items",      HandleItems,      PERM_ADMIN, Console::Yes },
+            { "loot",       HandleLoot,       PERM_ADMIN, Console::Yes },
             { "mechanics",  HandleMechanics,  PERM_ADMIN, Console::Yes },
             { "inspect",    HandleInspect,    PERM_ADMIN, Console::Yes },
             { "team",       HandleTeam,       PERM_ADMIN, Console::Yes },
