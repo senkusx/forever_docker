@@ -275,6 +275,7 @@ namespace Companions
         Unit* SelectTankTarget();
         // a damage dealer near the tank's threat on its target: another target, or nullptr to hold
         Unit* KeepUnderTank(Unit* target);
+        bool RecoverThreat();       // tank: taunts back an enemy on another player (an area taunt for a crowd)
         void UpdatePetTaunt();      // the pet's taunt on autocast only without a tank in the group
         bool IsValidEnemy(Unit* unit, float maxDistance = 60.0f) const;   // ordered targets reach further
         bool IsCrowdControlTarget(Unit const* unit) const;

@@ -351,9 +351,13 @@ bots see it and what each one does), `invite <owner> <name>` (a /invite), `order
 - Mounts: each companion rides its own race's mount (horses, wolves, rams, sabers, skeletal horses, kodos,
   mechanostriders, raptors), or its class mount (Felsteed, Warhorse) when it knows it, swift when its player rides a swift
   one.
-- Threat: with a tank in the group the damage dealers keep under the tank's threat (90% of it in melee, 100% at range:
-  another target, else they hold), keep area spells until the tank holds the pack, and pets keep their taunt (Growl,
-  Torment) off; priests Fade, cats Cower, hunters Feign Death and rogues Feint when an enemy turns on them anyway.
+- Threat: with a tank in the group the tank's first job is any enemy on someone else (Taunt, Growl; Challenging Shout,
+  Challenging Roar or Consecration when three or more got loose), before buffs, dispels and interrupts. The damage
+  dealers let it open every pull, keep under its threat (85% of it in melee, 90% at range: another target, else they
+  hold), leave an enemy that turned on them to the tank, keep area spells until the tank holds the pack, and pets keep
+  their taunt (Growl, Torment) off; priests Fade, cats Cower, hunters Feign Death and rogues Feint when an enemy turns on
+  them anyway. A caster or healer an enemy goes after runs to the tank; next to a rooted or frozen enemy (Frost Nova,
+  Entangling Roots) it steps out of its reach instead of standing there.
 - Shamans keep their totems up in every role: Tremor against fear, Poison or Disease Cleansing when someone has one,
   Strength of Earth, Windfury and Mana Spring or Healing Stream for the group, Magma on a pack, Searing on the target.
 - Eating and drinking: the food (drink) that restores the most among those their level allows.

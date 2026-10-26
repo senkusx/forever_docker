@@ -895,8 +895,9 @@ namespace Companions
             return nullptr;
 
         // a careful player lets the tank build threat first
+        uint32 const sincePull = Elapsed(_combatStart);
         if (_view.Tank && _view.Tank != _bot && _view.Tank->IsAlive() && IsTank(_view.Tank) && pick->GetVictim() != _bot
-            && Elapsed(_combatStart) < 2500 && _forcedTarget.IsEmpty() && pick->GetVictim() != _view.Tank)
+            && _forcedTarget.IsEmpty() && (sincePull < 1500 || (pick->GetVictim() != _view.Tank && sincePull < 4000)))
         {
             _waitingFor = pick->GetGUID();
             return nullptr;
@@ -906,6 +907,34 @@ namespace Companions
         return pick;
     }
 
+    bool CompanionAI::RecoverThreat()
+    {
+        // the loose ones: on another player of the group, the one on a healer or on whoever is lowest first
+        Unit* loose = nullptr;
+        int32 looseScore = std::numeric_limits<int32>::max();
+        uint32 looseNear = 0;
+        for (Unit* enemy : _view.Enemies)
+        {
+            Player* victim = enemy->GetVictim() ? enemy->GetVictim()->ToPlayer() : nullptr;
+            if (!victim || victim == _bot || IsCrowdControlTarget(enemy) || !IsValidEnemy(enemy) || _bot->GetDistance(enemy) > 30.0f)
+                continue;
+            if (_bot->GetDistance(enemy) < 10.0f)
+                ++looseNear;
+            int32 score = (IsHealer(victim) ? 0 : 100) + int32(victim->GetHealthPct()) + int32(_bot->GetDistance(enemy));
+            if (score < looseScore)
+            {
+                looseScore = score;
+                loose = enemy;
+            }
+        }
+        if (!loose)
+            return false;
+        if (looseNear >= 3 && _class->AoeTaunt())
+            return true;
+        // the taunt now; on cooldown the target choice (loose ones first) and the rotation's big threat hits take over
+        return _class->Taunt(loose);
+    }
+
     Unit* CompanionAI::KeepUnderTank(Unit* target)
     {
         _holdingThreat = false;
@@ -913,10 +942,12 @@ namespace Companions
         if (!tank || tank == _bot || !tank->IsAlive() || !IsTank(tank) || !_forcedTarget.IsEmpty())
             return target;
         Role const role = GetEffectiveRole();
-        // the enemy pulls off the tank at 110% of its threat in melee and 130% at range: stay below it with room to spare
-        float const cap = role == Role::MeleeDps ? 0.9f : 1.0f;
+        // the enemy pulls off the tank at 110% of its threat in melee and 130% at range: stay well below it
+        float const cap = role == Role::MeleeDps ? 0.85f : 0.9f;
         auto nearTank = [&](Unit* enemy)
         {
+            if (enemy->GetVictim() == _bot)
+                return true;        // it turned on me: hitting it more keeps it there, the tank takes it back
             if (enemy->GetVictim() != tank || !enemy->CanHaveThreatList())
                 return false;
             float const tankThreat = enemy->GetThreatManager().GetThreat(tank);
@@ -1080,6 +1111,9 @@ namespace Companions
         if (_class->Emergency())
             return;
         if (UsePotion())
+            return;
+        // a tank's first job: an enemy that went for someone else comes back, before buffs, dispels or interrupts
+        if (role == Role::Tank && RecoverThreat())
             return;
 
         if (role == Role::Healer || _class->CanHeal())

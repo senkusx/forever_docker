@@ -399,6 +399,8 @@ namespace Companions
         {
             return MyRole() == Role::Tank && (Cast("hand of reckoning", target) || Cast("judgement", target) || (_ai.InMelee(target) && Cast("holy strike", target)));
         }
+        // no area taunt in vanilla: Consecration puts holy threat on all of them
+        bool AoeTaunt() override { return MyRole() == Role::Tank && Cast("consecration"); }
 
         bool Emergency() override
         {

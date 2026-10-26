@@ -217,6 +217,21 @@ namespace Companions
                     ConeCasters.insert(entry);
             }
 
+            // a rooted enemy (Frost Nova, Entangling Roots) still hits whoever stands at its side: casters and healers next
+            // to one step out of its reach (right away when it is hitting them) instead of standing there taking it
+            if (!melee && enemy->HasUnitState(UNIT_STATE_ROOT) && !enemy->HasUnitState(UNIT_STATE_STUNNED) && !IsCrowdControlTarget(enemy))
+            {
+                float reach = enemy->GetCombatReach() + _bot->GetCombatReach() + 4.0f;
+                if (_bot->GetClass() == CLASS_HUNTER)
+                    reach = std::max(reach, 9.0f);      // and out of the dead zone of the bow
+                if (_bot->GetExactDist2d(enemy) < reach + 6.0f)
+                {
+                    avoid.Circles.push_back({ enemy->GetPosition(), reach });
+                    if (enemy->GetVictim() == _bot)
+                        avoid.Hard = true;
+                }
+            }
+
             for (Rule const* rule : Mechanics::RulesFor(entry))
             {
                 if (!entry || !(rule->Roles & roleBit))
@@ -328,6 +343,20 @@ namespace Companions
                 spot = Position(cover->GetPositionX() + std::cos(angle) * 2.5f, cover->GetPositionY() + std::sin(angle) * 2.5f, cover->GetPositionZ());
             }
         }
+
+        // an enemy after a caster or healer (one that can still move): to the tank, who takes it back
+        if (!spot && !melee && !runner)
+            if (Player* tank = _view.Tank; tank && tank != _bot && tank->IsAlive() && IsTank(tank) && _bot->GetExactDist2d(tank) > 8.0f)
+                for (Unit* enemy : _view.Enemies)
+                {
+                    if (enemy->GetVictim() != _bot || enemy->HasUnitState(UNIT_STATE_ROOT) || IsCrowdControlTarget(enemy))
+                        continue;
+                    float const angle = tank->GetAbsoluteAngle(_bot);
+                    Position near(tank->GetPositionX() + std::cos(angle) * 3.0f, tank->GetPositionY() + std::sin(angle) * 3.0f, tank->GetPositionZ());
+                    if (!InDangerZone(near, 1.0f) && !avoid.Violated(near, ObjectGuid::Empty))
+                        spot = near;
+                    break;
+                }
 
         // no chasing into it: melee (and tanks) only when their target stands inside a danger, the others while any is around
         bool targetInside = false;

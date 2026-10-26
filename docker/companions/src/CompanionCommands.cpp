@@ -772,6 +772,7 @@ namespace Companions
                 { "kill",   HandleTestKill,   rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "give",   HandleTestGive,   rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "kick",   HandleTestKick,   rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
+                { "attacker", HandleTestAttacker, rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "equip",  HandleTestEquip,  rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "fire",   HandleTestFire,   rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
             };
@@ -1529,6 +1530,28 @@ namespace Companions
                 line += name + ", ";
             handler->PSendSysMessage("%s knows %u spells: %s", bot->GetName().c_str(), uint32(ai->Spells().Size()), line.c_str());
             handler->PSendSysMessage("talents: %s", sCompanionFactory->DescribeTalents(bot).c_str());
+            return true;
+        }
+
+        // .bot test attacker <bot> <entry> [root]: an enemy right next to the bot, hitting it (rooted: it cannot follow)
+        static bool HandleTestAttacker(ChatHandler* handler, std::string botName, uint32 entry, Optional<std::string> root)
+        {
+            Player* bot = ObjectAccessor::FindPlayerByName(botName);
+            if (!bot || !sCompanionMgr->GetAI(bot))
+                return true;
+            Position spot = bot->GetPosition();
+            bot->MovePosition(spot, 2.0f, 0.0f);
+            TempSummon* enemy = bot->SummonCreature(entry, spot, TEMPSUMMON_TIMED_DESPAWN, 120s);
+            if (!enemy)
+                return true;
+            enemy->SetFaction(14);
+            if (root && *root == "root")
+                enemy->SetControlled(true, UNIT_STATE_ROOT);
+            enemy->GetThreatManager().AddThreat(bot, 5000.0f);
+            if (enemy->AI())
+                enemy->AI()->AttackStart(bot);
+            handler->PSendSysMessage("Companions test: %s (level %u) on %s%s", enemy->GetName().c_str(), uint32(enemy->GetLevel()),
+                botName.c_str(), root && *root == "root" ? ", rooted" : "");
             return true;
         }
 
