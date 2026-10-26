@@ -140,8 +140,10 @@ class OpenAICompatible:
                 "model": self.model,
                 "messages": [{"role": "system", "content": system}, {"role": "user", "content": request}],
                 "max_tokens": int(self.options.get("max_tokens", 600)),
-                "temperature": float(self.options.get("temperature", 0.7)),
             }
+            # "temperature": null leaves it to the model (some, like kimi-k3, refuse any other value)
+            if self.options.get("temperature", 0.7) is not None:
+                body["temperature"] = float(self.options.get("temperature", 0.7))
             kind = self.FORMATS[self.format]
             if kind == "json_schema":
                 body["response_format"] = {"type": "json_schema", "json_schema": {"name": "companions", "schema": schema, "strict": True}}
