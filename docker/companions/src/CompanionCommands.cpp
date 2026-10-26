@@ -225,7 +225,7 @@ namespace Companions
                 { "back off", "retreat" }, { "fall back", "retreat" }, { "pull back", "retreat" }, { "run away", "retreat" }, { "get out", "retreat" },
                 { "take a breather", "rest" }, { "take five", "rest" }, { "drink up", "rest" }, { "med up", "rest" }, { "catch your breath", "rest" },
                 { "help me", "protect me" }, { "save me", "protect me" }, { "get it off me", "protect me" }, { "it's on me", "protect me" },
-                { "heal me", "heal me" }, { "need heals", "heal me" }, { "stop attacking", "stop" }, { "hold fire", "stop" }, { "cease fire", "stop" },
+                { "need heals", "heal me" }, { "stop attacking", "stop" }, { "hold fire", "stop" }, { "cease fire", "stop" },
                 { "spread out", "spread" }, { "group up", "stack" }, { "stack up", "stack" },
             };
             for (auto const& [phrase, order] : phrases)
@@ -284,13 +284,18 @@ namespace Companions
                "(\"use more frost nova\", \"attack this pack, then rest and pull the next one when we're ready\").";
     }
 
-    bool Commands::ExecuteOrder(Player* commander, std::vector<Player*> const& bots, std::string const& text, bool quiet)
+    bool Commands::ExecuteOrder(Player* commander, std::vector<Player*> const& bots, std::string const& said, bool quiet)
     {
+        // loose phrasing becomes the order it means ("need heals" = "heal me"), once: calling itself again with the result
+        // looped forever on a phrase that maps to itself and crashed the server (stack overflow)
+        std::string trimmed = said;
+        while (!trimmed.empty() && (trimmed.back() == '!' || trimmed.back() == '.' || trimmed.back() == '?' || trimmed.back() == ' '))
+            trimmed.pop_back();
+        std::string const canonical = Canonical(trimmed);
+        std::string const& text = canonical.empty() ? trimmed : canonical;
         std::vector<std::string> words = Split(ToLower(text));
         if (words.empty() || bots.empty())
             return false;
-        if (std::string canonical = Canonical(text); !canonical.empty())
-            return ExecuteOrder(commander, bots, canonical, quiet);
         // "stop using arcane explosion" is about an ability, not the "stop" order
         if (words.size() >= 3 && words[0] != "prefer" && words[0] != "avoid" && words[0] != "allow" && SpeechPreference(commander, bots, text, quiet))
             return true;
