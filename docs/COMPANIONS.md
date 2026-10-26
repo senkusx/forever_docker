@@ -10,8 +10,11 @@ A server-side AI plays each one in its role:
   dealer pulls it. Warriors: Shield Slam, Revenge, Sunder, Thunder Clap, Demoralizing Shout, Concussion Blow, Shield
   Block, Cleave. Paladins (no taunt): Righteous Fury, Seal of Fury, Judgement, Consecration, Holy Shield, Holy Strike,
   Holy Wrath and Exorcism on undead and demons. Bears: Swipe on packs, Lacerate, Demoralizing Roar, Faerie Fire.
-- **Healer**: heals by priority (tank first), picks the cheapest rank that covers the damage, counts the heals
-  of the other healers, uses group heals, shields and HoTs, dispels and resurrects.
+- **Healer**: heals by priority (tank first), picks the cheapest rank that covers the damage (smaller ones when mana
+  runs low), counts the heals already coming (other healers' casts, yours included, and the heal over time ticks),
+  uses group heals, shields and HoTs, dispels and resurrects. It lets small damage be: in combat it starts on the tank
+  below 85% and on the others below 75% (lower as its mana drops), stops a heal whose target got full before it lands,
+  and out of combat tops up only with mana to spare.
 - **Damage**: attacks the skull, then the cross, then your target, then the tank's target. On a pull the melee walk
   up with the tank and wait behind the enemy until the tank has it. They stand behind enemies (melee) or at range
   (casters, hunters), interrupt casts, use AoE only when no crowd-controlled enemy is near, and keep an add out of a
@@ -336,7 +339,7 @@ owner: `login <character>`, `party <owner> [role]`, `raid <owner> [size]`, `say 
 [count]` (enemies in front of the group for 5 minutes), `fire <bot> [spell]` (a hostile ground effect under it), `give <bot>
 <item>` / `equip <bot> <it|name>` (loot decisions), `status <owner>`, `near <owner> [yards]` (creatures around, their health and mechanics rules), `ambient <owner>` (the zone as the ambient
 bots see it and what each one does), `invite <owner> <name>` (a /invite), `order <owner> <order>`, `why <bot>` (what it sees),
-`spells <bot>`, `kill <bot>`, `logout <owner>`. `why <bot>` also shows where it stands around you and its last casts. Administrators only (the permission of `.server shutdown`).
+`spells <bot>`, `auras <name> [spell]` (auras on a character and who cast them, the area triggers that spell made), `kill <bot>`, `logout <owner>`. `why <bot>` also shows where it stands around you and its last casts. Administrators only (the permission of `.server shutdown`).
 
 ## Good to know
 
@@ -359,7 +362,14 @@ bots see it and what each one does), `invite <owner> <name>` (a /invite), `order
   them anyway. A caster or healer an enemy goes after runs to the tank; next to a rooted or frozen enemy (Frost Nova,
   Entangling Roots) it steps out of its reach instead of standing there.
 - Shamans keep their totems up in every role: Tremor against fear, Poison or Disease Cleansing when someone has one,
-  Strength of Earth, Windfury and Mana Spring or Healing Stream for the group, Magma on a pack, Searing on the target.
+  Strength of Earth, Windfury and Mana Spring or Healing Stream for the group, Magma on a pack, Searing on the target,
+  Mana Tide when a healing shaman runs low.
+- Totems and Consecration (for players too): Forever's database left most player totems without their spell (they
+  stood there doing nothing, the higher ranks named "zzOLD..."), Healing Stream, Searing and Magma healed or hit with
+  their rank 1 spell, and Consecration lacked its consecrated ground (the damage ticked, nothing showed).
+  `docker/sql/world/2026_10_26_91_world_companions_totems.sql` gives every totem rank its spell from the client data and
+  its name back, and Consecration its ground; the Windfury Totem's attack is cast by `CompanionSpells.cpp` (the client's
+  aura names no spell to trigger). Flametongue Totem still does nothing.
 - Eating and drinking: the food (drink) that restores the most among those their level allows.
 - Dungeon trash loot is personal to the group's round-robin looter: the core patch keeps that turn with the players
   close enough (the companions take turns only when no player is around), so players do not find most corpses empty.

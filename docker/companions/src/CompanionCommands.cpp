@@ -4,6 +4,7 @@
 
 #include "CompanionCommands.h"
 #include "CompanionAdmin.h"
+#include "AreaTrigger.h"
 #include "CharacterCache.h"
 #include "Item.h"
 #include "ItemEnchantmentMgr.h"
@@ -19,6 +20,7 @@
 #include "CompanionPlan.h"
 #include "CompanionAmbient.h"
 #include "CompanionScaling.h"
+#include "CompanionSpells.h"
 #include "Group.h"
 #include "CellImpl.h"
 #include "Creature.h"
@@ -775,6 +777,7 @@ namespace Companions
                 { "attacker", HandleTestAttacker, rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "equip",  HandleTestEquip,  rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "fire",   HandleTestFire,   rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
+                { "auras",  HandleTestAuras,  rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
             };
             static ChatCommandTable botTable =
             {
@@ -1432,6 +1435,29 @@ namespace Companions
             return true;
         }
 
+        // the auras on a stand-in or a bot (spell id, and who cast it), and the area triggers it made with a spell
+        static bool HandleTestAuras(ChatHandler* handler, std::string name, Optional<uint32> areaSpell)
+        {
+            Player* player = ObjectAccessor::FindPlayerByName(name);
+            if (!player)
+            {
+                handler->PSendSysMessage("Companions test: %s is not in the world", name.c_str());
+                return true;
+            }
+            std::string line;
+            for (auto const& [spellId, application] : player->GetAppliedAuras())
+            {
+                Unit const* caster = application->GetBase()->GetCaster();
+                line += " " + std::to_string(spellId) + (caster && caster != player ? "(" + caster->GetName() + ")" : "");
+            }
+            handler->PSendSysMessage("%s auras:%s", player->GetName().c_str(), line.c_str());
+            if (areaSpell)
+                for (AreaTrigger const* at : player->GetAreaTriggers(*areaSpell))
+                    handler->PSendSysMessage("  area trigger %u from spell %u at %.1f %.1f, %d ms left", at->GetCreateProperties()->Id.Id,
+                        *areaSpell, at->GetPositionX(), at->GetPositionY(), at->GetDuration());
+            return true;
+        }
+
         // creatures around the stand-in: entry, health (raid scaling) and what the mechanics know of them
         static bool HandleTestNear(ChatHandler* handler, std::string owner, Optional<float> range)
         {
@@ -1910,4 +1936,5 @@ void AddCompanionsScripts()
     new Companions::companions_playerscript();
     new Companions::companions_worldscript();
     Companions::AddScalingScripts();
+    Companions::AddSpellScripts();
 }

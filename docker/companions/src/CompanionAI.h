@@ -182,6 +182,9 @@ namespace Companions
         bool CanCastId(uint32 spellId, Unit* target = nullptr) const;
         // heal with the cheapest rank that covers the deficit
         bool CastHeal(std::string_view name, Unit* target, uint32 deficit);
+        // what is already on its way to it: heals being cast (companions' and players') and the next 4 s of heals over time
+        uint64 IncomingHealing(Unit* target) const;
+        bool IsSpellNamed(uint32 spellId, std::string_view name) const;    // any rank
         bool HasAura(Unit const* unit, std::string_view name, bool mineOnly = false) const;
         int32 AuraRemaining(Unit const* unit, std::string_view name, bool mineOnly = false) const;   // ms, 0 = absent, -1 = permanent
         uint32 AuraStacks(Unit const* unit, std::string_view name, bool mineOnly = false) const;
@@ -269,6 +272,7 @@ namespace Companions
         bool UpdateBuffs(bool inCombat);
         bool UpdateEatDrink();
         bool UpdatePendingCast();
+        bool CancelNeedlessHeal();
         void UpdateMount();
         uint32 MountFor(bool swift) const;          // its own race's (or class's) mount spell, 0 for none
         Unit* SelectTarget();
@@ -352,6 +356,8 @@ namespace Companions
         bool _restRequested = false;
         bool _eating = false;
         uint32 _restTimer = 0;
+        struct HealCast { ObjectGuid Target; uint32 SpellId = 0; uint32 Amount = 0; };
+        HealCast _healCast;         // the heal with a cast time it is casting now
         std::string _pendingCast;
         ObjectGuid _pendingCastTarget;
         uint32 _stuckTimer = 0;

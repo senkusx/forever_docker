@@ -91,17 +91,19 @@ namespace Companions
             return bot->GetMaxPower(POWER_MANA) > 0;
         }
 
-        uint32 EstimateHeal(SpellInfo const* info, Unit* caster)
+        // with the caster's healing power; overTime false: the direct part only
+        uint32 EstimateHeal(SpellInfo const* info, Unit* caster, Unit* target, bool overTime = true)
         {
             uint32 total = 0;
             for (SpellEffectInfo const& effect : info->GetEffects())
             {
                 if (effect.IsEffect(SPELL_EFFECT_HEAL))
-                    total += uint32(std::max(0, effect.CalcValueAsInt(caster)));
-                else if (effect.IsAura(SPELL_AURA_PERIODIC_HEAL) && effect.ApplyAuraPeriod)
+                    total += uint32(std::max(0, caster->SpellHealingBonusDone(target, info, std::max(0, effect.CalcValueAsInt(caster)), HEAL, effect)));
+                else if (overTime && effect.IsAura(SPELL_AURA_PERIODIC_HEAL) && effect.ApplyAuraPeriod)
                 {
                     int32 ticks = info->GetMaxDuration() > 0 ? info->GetMaxDuration() / int32(effect.ApplyAuraPeriod) : 1;
-                    total += uint32(std::max(0, effect.CalcValueAsInt(caster)) * std::max(1, ticks));
+                    int32 tick = caster->SpellHealingBonusDone(target, info, std::max(0, effect.CalcValueAsInt(caster)), DOT, effect);
+                    total += uint32(std::max(0, tick) * std::max(1, ticks));
                 }
             }
             return total;
@@ -387,6 +389,7 @@ namespace Companions
                 if (!object || (unit && unit->IsAlive()))
                     _bot->InterruptSpell(CURRENT_GENERIC_SPELL);
             }
+        CancelNeedlessHeal();
         if (_bot->IsNonMeleeSpellCast(false, false, true))
         {
             if (Unit* victim = _bot->GetVictim())
@@ -1496,26 +1499,43 @@ namespace Companions
             if (Mechanics::FindSpellRule(spellId, Mechanics::Kind::NoHealWithAura))
                 return false;
 
-        // hybrids in another role only save lives
-        float threshold = healer ? (inCombat ? 92.0f : 80.0f) : (inCombat ? 30.0f : 60.0f);
+        // A healer lets small damage be: in combat it heals the tank from 85% and the others from 75%, lower as its mana runs
+        // out (what it does not cast comes back as regeneration); out of combat it tops up only with mana to spare, else the
+        // group eats. Health counts what is already coming (heals being cast, heals over time). Hybrids in another role only
+        // save lives.
+        float threshold = inCombat ? 30.0f : 60.0f;
+        float tankThreshold = threshold;
+        if (healer)
+        {
+            float const mana = ManaPct();
+            if (inCombat)
+            {
+                threshold = mana < 25.0f ? 50.0f : (mana < 50.0f ? 65.0f : 75.0f);
+                tankThreshold = threshold + 10.0f;
+            }
+            else
+                threshold = tankThreshold = mana > 60.0f ? 80.0f : 50.0f;
+        }
 
         Unit* best = nullptr;
         float bestPct = 101.0f;
+        float bestScore = 101.0f;
         uint32 injured = 0;
         for (Player* member : _view.Members)
         {
             if (!member->IsAlive() || _bot->GetDistance(member) > 40.0f || !_bot->IsWithinLOSInMap(member))
                 continue;
-            uint64 health = member->GetHealth() + sCompanionMgr->GetIncomingHeal(member->GetGUID());
+            uint64 health = member->GetHealth() + IncomingHealing(member);
             float pct = std::min(100.0f, float(health) * 100.0f / float(std::max<uint64>(1, member->GetMaxHealth())));
             if (pct < 75.0f && _bot->GetDistance(member) < 30.0f)
                 ++injured;
-            if (IsTank(member))
-                pct -= 5.0f;
             if (!healer && member != _bot && inCombat && pct > 25.0f)
                 continue;
-            if (pct < threshold && pct < bestPct)
+            bool const tank = IsTank(member);
+            float const score = tank ? pct - 10.0f : pct;     // the tank first among the equally hurt
+            if (pct < (tank ? tankThreshold : threshold) && score < bestScore)
             {
+                bestScore = score;
                 bestPct = pct;
                 best = member;
             }
@@ -1541,7 +1561,7 @@ namespace Companions
             return false;
 
         HealUrgency urgency = bestPct < 35.0f ? HealUrgency::Emergency : (inCombat && bestPct < 70.0f ? HealUrgency::Normal : HealUrgency::TopUp);
-        uint64 incoming = sCompanionMgr->GetIncomingHeal(best->GetGUID());
+        uint64 incoming = IncomingHealing(best);
         uint64 missing = best->GetMaxHealth() > best->GetHealth() + incoming ? best->GetMaxHealth() - best->GetHealth() - incoming : 0;
         if (!missing)
             return false;
@@ -2390,6 +2410,8 @@ namespace Companions
         if (!ranks || ranks->empty())
             return false;
 
+        // short of mana a smaller rank does, unless the target is about to die
+        uint64 const wanted = ManaPct() < 40.0f && target->GetHealthPct() >= 35.0f ? uint64(deficit) * 6 / 10 : uint64(deficit) * 8 / 10;
         uint32 chosen = 0;
         uint32 chosenAmount = 0;
         for (uint32 id : *ranks)
@@ -2397,10 +2419,10 @@ namespace Companions
             SpellInfo const* info = sSpellMgr->GetSpellInfo(id, DIFFICULTY_NONE);
             if (!info || !CanCastId(id, target))
                 continue;
-            uint32 amount = EstimateHeal(info, _bot);
+            uint32 amount = EstimateHeal(info, _bot, target);
             chosen = id;
             chosenAmount = amount;
-            if (amount >= deficit * 8 / 10)
+            if (amount >= wanted)
                 break;  // the cheapest rank that does the job
         }
 
@@ -2408,7 +2430,74 @@ namespace Companions
             return false;
 
         if (SpellInfo const* info = sSpellMgr->GetSpellInfo(chosen, DIFFICULTY_NONE))
+        {
             sCompanionMgr->AddIncomingHeal(target->GetGUID(), chosenAmount, info->CalcCastTime() + 500);
+            if (info->CalcCastTime() > 0)
+                _healCast = { target->GetGUID(), chosen, chosenAmount };
+        }
+        return true;
+    }
+
+    bool CompanionAI::IsSpellNamed(uint32 spellId, std::string_view name) const
+    {
+        return NameIs(sSpellMgr->GetSpellInfo(spellId, DIFFICULTY_NONE), name);
+    }
+
+    uint64 CompanionAI::IncomingHealing(Unit* target) const
+    {
+        uint64 total = sCompanionMgr->GetIncomingHeal(target->GetGUID());
+        // heals over time: the ticks of the next 4 seconds
+        for (AuraEffect const* hot : target->GetAuraEffectsByType(SPELL_AURA_PERIODIC_HEAL))
+        {
+            int32 const period = hot->GetPeriod();
+            if (period <= 0)
+                continue;
+            int32 const left = hot->GetBase()->GetDuration();
+            int32 const window = left < 0 ? 4000 : std::min(left, 4000);
+            total += uint64(std::max<int64>(0, int64(hot->GetAmount()))) * uint64(window / period);
+        }
+        // a player's heal being cast on it (the companions' own are counted above)
+        for (Player* member : _view.Members)
+        {
+            if (sCompanionMgr->GetAI(member->GetGUID()))
+                continue;
+            if (Spell const* spell = member->GetCurrentSpell(CURRENT_GENERIC_SPELL))
+                if (spell->m_targets.GetUnitTargetGUID() == target->GetGUID() && spell->GetSpellInfo()->HasEffect(SPELL_EFFECT_HEAL))
+                    total += EstimateHeal(spell->GetSpellInfo(), member, target, false);
+        }
+        return total;
+    }
+
+    // a heal whose target got full meanwhile (another healer, a potion, the pull ended) stops before it costs mana; a tank's
+    // heal runs on until its last half second, since healers start it ahead of the hits
+    bool CompanionAI::CancelNeedlessHeal()
+    {
+        if (!_healCast.SpellId)
+            return false;
+        Spell* spell = _bot->GetCurrentSpell(CURRENT_GENERIC_SPELL);
+        if (!spell || spell->GetSpellInfo()->Id != _healCast.SpellId || spell->getState() != SPELL_STATE_PREPARING)
+        {
+            _healCast = {};
+            return false;
+        }
+        Unit* target = ObjectAccessor::GetUnit(*_bot, _healCast.Target);
+        bool needless = !target || !target->IsAlive();
+        if (!needless)
+        {
+            if (IsTank(target) && spell->GetRemainingCastTime() > 500)
+                return false;
+            uint64 others = IncomingHealing(target);
+            others = others > _healCast.Amount ? others - _healCast.Amount : 0;
+            uint64 const have = target->GetHealth() + others;
+            uint64 const missing = target->GetMaxHealth() > have ? target->GetMaxHealth() - have : 0;
+            needless = missing * 4 < _healCast.Amount;     // three quarters of it would be overheal
+        }
+        if (!needless)
+            return false;
+        _bot->InterruptSpell(CURRENT_GENERIC_SPELL, false);
+        sCompanionMgr->RemoveIncomingHeal(_healCast.Target, _healCast.Amount);
+        _recentCasts.emplace_back(GameTime::Now(), "cancelled heal");
+        _healCast = {};
         return true;
     }
 

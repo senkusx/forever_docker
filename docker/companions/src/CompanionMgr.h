@@ -104,6 +104,7 @@ namespace Companions
         // a heal on its way: other healers count it before choosing their target
         void AddIncomingHeal(ObjectGuid target, uint32 amount, uint32 castTimeMs);
         uint32 GetIncomingHeal(ObjectGuid target) const;
+        void RemoveIncomingHeal(ObjectGuid target, uint32 amount);     // a heal cancelled before it landed
         // only one bot interrupts a given cast
         bool CanInterrupt(ObjectGuid caster, ObjectGuid bot) const;
         void CommitInterrupt(ObjectGuid caster, ObjectGuid bot);

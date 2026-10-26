@@ -1136,6 +1136,17 @@ namespace Companions
         return total;
     }
 
+    void CompanionMgr::RemoveIncomingHeal(ObjectGuid target, uint32 amount)
+    {
+        auto range = _incomingHeals.equal_range(target);
+        for (auto itr = range.first; itr != range.second; ++itr)
+            if (itr->second.Amount == amount && itr->second.Expire > _msTime)
+            {
+                _incomingHeals.erase(itr);
+                return;
+            }
+    }
+
     bool CompanionMgr::CanInterrupt(ObjectGuid caster, ObjectGuid bot) const
     {
         auto itr = _interruptClaims.find(caster);

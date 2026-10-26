@@ -652,8 +652,10 @@ namespace Companions
                 Me()->RemoveAurasDueToSpell(_ai.SpellIdOf("shadowform"));
             }
 
+            // the shield costs much: for the tank, a life in danger, or with mana to spare
             bool beingHit = _ai.EnemiesAttacking(target) > 0;
-            if (urgency != HealUrgency::TopUp && beingHit && Shield(target))
+            if (urgency != HealUrgency::TopUp && beingHit && (urgency == HealUrgency::Emergency || _ai.IsTank(target) || _ai.ManaPct() > 60.0f)
+                && Shield(target))
                 return true;
             if (beingHit && _ai.IsTank(target) && !Has(target, "prayer of mending") && Cast("prayer of mending", target))
                 return true;
@@ -776,7 +778,8 @@ namespace Companions
             return false;
         }
 
-        // one totem per element, recast when missing or left behind
+        // one totem per element, recast when missing or left behind; known by the spell that made it (the creatures' names
+        // differ: "Cleansing Totem" for Disease Cleansing, "Elemental Resistance Totem" for Fire Resistance)
         bool HasTotemNear(std::string_view spell) const
         {
             for (uint8 slot = SUMMON_SLOT_TOTEM; slot <= SUMMON_SLOT_TOTEM_4; ++slot)
@@ -784,8 +787,7 @@ namespace Companions
                 Creature* totem = ObjectAccessor::GetCreature(*Me(), Me()->m_SummonSlot[slot]);
                 if (!totem || !totem->IsAlive() || Me()->GetDistance(totem) > 25.0f)
                     continue;
-                std::string name = ToLower(totem->GetName());
-                if (name.find(spell) != std::string::npos)
+                if (_ai.IsSpellNamed(uint32(*totem->m_unitData->CreatedBySpell), spell))
                     return true;
             }
             return false;
@@ -808,7 +810,12 @@ namespace Companions
         // else the buffs (Strength of Earth and Windfury for melee, Mana Spring for a healer), and fire on the enemies
         bool Totems(Unit* target)
         {
-            if (_ai.ManaPct() < 25.0f || _ai.View().Enemies.empty())
+            if (_ai.View().Enemies.empty())
+                return false;
+            // a healer running dry: Mana Tide first, it costs little
+            if (MyRole() == Role::Healer && _ai.ManaPct() < 35.0f && DropTotem({ "mana tide totem" }))
+                return true;
+            if (_ai.ManaPct() < 25.0f)
                 return false;
             bool feared = false, poisoned = false, diseased = false;
             bool melee = MyRole() == Role::MeleeDps || _ai.View().Tank != nullptr;
@@ -838,11 +845,12 @@ namespace Companions
             // air: for the ones who hit in melee
             if (melee && DropTotem({ "windfury totem", "grace of air totem" }))
                 return true;
-            // fire: a pack around a melee shaman takes Magma, else Searing on the target
+            // fire: a pack around a melee shaman takes Magma, else Searing on the target; a Magma Totem stays while the pack
+            // thins out (one totem per element, each would replace the other)
             if (MyRole() == Role::MeleeDps && _ai.EnemiesNear(Me()->GetPosition(), 8.0f) >= 3
                 && !_ai.AnyCrowdControlledNear(Me()->GetPosition(), 12.0f) && _ai.SafeToAoe(Me()->GetPosition(), 8.0f) && DropTotem({ "magma totem" }))
                 return true;
-            if (target && Me()->GetDistance(target) < 20.0f && MyRole() != Role::Healer && DropTotem({ "searing totem" }))
+            if (target && Me()->GetDistance(target) < 20.0f && MyRole() != Role::Healer && !HasTotemNear("magma totem") && DropTotem({ "searing totem" }))
                 return true;
             return false;
         }
