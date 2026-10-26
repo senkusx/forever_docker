@@ -1,0 +1,55 @@
+{
+  "instance": "Gnomeregan",
+  "map": 90,
+  "aliases": ["gnomer", "gnomeregan"],
+  "bosses": [
+    {
+      "name": "Grubbis",
+      "aliases": ["grubbis", "chomper"],
+      "general": "Comes at the end of Emi Shortfuse's trogg waves, with his pet Chomper.",
+      "tank": "Hold the trogg waves near Emi, then Grubbis and Chomper together.",
+      "healer": "Keep Emi alive through the waves as well as the tank.",
+      "dps": "Kill the troggs going for Emi; Chomper, then Grubbis."
+    },
+    {
+      "name": "Viscous Fallout",
+      "aliases": ["viscous", "fallout", "ooze"],
+      "general": "Radioactive ooze: Toxic Volley poisons everyone near.",
+      "tank": "Plain tank and spank.",
+      "healer": "Cure poison and heal the volley.",
+      "dps": "Burn it; nature resistance helps."
+    },
+    {
+      "name": "Electrocutioner 6000",
+      "aliases": ["electrocutioner"],
+      "general": "Chain Bolt jumps between players and Shock stuns. Drops the Workshop Key.",
+      "tank": "Keep it on you.",
+      "healer": "Heal the chain bolts.",
+      "dps": "Ranged spread out so the bolt doesn't chain."
+    },
+    {
+      "name": "Crowd Pummeler 9-60",
+      "aliases": ["pummeler", "crowd pummeler"],
+      "general": "Crowd Pummel knocks back and stuns everyone in front of it; Arcing Smash cleaves.",
+      "tank": "Face it away from the group and put your back to a wall.",
+      "healer": "Stay behind it.",
+      "dps": "Everyone behind it, never in front."
+    },
+    {
+      "name": "Dark Iron Ambassador",
+      "aliases": ["ambassador"],
+      "general": "Rare: Fire Shield and a fire elemental friend.",
+      "tank": "Hold both.",
+      "healer": "Light fire damage.",
+      "dps": "Elemental, then the ambassador."
+    },
+    {
+      "name": "Mekgineer Thermaplugg",
+      "aliases": ["thermaplugg", "mekgineer"],
+      "general": "Walking Bombs come out of the vents around the room and blow up in the group. Knock Away on the tank.",
+      "tank": "Back to a wall so Knock Away doesn't throw you; get back fast.",
+      "healer": "Heal the bomb blasts, stay away from the vents.",
+      "dps": "Kill the bombs before they reach us (or press the vent buttons), then back on him."
+    }
+  ]
+}

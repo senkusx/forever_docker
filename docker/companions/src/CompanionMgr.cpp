@@ -3,6 +3,7 @@
  */
 
 #include "CompanionMgr.h"
+#include "CompanionTactics.h"
 #include "AccountMgr.h"
 #include "CharacterCache.h"
 #include "Chat.h"
@@ -56,6 +57,7 @@ namespace Companions
         _botAccountId = GetOrCreateCreationAccount();
         LoadRecords();
         sCompanionFactory->Initialize();
+        Tactics::Load();
         CompanionLLM::Initialize();
         sCompanionAmbient->Initialize();
         TC_LOG_INFO("server.worldserver", "Companions: {} bots known, companion account {}", _records.size(), _botAccountId);

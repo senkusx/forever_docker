@@ -1,0 +1,137 @@
+{
+  "instance": "Temple of Ahn'Qiraj",
+  "map": 531,
+  "aliases": [
+    "aq40",
+    "aq",
+    "temple of ahnqiraj",
+    "ahnqiraj"
+  ],
+  "bosses": [
+    {
+      "name": "The Prophet Skeram",
+      "aliases": [
+        "skeram",
+        "prophet"
+      ],
+      "general": "Splits into three at 75%, 50% and 25%: kill the real one (the illusions die with it). Arcane Explosion, Earth Shock, and True Fulfillment mind controls.",
+      "tank": "One tank on each copy, spread on the platforms.",
+      "healer": "Crowd control or sheep the mind controlled.",
+      "dps": "Interrupt Arcane Explosion; find and burn the real Skeram."
+    },
+    {
+      "name": "Lord Kri",
+      "aliases": [
+        "kri",
+        "bug trio",
+        "bugs"
+      ],
+      "general": "The Bug Trio: Kri (cleave, poison cloud when he dies), Yauj (fears, heals the others) and Vem (charges, knock backs). Kill Kri and Yauj, Vem last.",
+      "tank": "Three tanks, one per bug.",
+      "healer": "Interrupt Yauj's heals; heal through the poison.",
+      "dps": "Kri first away from the raid, Yauj second, Vem last."
+    },
+    {
+      "name": "Princess Yauj",
+      "aliases": [
+        "yauj"
+      ],
+      "general": "Bug Trio: fears and Great Heal on the others; her death releases brood bugs.",
+      "tank": "Fear Ward on her tank.",
+      "healer": "Heal through the fears.",
+      "dps": "Interrupt her heals; area attacks on her brood when she dies."
+    },
+    {
+      "name": "Vem",
+      "aliases": [
+        "vem"
+      ],
+      "general": "Bug Trio: Charge and Knock Away. He enrages when the others die: kill him last.",
+      "tank": "Hold him away from the raid.",
+      "healer": "Heal the charges.",
+      "dps": "Last."
+    },
+    {
+      "name": "Battleguard Sartura",
+      "aliases": [
+        "sartura"
+      ],
+      "general": "With three Sartura's Royal Guards: all of them Whirlwind. Stun the guards, kill them, then Sartura. Enrages after 10 minutes.",
+      "tank": "One tank per guard and Sartura; pick them back up after a whirlwind.",
+      "healer": "Heal the whirlwinds, stay spread.",
+      "dps": "Stun the guards in turn; guards first, then Sartura."
+    },
+    {
+      "name": "Fankriss the Unyielding",
+      "aliases": [
+        "fankriss"
+      ],
+      "general": "Mortal Wound stacks on the tank; worms spawn at the tunnels and entangle and kill players fast.",
+      "tank": "Two or three tanks swap at Mortal Wound stacks.",
+      "healer": "Heal through the wounds.",
+      "dps": "Kill the spawned worms at once."
+    },
+    {
+      "name": "Viscidus",
+      "aliases": [
+        "viscidus"
+      ],
+      "general": "Freeze him with frost damage (200 frost hits), then shatter him with melee. He splits into globs: kill them before they rejoin. Poison bolt volley.",
+      "tank": "Hold him.",
+      "healer": "Cure poison; nature resistance.",
+      "dps": "Frost spells and frost weapons to freeze him, melee to shatter, then kill the globs."
+    },
+    {
+      "name": "Princess Huhuran",
+      "aliases": [
+        "huhuran"
+      ],
+      "general": "Wyvern Sting puts people to sleep, Acid Spit stacks on the tank, Noxious Poison; Frenzy and berserk at 30%.",
+      "tank": "Nature resistance; tanks swap if acid stacks high.",
+      "healer": "Nature resistance; heavy raid damage at 30%.",
+      "dps": "Hunters Tranq the frenzy; burn her from 30%."
+    },
+    {
+      "name": "Emperor Vek'lor",
+      "aliases": [
+        "veklor",
+        "twins",
+        "twin emperors"
+      ],
+      "general": "Twin Emperors: Vek'lor casts (Shadow Bolt, Blizzard, Arcane Burst), immune to physical damage; Vek'nilash fights in melee, immune to spells. They teleport and swap; kept close they heal.",
+      "tank": "A warlock tanks Vek'lor with Shadow Bolt; warriors take Vek'nilash. Swap sides after each teleport.",
+      "healer": "Stay out of Blizzard, keep spread; pace your mana.",
+      "dps": "Casters on Vek'lor, melee on Vek'nilash; keep the two apart."
+    },
+    {
+      "name": "Emperor Vek'nilash",
+      "aliases": [
+        "veknilash"
+      ],
+      "general": "Twin Emperors: Vek'nilash only takes physical damage, Uppercut, Unbalancing Strike. Bugs he touches explode (Mutate Bug).",
+      "tank": "Warrior tanks pick him up after each teleport.",
+      "healer": "Heal the tank through Unbalancing Strike.",
+      "dps": "Melee on Vek'nilash; casters on Vek'lor."
+    },
+    {
+      "name": "Ouro",
+      "aliases": [
+        "ouro"
+      ],
+      "general": "Sand Blast in front, Sweep knocks back the melee. He submerges and pops up somewhere else; scarabs come out. Berserk at 20%.",
+      "tank": "Face him away; pick him up where he surfaces.",
+      "healer": "Heal the sweep and the sand blast.",
+      "dps": "Never in front; kill the scarabs; ranged pick him up when he surfaces."
+    },
+    {
+      "name": "C'Thun",
+      "aliases": [
+        "cthun"
+      ],
+      "general": "Phase 1: the eye's Dark Glare sweeps the room, Eye Beam chains: spread in a circle 10 yards apart, kill Eye Tentacles. Phase 2: players are eaten into his stomach; kill the flesh tentacles inside.",
+      "tank": "Pick up the Giant Claw Tentacles.",
+      "healer": "Everyone spread; heal the eye beams.",
+      "dps": "Spread, move out of Dark Glare, tentacles first; in phase 2 the eaten kill the stomach tentacles."
+    }
+  ]
+}

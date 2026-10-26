@@ -1,0 +1,55 @@
+{
+  "instance": "Ruins of Ahn'Qiraj",
+  "map": 509,
+  "aliases": ["aq20", "ruins", "ruins of ahnqiraj"],
+  "bosses": [
+    {
+      "name": "Kurinnaxx",
+      "aliases": ["kurinnaxx"],
+      "general": "Mortal Wound stacks on the tank, Sand Traps appear under players (move off them), he enrages at 30%.",
+      "tank": "Two tanks swap at about 5 Mortal Wound stacks.",
+      "healer": "Heal ahead of the mortal wounds.",
+      "dps": "Step off the sand traps; burn him in the enrage."
+    },
+    {
+      "name": "General Rajaxx",
+      "aliases": ["rajaxx", "captain tuubid", "waves"],
+      "general": "Seven waves of Qiraji led by captains, then Rajaxx: Thundercrash halves everyone's health, Disarm.",
+      "tank": "Gather each wave on you; captains on their own tank.",
+      "healer": "Top everyone before Thundercrash.",
+      "dps": "Area attacks on the waves, the captain of each wave first."
+    },
+    {
+      "name": "Moam",
+      "aliases": ["moam"],
+      "general": "Drains mana from players to fill his own; at full mana he explodes. Every so often he turns to stone and three Mana Fiends spawn.",
+      "tank": "Off-tanks grab the Mana Fiends.",
+      "healer": "Drain Moam's mana: Viper Sting, Mana Burn, Drain Mana.",
+      "dps": "Burn him fast; kill the Mana Fiends when he's stone."
+    },
+    {
+      "name": "Buru the Gorger",
+      "aliases": ["buru"],
+      "general": "Fixates on a player and chases them: kite him over the eggs and blow them up near him. At 20% he hardens and takes more damage.",
+      "tank": "No real tank: the fixated player runs him over eggs.",
+      "healer": "Heal the egg blasts and the fixated player.",
+      "dps": "Break eggs when Buru is on them; burn him at 20%."
+    },
+    {
+      "name": "Ayamiss the Hunter",
+      "aliases": ["ayamiss", "wasp"],
+      "general": "Flies at first: Stinger Spray, Poison Stinger, and paralyzes a player on the altar where larvae come to eat them. Lands at 70%.",
+      "tank": "Pick her up when she lands.",
+      "healer": "Cure poison; heal the sacrificed player.",
+      "dps": "Kill the larvae before they reach the altar; ranged on her while she flies."
+    },
+    {
+      "name": "Ossirian the Unscarred",
+      "aliases": ["ossirian"],
+      "general": "Immune to everything until he stands by a crystal: each crystal makes him weak to one school for a while. Tornadoes roam; War Stomp, Curse of Tongues.",
+      "tank": "Drag him to the next crystal before the weakness ends.",
+      "healer": "Decurse; dodge the tornadoes.",
+      "dps": "Use the school the crystal opens; stay away from the tornadoes."
+    }
+  ]
+}

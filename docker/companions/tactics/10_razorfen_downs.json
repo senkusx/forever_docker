@@ -1,0 +1,47 @@
+{
+  "instance": "Razorfen Downs",
+  "map": 129,
+  "aliases": ["rfd", "downs", "razorfen downs"],
+  "bosses": [
+    {
+      "name": "Tuten'kash",
+      "aliases": ["tutenkash", "spider"],
+      "general": "Called by the gong after spider waves: Web Spray stuns, a curse and Virulent Poison.",
+      "tank": "Hold the spiders near the gong, then Tuten'kash.",
+      "healer": "Cure poison and remove the curse.",
+      "dps": "Kill the spiders, then the big one."
+    },
+    {
+      "name": "Mordresh Fire Eye",
+      "aliases": ["mordresh"],
+      "general": "Fire caster: Fireball and Fire Nova.",
+      "tank": "Keep him in melee.",
+      "healer": "Heal the nova on the melee.",
+      "dps": "Interrupt Fireball; melee watch the nova."
+    },
+    {
+      "name": "Glutton",
+      "aliases": ["glutton"],
+      "general": "Disease Cloud around him, frenzies at low health.",
+      "tank": "Plain tank, cooldown at the end.",
+      "healer": "Cure disease; more healing in the frenzy.",
+      "dps": "Burn him."
+    },
+    {
+      "name": "Ragglesnout",
+      "aliases": ["ragglesnout"],
+      "general": "Rare quilboar priest: Shadow Bolt and a mind control.",
+      "tank": "Keep him on you.",
+      "healer": "Dispel the control.",
+      "dps": "Interrupt and burn."
+    },
+    {
+      "name": "Amnennar the Coldbringer",
+      "aliases": ["amnennar", "coldbringer"],
+      "general": "Lich: Frost Nova on the melee, Frostbolt, and he calls Frozen Spectres partway through.",
+      "tank": "Pick up the spectres when they come.",
+      "healer": "Dispel Frost Nova on the tank, heal the frost damage.",
+      "dps": "Kill the spectres, then him; frost resistance helps."
+    }
+  ]
+}

@@ -1,0 +1,79 @@
+{
+  "instance": "Shadowfang Keep",
+  "map": 33,
+  "aliases": ["sfk", "shadowfang", "shadowfang keep"],
+  "bosses": [
+    {
+      "name": "Rethilgore",
+      "aliases": ["rethilgore"],
+      "general": "The first worgen: Soul Drain on the tank. Easy.",
+      "tank": "Plain tank and spank.",
+      "healer": "Heal the drain.",
+      "dps": "Burn him and free the prisoners after."
+    },
+    {
+      "name": "Razorclaw the Butcher",
+      "aliases": ["razorclaw", "butcher"],
+      "general": "The kitchen worgen: hits hard and drains health. Easy with a good tank.",
+      "tank": "Face him away from the group.",
+      "healer": "Steady heals on the tank.",
+      "dps": "Burn him from behind."
+    },
+    {
+      "name": "Baron Silverlaine",
+      "aliases": ["silverlaine"],
+      "general": "Veil of Shadow curses the tank (less healing) and he summons a worgen spirit.",
+      "tank": "Pick up the worgen spirit when it appears.",
+      "healer": "Mages and druids remove Veil of Shadow; heal through it otherwise.",
+      "dps": "Kill the worgen spirit, then the baron."
+    },
+    {
+      "name": "Commander Springvale",
+      "aliases": ["springvale"],
+      "general": "Undead paladin with his servants: Holy Light on himself, Hammer of Justice stuns.",
+      "tank": "Hold him and his Haunted Servitors.",
+      "healer": "Expect a stun on the tank, heal ahead.",
+      "dps": "Interrupt every Holy Light."
+    },
+    {
+      "name": "Odo the Blindwatcher",
+      "aliases": ["odo"],
+      "general": "Howling Rage makes him faster and stronger the lower he gets.",
+      "tank": "Use cooldowns near the end.",
+      "healer": "Damage on the tank rises as he drops: keep mana for the end.",
+      "dps": "Burn him fast."
+    },
+    {
+      "name": "Deathsworn Captain",
+      "aliases": ["deathsworn"],
+      "general": "Rare: Cleave and Hamstring.",
+      "tank": "Face him away for the Cleave.",
+      "healer": "Steady heals.",
+      "dps": "Melee from behind."
+    },
+    {
+      "name": "Fenrus the Devourer",
+      "aliases": ["fenrus"],
+      "general": "Big wolf: Toxic Saliva poisons the tank. After he dies Arugal sends voidwalkers down the hall.",
+      "tank": "Hold Fenrus; afterwards pull the voidwalkers one at a time.",
+      "healer": "Cure the poison on the tank.",
+      "dps": "Burn him, then the voidwalkers one by one."
+    },
+    {
+      "name": "Wolf Master Nandos",
+      "aliases": ["nandos"],
+      "general": "Comes with his worgs and wolves.",
+      "tank": "Grab the wolves with him, an area threat helps.",
+      "healer": "Several mobs on the tank: steady heals.",
+      "dps": "Wolves first if they are loose, else Nandos."
+    },
+    {
+      "name": "Archmage Arugal",
+      "aliases": ["arugal"],
+      "general": "Teleports between the ledges, casts Void Bolt and curses one of us into a worgen that attacks the group. Thundershock hits the melee.",
+      "tank": "Chase him to each spot he ports to; the cursed worgen may need controlling.",
+      "healer": "Remove Arugal's Curse quickly (mages and druids), heal the Void Bolts.",
+      "dps": "Interrupt Void Bolt, ranged keep hitting him wherever he blinks."
+    }
+  ]
+}

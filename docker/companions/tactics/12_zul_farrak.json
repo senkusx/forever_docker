@@ -1,0 +1,79 @@
+{
+  "instance": "Zul'Farrak",
+  "map": 209,
+  "aliases": ["zf", "zulfarrak", "zul farrak"],
+  "bosses": [
+    {
+      "name": "Antu'sul",
+      "aliases": ["antusul"],
+      "general": "Basilisk master on the hill: calls basilisks, drops a Healing Ward and an Earthgrab totem.",
+      "tank": "Grab the basilisks as they come.",
+      "healer": "Several mobs on the tank.",
+      "dps": "Kill the Healing Ward at once, area attacks on the basilisks, then him."
+    },
+    {
+      "name": "Theka the Martyr",
+      "aliases": ["theka"],
+      "general": "Turns into a scarab near the end and becomes immune to physical damage; Fevered Plague.",
+      "tank": "Keep threat with spells or hold on until the casters finish him.",
+      "healer": "Cure the plague.",
+      "dps": "Casters finish him in scarab form; melee switch to wands or wait."
+    },
+    {
+      "name": "Witch Doctor Zum'rah",
+      "aliases": ["zumrah", "witch doctor"],
+      "general": "In the graveyard: raises zombies from the graves, Shadow Bolt Volley, and a Ward of Zum'rah.",
+      "tank": "Pull him away from the graves, pick up the zombies.",
+      "healer": "Heal the volley.",
+      "dps": "Kill his ward, then him."
+    },
+    {
+      "name": "Sergeant Bly",
+      "aliases": ["bly", "pyramid", "stairs"],
+      "general": "Free Bly's crew, then waves of trolls climb the pyramid stairs. After that the crew turns on us.",
+      "tank": "Hold the top of the stairs; then pick up Bly's crew.",
+      "healer": "Long fight: watch mana on the stairs.",
+      "dps": "Area attacks on the stair waves; Murta the healer first in the crew fight."
+    },
+    {
+      "name": "Shadowpriest Sezz'ziz",
+      "aliases": ["sezzziz"],
+      "general": "Comes down after the pyramid waves with Nekrum: heals, Psychic Scream.",
+      "tank": "Hold Nekrum and Sezz'ziz together.",
+      "healer": "Fear Ward on the tank.",
+      "dps": "Sezz'ziz first (he heals), then Nekrum."
+    },
+    {
+      "name": "Nekrum Gutchewer",
+      "aliases": ["nekrum"],
+      "general": "Big zombie with Sezz'ziz: hits hard.",
+      "tank": "Hold him while the others kill the priest.",
+      "healer": "Steady heals on the tank.",
+      "dps": "Sezz'ziz first, then Nekrum."
+    },
+    {
+      "name": "Hydromancer Velratha",
+      "aliases": ["velratha", "hydromancer"],
+      "general": "Naga at the pool: Healing Wave and frost spells. Her death is needed for the mallet.",
+      "tank": "Keep her in melee.",
+      "healer": "Heal the frost damage.",
+      "dps": "Interrupt her Healing Wave."
+    },
+    {
+      "name": "Gahz'rilla",
+      "aliases": ["gahzrilla"],
+      "general": "Called with the Mallet of Zul'Farrak: Freeze Solid freezes a player, Gahz'rilla Slam knocks up, Icicles.",
+      "tank": "Plain tank, he hits hard.",
+      "healer": "Heal through the slams; keep the frozen alive.",
+      "dps": "Ranged spread; burn him."
+    },
+    {
+      "name": "Chief Ukorz Sandscalp",
+      "aliases": ["ukorz", "sandscalp", "ruuzlu"],
+      "general": "With Ruuzlu: Wide Slash cleaves and he enrages.",
+      "tank": "Face Ukorz away from the group; pick up Ruuzlu too.",
+      "healer": "Heal through the enrage.",
+      "dps": "Stay behind Ukorz; kill Ruuzlu first."
+    }
+  ]
+}

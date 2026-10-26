@@ -1,0 +1,71 @@
+{
+  "instance": "Razorfen Kraul",
+  "map": 47,
+  "aliases": ["rfk", "kraul", "razorfen kraul"],
+  "bosses": [
+    {
+      "name": "Roogug",
+      "aliases": ["roogug"],
+      "general": "Quilboar geomancer: Lightning Bolt and an earth totem.",
+      "tank": "Keep him in melee.",
+      "healer": "Heal the bolts.",
+      "dps": "Kill his totem, interrupt his bolts."
+    },
+    {
+      "name": "Aggem Thorncurse",
+      "aliases": ["aggem"],
+      "general": "Heals himself and calls a boar spirit.",
+      "tank": "Pick up the boar spirit.",
+      "healer": "Steady heals.",
+      "dps": "Interrupt his heals, kill the boar, then him."
+    },
+    {
+      "name": "Death Speaker Jargba",
+      "aliases": ["jargba"],
+      "general": "Mind controls one of us and casts Shadow Bolt.",
+      "tank": "Keep him on you; don't hit the controlled friend hard.",
+      "healer": "Dispel the mind control if you can.",
+      "dps": "Burn him, the control ends when he dies."
+    },
+    {
+      "name": "Overlord Ramtusk",
+      "aliases": ["ramtusk"],
+      "general": "Quilboar chief with guards and a Battle Shout.",
+      "tank": "Pull him with his guards and hold them all.",
+      "healer": "Several mobs on the tank.",
+      "dps": "Guards first, then Ramtusk."
+    },
+    {
+      "name": "Agathelos the Raging",
+      "aliases": ["agathelos"],
+      "general": "Huge boar: Rampage knocks everyone near away, and he enrages.",
+      "tank": "Back to a wall, face him away.",
+      "healer": "Stay at range, heal through the enrage.",
+      "dps": "Ranged at range; melee from behind."
+    },
+    {
+      "name": "Blind Hunter",
+      "aliases": ["blind hunter"],
+      "general": "Rare bat. Easy.",
+      "tank": "Plain tank and spank.",
+      "healer": "Light damage.",
+      "dps": "Burn it."
+    },
+    {
+      "name": "Charlga Razorflank",
+      "aliases": ["charlga"],
+      "general": "The last boss: Chain Bolt, Renew and Purity heal her, she comes with two guards.",
+      "tank": "Hold her and the guards; pull her round a corner.",
+      "healer": "Heal the chain bolts.",
+      "dps": "Interrupt her heals; guards first, or crowd control them."
+    },
+    {
+      "name": "Earthcaller Halmgar",
+      "aliases": ["halmgar"],
+      "general": "Rare quilboar shaman with an earth elemental.",
+      "tank": "Hold both.",
+      "healer": "Light damage.",
+      "dps": "Burn him."
+    }
+  ]
+}

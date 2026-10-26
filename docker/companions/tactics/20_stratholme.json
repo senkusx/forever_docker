@@ -1,0 +1,142 @@
+{
+  "instance": "Stratholme",
+  "map": 329,
+  "aliases": ["strat", "stratholme", "strat live", "strat ud", "strat undead", "baron run"],
+  "bosses": [
+    {
+      "name": "Timmy the Cruel",
+      "wing": "Live side",
+      "aliases": ["timmy"],
+      "general": "Appears in the market square once its undead are cleared: Ravenous Claw and he enrages.",
+      "tank": "Plain tank, cooldowns at the end.",
+      "healer": "Heavy hits on the tank.",
+      "dps": "Burn him."
+    },
+    {
+      "name": "Cannon Master Willey",
+      "wing": "Live side",
+      "aliases": ["willey"],
+      "general": "Calls Crimson Riflemen while he fights; Knock Away and Shoot.",
+      "tank": "Back to a wall, grab the riflemen.",
+      "healer": "Heal the riflemen's shots.",
+      "dps": "Riflemen if they spread out, else Willey."
+    },
+    {
+      "name": "Archivist Galford",
+      "wing": "Live side",
+      "aliases": ["galford"],
+      "general": "Fire Nova, Burning Winds and Pyroblast in the library.",
+      "tank": "Hold him in melee.",
+      "healer": "Heal the fire damage.",
+      "dps": "Interrupt Pyroblast."
+    },
+    {
+      "name": "Grand Crusader Dathrohan",
+      "wing": "Live side",
+      "aliases": ["dathrohan", "balnazzar", "balnazar"],
+      "general": "Paladin who turns into the demon Balnazzar at half health: Shadow Shock, Psychic Scream, Sleep and Mind Control.",
+      "tank": "Fear Ward or Tremor on you; pick him back up after the change.",
+      "healer": "Dispel the sleep; crowd control or dispel the mind controlled.",
+      "dps": "Burn him; don't kill a controlled friend."
+    },
+    {
+      "name": "Malor the Zealous",
+      "wing": "Live side",
+      "aliases": ["malor"],
+      "general": "Guards the medallion in the Scarlet bastion. Holy spells and heals.",
+      "tank": "Plain tank.",
+      "healer": "Steady heals.",
+      "dps": "Interrupt his heals."
+    },
+    {
+      "name": "Hearthsinger Forresten",
+      "wing": "Live side",
+      "aliases": ["forresten", "hearthsinger"],
+      "general": "Rare bard: Disarm and Enchanting Lullaby.",
+      "tank": "Plain tank.",
+      "healer": "Dispel the lullaby.",
+      "dps": "Burn him."
+    },
+    {
+      "name": "Skul",
+      "wing": "Live side",
+      "aliases": ["skul"],
+      "general": "Rare caster: Frostbolt and Arcane Bolt.",
+      "tank": "Hold him in melee.",
+      "healer": "Light damage.",
+      "dps": "Interrupt and burn."
+    },
+    {
+      "name": "The Unforgiven",
+      "wing": "Live side",
+      "aliases": ["unforgiven"],
+      "general": "Spawns with Vengeful Phantoms: Frost Nova and Mind Numbing poison.",
+      "tank": "Grab the phantoms.",
+      "healer": "Dispel the nova on the tank.",
+      "dps": "Phantoms, then him."
+    },
+    {
+      "name": "Baroness Anastari",
+      "wing": "Undead side",
+      "aliases": ["anastari", "baroness"],
+      "general": "Banshee: Possess takes over a player, Banshee Wail and Banshee Curse.",
+      "tank": "Hold her; she ends Possess when she is hurt enough.",
+      "healer": "Decurse; heal the possessed when it ends.",
+      "dps": "Burn her, don't hurt the possessed friend."
+    },
+    {
+      "name": "Nerub'enkan",
+      "wing": "Undead side",
+      "aliases": ["nerubenkan"],
+      "general": "Crypt Scarabs swarm out, Encasing Webs root, Pierce Armor.",
+      "tank": "Grab the scarabs.",
+      "healer": "Dispel the webs and the poison.",
+      "dps": "Area attacks on the scarabs, then him."
+    },
+    {
+      "name": "Maleki the Pallid",
+      "wing": "Undead side",
+      "aliases": ["maleki"],
+      "general": "Frostbolt, Drain Life and Ice Tomb on a player.",
+      "tank": "Hold him in melee.",
+      "healer": "Heal the frozen player.",
+      "dps": "Interrupt Frostbolt and Drain Life."
+    },
+    {
+      "name": "Magistrate Barthilas",
+      "wing": "Undead side",
+      "aliases": ["barthilas", "magistrate"],
+      "general": "Draining Blow, Crowd Pummel knocks back the melee, Mighty Blow.",
+      "tank": "Face him away, back to a wall.",
+      "healer": "Heal after the pummels.",
+      "dps": "From behind; the baron run timer starts at him."
+    },
+    {
+      "name": "Ramstein the Gorger",
+      "wing": "Undead side",
+      "aliases": ["ramstein"],
+      "general": "Abomination at the slaughterhouse: Trample and Knockout stun the tank. Black Guards come out after he dies.",
+      "tank": "Get your threat back after the knockouts; grab the Black Guards after.",
+      "healer": "Heal through the stuns.",
+      "dps": "Watch threat while the tank is stunned; then the guards."
+    },
+    {
+      "name": "Baron Rivendare",
+      "wing": "Undead side",
+      "aliases": ["baron", "rivendare"],
+      "general": "Raises skeletons and eats them with Death Pact to heal; Unholy Aura burns everyone near, Mortal Strike, Cleave.",
+      "tank": "Face him away, grab the skeletons.",
+      "healer": "Shadow damage on everyone: shadow resistance helps.",
+      "dps": "Kill the skeletons quickly so he can't heal, then him."
+    },
+    {
+      "name": "Stonespine",
+      "wing": "Undead side",
+      "aliases": ["stonespine"],
+      "general": "Rare gargoyle: hits hard.",
+      "tank": "Plain tank.",
+      "healer": "Steady heals.",
+      "dps": "Burn it."
+    }
+  ]
+}

@@ -1,0 +1,79 @@
+{
+  "instance": "Wailing Caverns",
+  "map": 43,
+  "aliases": ["wc", "wailing caverns"],
+  "bosses": [
+    {
+      "name": "Lady Anacondra",
+      "aliases": ["anacondra"],
+      "general": "Druid of the Fang: Lightning Bolt, Sleep on one of us, and Healing Touch on herself.",
+      "tank": "Pull her out of sight round a corner so she comes to you.",
+      "healer": "Dispel the Sleep if you can, heal the bolts.",
+      "dps": "Interrupt every Healing Touch, then burn her."
+    },
+    {
+      "name": "Lord Cobrahn",
+      "aliases": ["cobrahn"],
+      "general": "Lightning Bolt and Sleep, poisons, and at low health he turns into a big serpent that hits much harder.",
+      "tank": "Keep him in melee; be ready for the serpent form near the end.",
+      "healer": "Cure the poison and save mana for his serpent form.",
+      "dps": "Interrupt his heals and burn him fast once he changes form."
+    },
+    {
+      "name": "Lord Pythas",
+      "aliases": ["pythas"],
+      "general": "Lightning Bolt, Sleep and Healing Touch, and a Thunderclap on the melee.",
+      "tank": "Keep him in melee, face him away from the casters.",
+      "healer": "Dispel Sleep, heal the Thunderclap damage.",
+      "dps": "Interrupt Healing Touch every time."
+    },
+    {
+      "name": "Lord Serpentis",
+      "aliases": ["serpentis"],
+      "general": "The last Fanglord: Lightning Bolt, Sleep and Healing Touch.",
+      "tank": "Pull him away from the other druids.",
+      "healer": "Dispel Sleep on whoever he puts down.",
+      "dps": "Interrupt his heals."
+    },
+    {
+      "name": "Kresh",
+      "aliases": ["kresh"],
+      "general": "Big turtle in the water. Harmless, kill it or swim past.",
+      "tank": "Plain tank and spank.",
+      "healer": "Little damage.",
+      "dps": "Burn it."
+    },
+    {
+      "name": "Skum",
+      "aliases": ["skum"],
+      "general": "Thunder lizard in the water: Chained Bolt jumps between players standing close.",
+      "tank": "Keep him on you.",
+      "healer": "Heal the bolts.",
+      "dps": "Ranged spread out so the bolt doesn't chain."
+    },
+    {
+      "name": "Verdan the Everliving",
+      "aliases": ["verdan"],
+      "general": "Giant plant: Grasping Vines knock down everyone near him.",
+      "tank": "Keep him on you and expect to be knocked down.",
+      "healer": "Stay out of the vines' reach, heal the tank.",
+      "dps": "Ranged keep their distance; melee heal up between knockdowns."
+    },
+    {
+      "name": "Mutanus the Devourer",
+      "aliases": ["mutanus"],
+      "general": "Comes after the waves of Naralex's awakening. Terrify fears, Naralex's Nightmare sleeps, Thundercrack stuns.",
+      "tank": "Keep him on you through the fear; Berserker Rage or Tremor help.",
+      "healer": "Dispel the Nightmare sleep, keep the tank up during fears.",
+      "dps": "Burn him, he is the end of the dungeon."
+    },
+    {
+      "name": "Deviate Faerie Dragon",
+      "aliases": ["faerie dragon"],
+      "general": "Rare: Arcane Explosion around itself and Sleep.",
+      "tank": "Keep it on you.",
+      "healer": "Dispel Sleep; heal the melee through Arcane Explosion.",
+      "dps": "Ranged are safer; melee watch their health."
+    }
+  ]
+}

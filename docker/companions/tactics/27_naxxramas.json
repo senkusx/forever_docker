@@ -1,0 +1,219 @@
+{
+  "instance": "Naxxramas",
+  "map": 533,
+  "aliases": [
+    "naxx",
+    "naxxramas"
+  ],
+  "bosses": [
+    {
+      "name": "Anub'Rekhan",
+      "wing": "Spider",
+      "aliases": [
+        "anubrekhan",
+        "anub"
+      ],
+      "general": "Locust Swarm: he walks slowly while the swarm shreds everyone near; kite him round the room. Impale in a line; Crypt Guards come.",
+      "tank": "Kite him during Locust Swarm; off-tank the Crypt Guards.",
+      "healer": "Stay out of the swarm; heal the impaled.",
+      "dps": "Kill the Crypt Guards; spread against Impale; never stand in the swarm."
+    },
+    {
+      "name": "Grand Widow Faerlina",
+      "wing": "Spider",
+      "aliases": [
+        "faerlina",
+        "widow"
+      ],
+      "general": "Enrages: a priest mind controls a Naxxramas Worshipper and sacrifices it (Widow's Embrace) to stop the enrage. Rain of Fire, Poison Bolt Volley.",
+      "tank": "Tanks on the followers; main tank on Faerlina.",
+      "healer": "Cure poison, step out of Rain of Fire.",
+      "dps": "Kill the followers, leave the worshippers for the priests."
+    },
+    {
+      "name": "Maexxna",
+      "wing": "Spider",
+      "aliases": [
+        "maexxna"
+      ],
+      "general": "Web Wrap cocoons players on the wall (break them free), Web Spray stuns everyone every 40 seconds, Necrotic Poison cuts healing on the tank, enrage at 30%.",
+      "tank": "Cure the poison quickly; big hits after each web spray.",
+      "healer": "Top the tank before Web Spray; cure Necrotic Poison.",
+      "dps": "Ranged free the web-wrapped; area the spiderlings."
+    },
+    {
+      "name": "Noth the Plaguebringer",
+      "wing": "Plague",
+      "aliases": [
+        "noth"
+      ],
+      "general": "Blinks (threat reset) and curses everyone; teleports to the balcony and skeleton waves come.",
+      "tank": "Pick him up after each blink; hold the skeletons.",
+      "healer": "Decurse at once.",
+      "dps": "Watch threat after blinks; area the skeletons."
+    },
+    {
+      "name": "Heigan the Unclean",
+      "wing": "Plague",
+      "aliases": [
+        "heigan",
+        "dance"
+      ],
+      "general": "The safety dance: eruptions sweep the room's four zones in turn; move to the safe zone. On the platform phase everyone dances faster.",
+      "tank": "Dance with him through the zones.",
+      "healer": "Healers on the platform; cure disease.",
+      "dps": "Follow the dance; nobody stands in an erupting zone."
+    },
+    {
+      "name": "Loatheb",
+      "wing": "Plague",
+      "aliases": [
+        "loatheb"
+      ],
+      "general": "Corrupted Mind lets each healer cast one heal a minute: healers take turns. Spores spawn, standing in a spore cloud gives crits. Inevitable Doom kills slowly later on.",
+      "tank": "Use healthstones and potions; shadow protection helps.",
+      "healer": "Follow the healing rotation: one big heal when it is your turn.",
+      "dps": "Rotate through the spores for the crit bonus."
+    },
+    {
+      "name": "Instructor Razuvious",
+      "wing": "Military",
+      "aliases": [
+        "razuvious"
+      ],
+      "general": "Only Death Knight Understudies, mind controlled by priests, can tank him. Disrupting Shout drains mana; Unbalancing Strike.",
+      "tank": "Priests control the understudies and use their taunt and shield wall in turn.",
+      "healer": "Stand out of shout range.",
+      "dps": "Burn him while the understudies tank."
+    },
+    {
+      "name": "Gothik the Harvester",
+      "wing": "Military",
+      "aliases": [
+        "gothik"
+      ],
+      "general": "Split the raid on both sides of the gate: live adds come on one side, their spirits on the other. The gate opens later; then Gothik comes down.",
+      "tank": "Tanks on both sides gather the adds.",
+      "healer": "Heal your own side.",
+      "dps": "Kill live adds on their side; spirits on the dead side."
+    },
+    {
+      "name": "Thane Korth'azz",
+      "wing": "Military",
+      "aliases": [
+        "korthazz",
+        "four horsemen",
+        "horsemen"
+      ],
+      "general": "The Four Horsemen: each leaves marks that stack on everyone near; tanks rotate between the four corners. Korth'azz casts Meteor on his tank's group.",
+      "tank": "Rotate corners at 3 to 4 marks.",
+      "healer": "Rotate with the tanks.",
+      "dps": "Everyone near Korth'azz shares his Meteor."
+    },
+    {
+      "name": "Highlord Mograine",
+      "wing": "Military",
+      "aliases": [
+        "highlord mograine"
+      ],
+      "general": "Four Horsemen: Righteous Fire on his tank; marks stack.",
+      "tank": "Rotate at 3 to 4 marks.",
+      "healer": "Heal the fire.",
+      "dps": "Melee kill him with Korth'azz in turn."
+    },
+    {
+      "name": "Lady Blaumeux",
+      "wing": "Military",
+      "aliases": [
+        "blaumeux"
+      ],
+      "general": "Four Horsemen: Void Zones under players. Kill her from range.",
+      "tank": "Rotate at 3 to 4 marks.",
+      "healer": "Step out of Void Zones.",
+      "dps": "Out of Void Zones."
+    },
+    {
+      "name": "Sir Zeliek",
+      "wing": "Military",
+      "aliases": [
+        "zeliek"
+      ],
+      "general": "Four Horsemen: Holy Wrath chains between players standing close.",
+      "tank": "Rotate at 3 to 4 marks.",
+      "healer": "Spread out near him.",
+      "dps": "Ranged spread around him."
+    },
+    {
+      "name": "Patchwerk",
+      "wing": "Construct",
+      "aliases": [
+        "patchwerk",
+        "patch"
+      ],
+      "general": "Hateful Strike hits the melee with the most health besides the tank: three or four tanks soak it. Pure damage race, enrage at 5%.",
+      "tank": "Soak Hateful Strike: stay in melee with the highest health.",
+      "healer": "Heal the soakers hard.",
+      "dps": "Burn him; melee stay below the soakers' health."
+    },
+    {
+      "name": "Grobbulus",
+      "wing": "Construct",
+      "aliases": [
+        "grobbulus",
+        "grob"
+      ],
+      "general": "Mutating Injection: that player runs to the side to drop a poison cloud. Slime Spray in front spawns oozes.",
+      "tank": "Kite him slowly round the room away from the clouds; face him away.",
+      "healer": "Dispel the injection only once the player is out.",
+      "dps": "Out of his front; kill the oozes."
+    },
+    {
+      "name": "Gluth",
+      "wing": "Construct",
+      "aliases": [
+        "gluth"
+      ],
+      "general": "Zombie Chows walk in and feed him; Decimate drops everyone to 5%. Mortal Wound on the tank; Frenzy.",
+      "tank": "Two tanks swap at Mortal Wound stacks.",
+      "healer": "Heal the raid after each Decimate.",
+      "dps": "Kite and kill the zombies; hunters Tranq the frenzy."
+    },
+    {
+      "name": "Thaddius",
+      "wing": "Construct",
+      "aliases": [
+        "thaddius",
+        "stalagg",
+        "feugen"
+      ],
+      "general": "First Stalagg and Feugen on two platforms die together. Thaddius: Polarity Shift gives + or - charge: pluses stand left, minuses right; mixed charges hurt.",
+      "tank": "Hold the two first, then Thaddius.",
+      "healer": "Move with your charge.",
+      "dps": "Kill both platform bosses together; after each shift move to your side."
+    },
+    {
+      "name": "Sapphiron",
+      "wing": "Frostwyrm Lair",
+      "aliases": [
+        "sapphiron",
+        "sapph"
+      ],
+      "general": "Frost Aura drains everyone, Life Drain (decurse), Blizzard. In the air he Ice Bolts players into blocks: hide behind them from Frost Breath.",
+      "tank": "Frost resistance; face him away.",
+      "healer": "Decurse Life Drain; frost resistance.",
+      "dps": "Out of Blizzard; hide behind an ice block for the breath."
+    },
+    {
+      "name": "Kel'Thuzad",
+      "wing": "Frostwyrm Lair",
+      "aliases": [
+        "kelthuzad",
+        "kt"
+      ],
+      "general": "Phase 1: waves of undead come to the middle. Phase 2: Frostbolt (interrupt), Frost Blast, Mana Detonation, Shadow Fissure, Chains of Kel'Thuzad mind control. Phase 3: guardians.",
+      "tank": "Off-tanks take the Guardians of Icecrown in phase 3.",
+      "healer": "Spread; mana users with detonation run out.",
+      "dps": "Interrupt Frostbolt; step out of Shadow Fissures; crowd control the chained."
+    }
+  ]
+}

@@ -1,0 +1,47 @@
+{
+  "instance": "Eastern Kingdoms",
+  "map": 0,
+  "aliases": [],
+  "bosses": [
+    {
+      "name": "Lord Kazzak",
+      "aliases": ["kazzak"],
+      "general": "Blasted Lands world boss: Shadow Bolt Volley, Mark of Kazzak drains mana then explodes, Twisted Reflection heals him, Capture Soul heals him on every death. Berserk after 3 minutes.",
+      "tank": "Hold him in the open, two tanks.",
+      "healer": "Dispel Twisted Reflection; keep everyone alive, deaths heal him.",
+      "dps": "A race against 3 minutes; marked players run out."
+    },
+    {
+      "name": "Emeriss",
+      "aliases": ["emeriss"],
+      "general": "Dragon of Nightmare: Noxious Breath in front, tail sweep behind, sleeping fog, players who die grow mushrooms. Volatile Infection on a player.",
+      "tank": "Face her away from the raid, nature resistance.",
+      "healer": "Out of the green fog.",
+      "dps": "Flanks only; nobody dies near the raid."
+    },
+    {
+      "name": "Lethon",
+      "aliases": ["lethon"],
+      "general": "Dragon of Nightmare: Shadow Bolt Whirl, spawns shades from every player that heal him.",
+      "tank": "Face him away.",
+      "healer": "Out of the green fog.",
+      "dps": "Kill the shades before they reach him."
+    },
+    {
+      "name": "Taerar",
+      "aliases": ["taerar"],
+      "general": "Dragon of Nightmare: Arcane Blast, Bellowing Roar fears, and splits into three shades.",
+      "tank": "Fear Ward; tanks for the shades.",
+      "healer": "Out of the green fog.",
+      "dps": "Kill the shades when he splits."
+    },
+    {
+      "name": "Ysondre",
+      "aliases": ["ysondre"],
+      "general": "Dragon of Nightmare: Lightning Wave chains, calls Demented Druid Spirits.",
+      "tank": "Face her away; pick up the spirits.",
+      "healer": "Out of the green fog.",
+      "dps": "Spread for the lightning; kill the spirits."
+    }
+  ]
+}

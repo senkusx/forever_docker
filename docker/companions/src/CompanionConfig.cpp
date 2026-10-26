@@ -293,4 +293,18 @@ namespace Companions
         std::transform(out.begin(), out.end(), out.begin(), [](unsigned char c) { return char(std::tolower(c)); });
         return out;
     }
+
+    bool ContainsWord(std::string_view text, std::string_view word)
+    {
+        if (word.empty())
+            return false;
+        auto letter = [](char c) { return std::isalnum(static_cast<unsigned char>(c)) || c == '\''; };
+        for (size_t pos = text.find(word); pos != std::string_view::npos; pos = text.find(word, pos + 1))
+        {
+            size_t const end = pos + word.size();
+            if ((pos == 0 || !letter(text[pos - 1])) && (end >= text.size() || !letter(text[end])))
+                return true;
+        }
+        return false;
+    }
 }

@@ -68,6 +68,8 @@ namespace Companions
     bool ParseRole(std::string_view text, Role& role, uint8 classId);
     Role DpsRoleForClass(uint8 classId);
     std::string ToLower(std::string_view text);
+    // word appears in text as a whole word (not inside another one): "rend" in "kill rend" but not in "friend"
+    bool ContainsWord(std::string_view text, std::string_view word);
 }
 
 #endif

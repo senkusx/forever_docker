@@ -1,0 +1,160 @@
+{
+  "instance": "Dire Maul",
+  "map": 429,
+  "aliases": ["dire maul", "dm east", "dm west", "dm north", "dme", "dmw", "dmn", "tribute"],
+  "bosses": [
+    {
+      "name": "Pusillin",
+      "wing": "East",
+      "aliases": ["pusillin", "imp"],
+      "general": "The imp runs off when you talk to him; chase him through the wing. At the end he fights with imp friends: Fireball, Blast Wave.",
+      "tank": "Grab his imps at the end.",
+      "healer": "Heal the blast wave.",
+      "dps": "Imps, then Pusillin."
+    },
+    {
+      "name": "Zevrim Thornhoof",
+      "wing": "East",
+      "aliases": ["zevrim"],
+      "general": "Sacrifice pins a player and drains them, Intense Pain hurts the tank.",
+      "tank": "Plain tank, heavy hits.",
+      "healer": "Heal the sacrificed player hard.",
+      "dps": "Burn him quickly."
+    },
+    {
+      "name": "Hydrospawn",
+      "wing": "East",
+      "aliases": ["hydrospawn"],
+      "general": "Water elemental: Riptide, Submersion, and he splits into Hydrolings at low health.",
+      "tank": "Grab the Hydrolings.",
+      "healer": "Several on the tank at the end.",
+      "dps": "Area attacks on the Hydrolings."
+    },
+    {
+      "name": "Lethtendris",
+      "wing": "East",
+      "aliases": ["lethtendris", "pimgib"],
+      "general": "With her imp Pimgib: Shadow Bolt Volley, Enfeeble, Void Bolt.",
+      "tank": "Hold both.",
+      "healer": "Heal the volley.",
+      "dps": "Interrupt her bolts; Pimgib first."
+    },
+    {
+      "name": "Alzzin the Wildshaper",
+      "wing": "East",
+      "aliases": ["alzzin", "wildshaper"],
+      "general": "Changes form as he loses health and hits harder in his beast forms; Wither and Enervate weaken the group.",
+      "tank": "Keep him in the open, cooldowns for his beast forms.",
+      "healer": "Dispel what you can; heavy tank damage late.",
+      "dps": "Burn him."
+    },
+    {
+      "name": "Tendris Warpwood",
+      "wing": "West",
+      "aliases": ["tendris", "warpwood"],
+      "general": "Huge treant: Entangle roots everyone, Grasping Vines and Trample. His Ironbark Protectors are nearby.",
+      "tank": "Hold him away from the protectors.",
+      "healer": "Dispel the roots, heal the trample.",
+      "dps": "Burn him."
+    },
+    {
+      "name": "Illyanna Ravenoak",
+      "wing": "West",
+      "aliases": ["illyanna", "ferra"],
+      "general": "Hunter with her bear Ferra: Volley, Immolation Trap, Concussive Shot.",
+      "tank": "Grab Ferra and Illyanna.",
+      "healer": "Heal the volley.",
+      "dps": "Ferra first or crowd control it; spread for the volley."
+    },
+    {
+      "name": "Magister Kalendris",
+      "wing": "West",
+      "aliases": ["kalendris"],
+      "general": "Shadow priest: Mind Blast, Shadow Word: Pain, and Dominate Mind on a player.",
+      "tank": "Hold him; don't hit the controlled player.",
+      "healer": "Dispel the mind control and the Shadow Word: Pain.",
+      "dps": "Interrupt his Mind Blast."
+    },
+    {
+      "name": "Immol'thar",
+      "wing": "West",
+      "aliases": ["immolthar"],
+      "general": "Freed by destroying the five pylons. Trample, Infected Bite, Eyes of Immol'thar come out, and Portal of Immol'thar sends a player away.",
+      "tank": "Face him away; he hits hard.",
+      "healer": "Cure the disease; heal whoever he portals.",
+      "dps": "Kill the Eyes, then him."
+    },
+    {
+      "name": "Prince Tortheldrin",
+      "wing": "West",
+      "aliases": ["tortheldrin", "prince"],
+      "general": "Whirlwind cuts the melee; Arcane Blast, Counterspell, and he pulls a player to him.",
+      "tank": "Hold him through the Whirlwind.",
+      "healer": "Heal the whirlwind.",
+      "dps": "Melee step out of Whirlwind; casters watch the counterspell."
+    },
+    {
+      "name": "Guard Mol'dar",
+      "wing": "North",
+      "aliases": ["moldar"],
+      "general": "Gordok guard. Kill him for loot or leave him alive for the tribute.",
+      "tank": "Plain tank.",
+      "healer": "Light damage.",
+      "dps": "Burn him."
+    },
+    {
+      "name": "Stomper Kreeg",
+      "wing": "North",
+      "aliases": ["kreeg", "stomper"],
+      "general": "Drunk ogre: War Stomp and Whirlwind. Leave him alive for the tribute, or kill him.",
+      "tank": "Plain tank.",
+      "healer": "Heal through the stomps.",
+      "dps": "Melee step out of Whirlwind."
+    },
+    {
+      "name": "Guard Fengus",
+      "wing": "North",
+      "aliases": ["fengus"],
+      "general": "Gordok guard. Kill him or leave him for the tribute.",
+      "tank": "Plain tank.",
+      "healer": "Light damage.",
+      "dps": "Burn him."
+    },
+    {
+      "name": "Guard Slip'kik",
+      "wing": "North",
+      "aliases": ["slipkik"],
+      "general": "Gordok guard. A Freezing Trap trick gets you past him for the tribute.",
+      "tank": "Plain tank.",
+      "healer": "Light damage.",
+      "dps": "Burn him."
+    },
+    {
+      "name": "Captain Kromcrush",
+      "wing": "North",
+      "aliases": ["kromcrush"],
+      "general": "Intimidating Shout fears and Mortal Strike; he calls Gordok Reavers.",
+      "tank": "Fear Ward or Tremor; grab the reavers.",
+      "healer": "Heal ahead of the mortal strikes.",
+      "dps": "Reavers, then Kromcrush."
+    },
+    {
+      "name": "Cho'Rush the Observer",
+      "wing": "North",
+      "aliases": ["chorush"],
+      "general": "King Gordok's ogre mage: heals Gordok and casts Mind Blast.",
+      "tank": "Hold him with Gordok.",
+      "healer": "Heal through the casts.",
+      "dps": "Kill or interrupt Cho'Rush first."
+    },
+    {
+      "name": "King Gordok",
+      "wing": "North",
+      "aliases": ["gordok", "king gordok"],
+      "general": "Kill Cho'Rush first. Gordok: Mortal Strike, War Stomp, Berserker Charge.",
+      "tank": "Face Gordok away from the group.",
+      "healer": "Heal ahead of the mortal strikes.",
+      "dps": "Cho'Rush first, then Gordok from behind."
+    }
+  ]
+}

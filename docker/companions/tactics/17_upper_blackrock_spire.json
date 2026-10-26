@@ -1,0 +1,71 @@
+{
+  "instance": "Blackrock Spire",
+  "map": 229,
+  "sort_base": 100,
+  "aliases": ["ubrs", "upper blackrock spire"],
+  "bosses": [
+    {
+      "name": "Pyroguard Emberseer",
+      "wing": "Upper",
+      "aliases": ["emberseer", "pyroguard"],
+      "general": "Kill the Blackhand Incarcerators around the room, then free him at the altar: Fire Nova, Fireball Volley, Flame Buffet.",
+      "tank": "Hold him in the middle.",
+      "healer": "Heavy fire damage on everyone: fire resistance helps.",
+      "dps": "Burn him fast."
+    },
+    {
+      "name": "Solakar Flamewreath",
+      "wing": "Upper",
+      "aliases": ["solakar", "rookery"],
+      "general": "The rookery: waves of whelps and handlers, then Solakar. Don't break the eggs.",
+      "tank": "Hold the handlers and whelps in a corner.",
+      "healer": "Long fight, pace your mana.",
+      "dps": "Handlers first, area attacks on the whelps."
+    },
+    {
+      "name": "Jed Runewatcher",
+      "wing": "Upper",
+      "aliases": ["jed"],
+      "general": "Rare guard. Easy.",
+      "tank": "Plain tank.",
+      "healer": "Light damage.",
+      "dps": "Burn him."
+    },
+    {
+      "name": "Goraluk Anvilcrack",
+      "wing": "Upper",
+      "aliases": ["goraluk"],
+      "general": "The blacksmith: Cleave and Backhand.",
+      "tank": "Face him away.",
+      "healer": "Steady heals.",
+      "dps": "From behind."
+    },
+    {
+      "name": "Warchief Rend Blackhand",
+      "wing": "Upper",
+      "aliases": ["rend", "gyth"],
+      "general": "Waves of orcs and dragonkin pour out of the arena gates, then Rend rides in on Gyth (breaths); when Gyth dies Rend fights on foot: Whirlwind and Cleave.",
+      "tank": "Hold the waves in the corner by the entrance; face Gyth away from the group.",
+      "healer": "Long fight: drink between waves.",
+      "dps": "Kill the waves fast; never stand in front of Gyth; step out of Rend's Whirlwind."
+    },
+    {
+      "name": "The Beast",
+      "wing": "Upper",
+      "aliases": ["the beast", "beast"],
+      "general": "Fireballs, Flamebreak around him, a roar that fears, and he pulls players to him.",
+      "tank": "Fear Ward on you; face him away.",
+      "healer": "Stand behind him at range.",
+      "dps": "Stand behind him."
+    },
+    {
+      "name": "General Drakkisath",
+      "wing": "Upper",
+      "aliases": ["drakkisath", "drakk"],
+      "general": "Two Chromatic Elite Guards: separate them. Drakkisath: Flamestrike, Cleave, Conflagration disorients his tank.",
+      "tank": "Main tank on Drakkisath facing away; off-tank the guards, then take over during Conflagration.",
+      "healer": "Heal both tanks; fire resistance helps.",
+      "dps": "Guards first, then Drakkisath; step out of Flamestrike."
+    }
+  ]
+}

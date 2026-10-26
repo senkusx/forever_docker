@@ -1,0 +1,71 @@
+{
+  "instance": "Blackfathom Deeps",
+  "map": 48,
+  "aliases": ["bfd", "blackfathom", "blackfathom deeps"],
+  "bosses": [
+    {
+      "name": "Ghamoo-ra",
+      "aliases": ["ghamoora", "turtle"],
+      "general": "Giant turtle: Trample, nothing else.",
+      "tank": "Plain tank and spank.",
+      "healer": "Light damage.",
+      "dps": "Burn it."
+    },
+    {
+      "name": "Lady Sarevess",
+      "aliases": ["sarevess"],
+      "general": "Naga with two guards: Forked Lightning in front of her, Frost Nova and Slow.",
+      "tank": "Face her away from the group; grab her guards.",
+      "healer": "Dispel the Slow and Frost Nova, heal the lightning.",
+      "dps": "Stay out of her front; guards first if they're loose."
+    },
+    {
+      "name": "Gelihast",
+      "aliases": ["gelihast"],
+      "general": "Murloc boss: nets players in place and has murloc friends.",
+      "tank": "Hold him and the murlocs.",
+      "healer": "Dispel the net if you can.",
+      "dps": "Burn him."
+    },
+    {
+      "name": "Lorgus Jett",
+      "aliases": ["lorgus"],
+      "general": "Twilight shaman: Lightning Bolt, Lightning Shield and Healing Wave.",
+      "tank": "Keep him in melee.",
+      "healer": "Heal the bolts.",
+      "dps": "Interrupt his Healing Wave; purge his shield."
+    },
+    {
+      "name": "Baron Aquanis",
+      "aliases": ["aquanis"],
+      "general": "Called by the Fathom Stone: Frostbolts.",
+      "tank": "Plain tank and spank.",
+      "healer": "Heal the frostbolts.",
+      "dps": "Burn him."
+    },
+    {
+      "name": "Twilight Lord Kelris",
+      "aliases": ["kelris"],
+      "general": "Mind Blast and Sleep. Clear his room's cultists first.",
+      "tank": "Hold him in melee.",
+      "healer": "Dispel Sleep right away.",
+      "dps": "Interrupt his casts."
+    },
+    {
+      "name": "Old Serra'kis",
+      "aliases": ["serrakis", "shark"],
+      "general": "Big shark under water: Thrash. Watch your breath.",
+      "tank": "Hold it near an air pocket if you can.",
+      "healer": "Heal through Thrash, mind your breath.",
+      "dps": "Burn it and surface."
+    },
+    {
+      "name": "Aku'mai",
+      "aliases": ["akumai", "hydra"],
+      "general": "Lighting the four braziers calls waves of turtles and murlocs; then Aku'mai. Poison Clouds and she goes frenzied at low health.",
+      "tank": "Tank her against the wall, keep her out of the clouds.",
+      "healer": "Save mana for the last third, she hits much harder then.",
+      "dps": "Step out of the green clouds; burn her in the frenzy."
+    }
+  ]
+}

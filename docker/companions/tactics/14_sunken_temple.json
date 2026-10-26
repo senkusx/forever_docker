@@ -1,0 +1,79 @@
+{
+  "instance": "Sunken Temple",
+  "map": 109,
+  "aliases": ["st", "sunken temple", "temple of atalhakkar", "atal hakkar"],
+  "bosses": [
+    {
+      "name": "Atal'alarion",
+      "aliases": ["atalalarion", "statue boss"],
+      "general": "Raised by touching the statues in the pit in the right order: Sweeping Slam and Knock Away.",
+      "tank": "Face him away, back to a wall.",
+      "healer": "Heal through the slams.",
+      "dps": "From behind."
+    },
+    {
+      "name": "Jammal'an the Prophet",
+      "aliases": ["jammalan", "prophet"],
+      "general": "With Ogom the Wretched: Hex of Jammal'an turns a player against us, Healing Wave, totems.",
+      "tank": "Hold both trolls.",
+      "healer": "Dispel or crowd control the hexed player.",
+      "dps": "Interrupt his Healing Wave; kill Jammal'an, then Ogom."
+    },
+    {
+      "name": "Ogom the Wretched",
+      "aliases": ["ogom"],
+      "general": "Jammal'an's shadow caster: Shadow Bolt and Curse of Weakness.",
+      "tank": "Hold him with Jammal'an.",
+      "healer": "Decurse.",
+      "dps": "After Jammal'an."
+    },
+    {
+      "name": "Dreamscythe",
+      "aliases": ["dreamscythe"],
+      "general": "Green dragonkin on the balcony: Acid Breath in front and Wing Flap.",
+      "tank": "Face it away from the group.",
+      "healer": "Stay out of its front.",
+      "dps": "From the sides or behind."
+    },
+    {
+      "name": "Weaver",
+      "aliases": ["weaver"],
+      "general": "Green dragonkin: Acid Breath in front and Wing Flap.",
+      "tank": "Face it away from the group.",
+      "healer": "Stay out of its front.",
+      "dps": "From the sides or behind."
+    },
+    {
+      "name": "Morphaz",
+      "aliases": ["morphaz"],
+      "general": "Dragonkin: Acid Breath in front and Thrash.",
+      "tank": "Face it away.",
+      "healer": "Out of its front.",
+      "dps": "Behind it."
+    },
+    {
+      "name": "Hazzas",
+      "aliases": ["hazzas"],
+      "general": "Dragonkin: Acid Breath in front.",
+      "tank": "Face it away.",
+      "healer": "Out of its front.",
+      "dps": "Behind it."
+    },
+    {
+      "name": "Avatar of Hakkar",
+      "aliases": ["avatar", "hakkar avatar"],
+      "general": "Event: kill the Hakkari Bloodkeepers and use their blood to put out the Eternal Flames, then the Avatar comes: Cause Insanity, Curse of Tongues, Lash.",
+      "tank": "Face him away; crowd control a player he drives insane.",
+      "healer": "Decurse Curse of Tongues.",
+      "dps": "Bloodkeepers first in the event, then the Avatar."
+    },
+    {
+      "name": "Shade of Eranikus",
+      "aliases": ["eranikus", "shade"],
+      "general": "Green dragon: Acid Breath in front, War Stomp, and Deep Slumber puts people to sleep.",
+      "tank": "Face him away from the group.",
+      "healer": "Dispel the sleep; nature resistance helps.",
+      "dps": "Never in front of him."
+    }
+  ]
+}

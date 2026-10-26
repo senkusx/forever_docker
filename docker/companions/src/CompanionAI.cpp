@@ -316,6 +316,25 @@ namespace Companions
             _spellsDirty = false;
         }
 
+        // lines it waits to say (the companions telling a boss's tactics in turn)
+        if (!_later.empty())
+        {
+            TimePoint const now = GameTime::Now();
+            for (auto itr = _later.begin(); itr != _later.end();)
+            {
+                if (itr->Due > now)
+                {
+                    ++itr;
+                    continue;
+                }
+                if (itr->WhisperTo.IsEmpty())
+                    Say(itr->Text);
+                else if (Player* receiver = ObjectAccessor::FindPlayer(itr->WhisperTo))
+                    _bot->Whisper(itr->Text, LANG_UNIVERSAL, receiver);
+                itr = _later.erase(itr);
+            }
+        }
+
         _slowTimer += diff;
         bool const slowTick = _slowTimer >= 1000;
         if (slowTick)
@@ -351,6 +370,12 @@ namespace Companions
             _forcedTarget.Clear();
             _pulling = false;
             DisengageAll();
+            if (_tankOrderUsed)
+            {
+                _faceAway = false;
+                _tankSpot.reset();
+                _tankOrderUsed = false;
+            }
         }
 
         if (slowTick && GetConfig().FreeReagents)
@@ -1253,13 +1278,9 @@ namespace Companions
         if (UsePreferred(target))
             return;
 
+        // a healer heals: no damage spells, its mana and its casts stay for the group
         if (role == Role::Healer)
-        {
-            // nothing to heal: help with damage while mana is comfortable
-            if (ManaPct() > 60.0f && !InjuredAllies(80.0f, 40.0f))
-                _class->Combat(target);
             return;
-        }
 
         if (_pulling && role == Role::Tank && !target->IsInCombat())
         {
@@ -1499,6 +1520,17 @@ namespace Companions
             if (Mechanics::FindSpellRule(spellId, Mechanics::Kind::NoHealWithAura))
                 return false;
 
+        // A tank or damage dealer of a hybrid class leaves the healing to the group's healer while one is up to it (alive,
+        // near, with mana), itself included: only a life about to end with no heal on its way is its business then
+        bool covered = false;
+        if (!healer)
+            for (Player* member : _view.Members)
+                if (member != _bot && member->IsAlive() && IsHealer(member) && _bot->GetDistance(member) < 40.0f
+                    && (member->GetMaxPower(POWER_MANA) == 0 || member->GetPowerPct(POWER_MANA) > 10.0f))
+                    covered = true;
+        if (covered && !inCombat)
+            return false;
+
         // A healer lets small damage be: in combat it heals the tank from 85% and the others from 75%, lower as its mana runs
         // out (what it does not cast comes back as regeneration); out of combat it tops up only with mana to spare, else the
         // group eats. Health counts what is already coming (heals being cast, heals over time). Hybrids in another role only
@@ -1516,6 +1548,8 @@ namespace Companions
             else
                 threshold = tankThreshold = mana > 60.0f ? 80.0f : 50.0f;
         }
+        else if (covered)
+            threshold = tankThreshold = 15.0f;
 
         Unit* best = nullptr;
         float bestPct = 101.0f;
@@ -1944,6 +1978,84 @@ namespace Companions
             _bot->RemoveAurasByType(SPELL_AURA_MOUNTED);
     }
 
+    // Where the tank holds what it tanks: the spot it was told ("tank here"), else turned away from the group (when told so,
+    // and on any boss whose front hurts or dungeon boss): it walks round to the far side and the enemy, turning after it,
+    // shows the group its back. Never for the ones whose tail hurts too (the others stand at their flanks).
+    bool CompanionAI::TankPosition(Unit* target)
+    {
+        if (target->GetVictim() != _bot || target->HasUnitState(UNIT_STATE_ROOT) || target->HasUnitState(UNIT_STATE_CASTING))
+            return false;
+        TimePoint const now = GameTime::Now();
+        auto moveTo = [&](float x, float y, float z)
+        {
+            if (_movement == MoveMode::Point && now < _tankMoveAt)
+                return;
+            _bot->UpdateAllowedPositionZ(x, y, z);
+            _bot->GetMotionMaster()->MovePoint(0, x, y, z);
+            _movement = MoveMode::Point;
+            _tankMoveAt = now + Milliseconds(1000);
+        };
+
+        if (_tankSpot)
+        {
+            _tankOrderUsed = true;
+            if (_bot->GetExactDist2d(*_tankSpot) > 3.0f)
+            {
+                moveTo(_tankSpot->GetPositionX(), _tankSpot->GetPositionY(), _tankSpot->GetPositionZ());
+                return true;
+            }
+            // there: it waits for the enemy to come, facing it
+            if (!InMelee(target) && target->GetExactDist2d(*_tankSpot) < 20.0f)
+            {
+                if (_movement != MoveMode::Stay)
+                {
+                    StopMovement();
+                    _movement = MoveMode::Stay;
+                }
+                FaceTarget(target);
+                return true;
+            }
+            return false;
+        }
+
+        Creature const* creature = target->ToCreature();
+        if (!creature)
+            return false;
+        bool const front = Mechanics::HasRule(creature->GetEntry(), Mechanics::Kind::AvoidFront);
+        if (Mechanics::HasRule(creature->GetEntry(), Mechanics::Kind::AvoidSides)
+            || !(_faceAway || front || creature->IsDungeonBoss() || creature->isWorldBoss()))
+            return false;
+        if (_faceAway)
+            _tankOrderUsed = true;
+
+        // the group: the ones not in melee with it
+        float x = 0.0f, y = 0.0f;
+        uint32 count = 0;
+        for (Player* member : _view.Members)
+        {
+            float const dist = member->GetDistance(target);
+            if (member != _bot && member->IsAlive() && dist > 6.0f && dist < 40.0f)
+            {
+                x += member->GetPositionX();
+                y += member->GetPositionY();
+                ++count;
+            }
+        }
+        if (!count)
+            return false;
+        Position const center(x / count, y / count, target->GetPositionZ());
+        float const away = center.GetAbsoluteAngle(target);        // from the group through the enemy
+        float const mine = target->GetAbsoluteAngle(_bot);
+        float diff = std::fabs(Position::NormalizeOrientation(mine - away));
+        if (diff > float(M_PI))
+            diff = 2.0f * float(M_PI) - diff;
+        if (diff < 0.6f)
+            return false;   // on the far side already: the usual chase keeps it in melee
+        float const dist = std::max(1.5f, target->GetCombatReach());
+        moveTo(target->GetPositionX() + std::cos(away) * dist, target->GetPositionY() + std::sin(away) * dist, target->GetPositionZ());
+        return true;
+    }
+
     void CompanionAI::MoveForCombat(Unit* target)
     {
         Role role = GetEffectiveRole();
@@ -2020,6 +2132,9 @@ namespace Companions
             FaceTarget(target);
             return;
         }
+
+        if (role == Role::Tank && TankPosition(target))
+            return;
 
         if (melee)
         {
@@ -2725,6 +2840,12 @@ namespace Companions
     {
         Item* ranged = _bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_RANGED);
         return ranged && ranged->GetTemplate()->GetClass() == ITEM_CLASS_WEAPON && ranged->GetTemplate()->GetSubClass() == ITEM_SUBCLASS_WEAPON_WAND;
+    }
+
+    void CompanionAI::SayLater(std::string text, uint32 delayMs, ObjectGuid whisperTo)
+    {
+        if (_later.size() < 12)
+            _later.push_back({ GameTime::Now() + Milliseconds(delayMs), std::move(text), whisperTo });
     }
 
     void CompanionAI::Say(std::string const& text)

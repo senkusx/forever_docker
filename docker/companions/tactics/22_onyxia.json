@@ -1,0 +1,15 @@
+{
+  "instance": "Onyxia's Lair",
+  "map": 249,
+  "aliases": ["ony", "onyxia", "onyxias lair"],
+  "bosses": [
+    {
+      "name": "Onyxia",
+      "aliases": ["onyxia", "ony"],
+      "general": "Phase 1 on the ground: breath in front, tail sweep behind. Phase 2 (65%) she flies: whelps pour out and Deep Breath crosses the room. Phase 3 (40%): Bellowing Roar fears, lava cracks.",
+      "tank": "Turn her so the raid stands at her flanks; in phase 3 Fear Ward and Tremor, take her back fast.",
+      "healer": "Stand at her side, never in the breath line; Fear Ward the tank in phase 3.",
+      "dps": "Flanks only. Phase 2: ranged on her, melee on whelps, run from Deep Breath. Phase 3: watch threat."
+    }
+  ]
+}

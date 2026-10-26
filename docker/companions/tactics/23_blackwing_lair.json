@@ -1,0 +1,79 @@
+{
+  "instance": "Blackwing Lair",
+  "map": 469,
+  "aliases": ["bwl", "blackwing lair", "blackwing"],
+  "bosses": [
+    {
+      "name": "Razorgore the Untamed",
+      "aliases": ["razorgore"],
+      "general": "Phase 1: one player controls Razorgore with the orb and breaks all 30 eggs while the raid holds the orcs and dragonkin. Phase 2: kill Razorgore (Conflagration, Fireball Volley).",
+      "tank": "Hold the adds in the corners in phase 1; take Razorgore in phase 2.",
+      "healer": "Protect the orb controller; heal the volleys in phase 2.",
+      "dps": "Kill adds before they reach the orb; then Razorgore."
+    },
+    {
+      "name": "Vaelastrasz the Corrupt",
+      "aliases": ["vaelastrasz", "vael"],
+      "general": "Burning Adrenaline on a mana user (and the tank in turn): they run away from the raid before it kills them. Essence of the Red gives everyone mana, energy and rage. Flame Breath in front.",
+      "tank": "Tanks rotate: the next one taunts when the current tank gets Adrenaline. Face him away.",
+      "healer": "Heal freely, your mana refills; heal the tanks hard.",
+      "dps": "Burn hard but watch threat; run out with Adrenaline. Never in front."
+    },
+    {
+      "name": "Broodlord Lashlayer",
+      "aliases": ["broodlord", "lashlayer"],
+      "general": "After the suppression room: Mortal Strike, Blast Wave, Knock Away.",
+      "tank": "Back to a wall; two tanks so a knock away doesn't lose him.",
+      "healer": "Heal ahead of the mortal strikes.",
+      "dps": "From behind; watch threat after a knock away."
+    },
+    {
+      "name": "Firemaw",
+      "aliases": ["firemaw"],
+      "general": "Flame Buffet stacks on everyone in line of sight; hide behind the pillar to drop stacks. Wing Buffet, Shadow Flame.",
+      "tank": "Tanks swap when stacks get high; Onyxia Scale Cloak for Shadow Flame.",
+      "healer": "Duck out of sight to drop stacks between heals.",
+      "dps": "Ranged step behind the pillar now and then to drop stacks."
+    },
+    {
+      "name": "Ebonroc",
+      "aliases": ["ebonroc"],
+      "general": "Shadow of Ebonroc on the tank heals him when he hits: another tank taunts at once. Wing Buffet, Shadow Flame.",
+      "tank": "Second tank taunts as soon as the first gets Shadow of Ebonroc.",
+      "healer": "Heal both tanks.",
+      "dps": "From behind; watch threat during tank swaps."
+    },
+    {
+      "name": "Flamegor",
+      "aliases": ["flamegor"],
+      "general": "Frenzy: hunters Tranquilizing Shot it at once. Fire Nova grows each frenzy, Wing Buffet, Shadow Flame.",
+      "tank": "Two tanks for the wing buffets.",
+      "healer": "Raid-wide fire damage grows if frenzies aren't removed.",
+      "dps": "Hunters: Tranq Shot on every frenzy."
+    },
+    {
+      "name": "Chromaggus",
+      "aliases": ["chromaggus", "chromag"],
+      "general": "Two breaths from five (Time Lapse, Corrosive Acid, Incinerate, Frost Burn, Ignite Flesh): hide behind the door corner when he breathes. Brood Afflictions of five colours; Frenzy.",
+      "tank": "Tank him where the raid can hide from the breaths.",
+      "healer": "Hourglass Sand cures bronze; cure what you can, all five colours turn a player.",
+      "dps": "Hunters Tranq the frenzy; everyone out of line of sight on breaths."
+    },
+    {
+      "name": "Lord Victor Nefarius",
+      "aliases": ["nefarius", "victor nefarius"],
+      "general": "Phase 1: drakonids by colour flood both sides; kill 42 of them. Nefarius blinks, Shadow Bolts and fears.",
+      "tank": "Tanks on each side gather the drakonids.",
+      "healer": "Fear Ward the tanks.",
+      "dps": "Area attacks on the drakonids."
+    },
+    {
+      "name": "Nefarian",
+      "aliases": ["nefarian", "nef"],
+      "general": "Lands after 42 drakonids: Shadow Flame in front, Bellowing Roar fears, Veil of Shadow; class calls punish each class. At 20% the dead drakonids rise as bone constructs.",
+      "tank": "Face him away from the raid, Fear Ward and Onyxia Scale Cloak.",
+      "healer": "Decurse Veil of Shadow on the tank; react to the class calls.",
+      "dps": "Never in front; at 20% kill or area the bone constructs."
+    }
+  ]
+}

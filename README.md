@@ -41,7 +41,7 @@ and the game client (to extract its data).
 
 ```sh
 git clone <this repository> forever && cd forever
-cp .env.example .env               # passwords, PUBLIC_ADDRESS (public IP or DNS name), WOW_DIR, REALM_TYPE (normal|pvp|rp|rppvp)
+cp .env.example .env               # passwords, PUBLIC_ADDRESS (public IP or DNS name), WOW_DIR
 ./scripts/gen-certs.sh             # your own CA + server certificate (never share certs/ca/forever_root_ca.key)
 docker compose build               # compiles TrinityCore, takes a while
 docker compose run --rm extractor  # extracts the game data from your client into ./data
@@ -136,6 +136,9 @@ signed by Apple, so players run `xattr -cr "/Applications/Forever Launcher.app"`
 
 - **Fixes on top of the forever branch**: `docker/patches/` (friend list, names with surnames, the companion bot
   hooks), each described in [its README](docker/patches/README.md). The current branch already includes 360 action-button support.
+- **PvP realm**: the server is a PvP realm and the only realm in the list (the forever branch's placeholder realms for
+  the other rulesets are removed). Players, companions and the town bots are flagged in contested and enemy territory,
+  and an account keeps to one faction.
 - **Config overrides**: `Key = Value` lines in `overrides/worldserver.conf` or `overrides/bnetserver.conf`.
 - **Update**: `docker compose build --no-cache && docker compose up -d`; new SQL updates are applied on start.
   If the branch merges one of the patches, the build stops at that patch: delete it.

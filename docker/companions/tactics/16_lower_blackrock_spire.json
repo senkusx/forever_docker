@@ -1,0 +1,89 @@
+{
+  "instance": "Blackrock Spire",
+  "map": 229,
+  "sort_base": 0,
+  "aliases": ["lbrs", "ubrs", "blackrock spire", "lower blackrock spire", "upper blackrock spire", "spire"],
+  "bosses": [
+    {
+      "name": "Highlord Omokk",
+      "wing": "Lower",
+      "aliases": ["omokk"],
+      "general": "Big ogre with ogre guards: Cleave and Knock Away.",
+      "tank": "Face him away and grab his guards.",
+      "healer": "Several mobs on the tank.",
+      "dps": "Guards first, then Omokk."
+    },
+    {
+      "name": "Shadow Hunter Vosh'gajin",
+      "wing": "Lower",
+      "aliases": ["voshgajin", "vosh"],
+      "general": "Troll witch doctor: Hex, Curse of Blood and Cleave.",
+      "tank": "Face her away.",
+      "healer": "Dispel the hex and the curse.",
+      "dps": "Burn her."
+    },
+    {
+      "name": "War Master Voone",
+      "wing": "Lower",
+      "aliases": ["voone"],
+      "general": "Throws axes, Mortal Strike, Cleave, Snap Kick.",
+      "tank": "Face him away; Mortal Strike cuts your healing.",
+      "healer": "Heal ahead of the mortal strikes.",
+      "dps": "From behind."
+    },
+    {
+      "name": "Mother Smolderweb",
+      "wing": "Lower",
+      "aliases": ["smolderweb", "mother"],
+      "general": "Spider queen: Crystallize stuns, poison bites.",
+      "tank": "Plain tank.",
+      "healer": "Cure the poison.",
+      "dps": "Burn her."
+    },
+    {
+      "name": "Urok Doomhowl",
+      "wing": "Lower",
+      "aliases": ["urok"],
+      "general": "Called with Omokk's head on the pike: ogre waves first, then Urok.",
+      "tank": "Hold the ogres as they come, then Urok.",
+      "healer": "Long fight: pace your mana.",
+      "dps": "Kill the waves, then Urok."
+    },
+    {
+      "name": "Quartermaster Zigris",
+      "wing": "Lower",
+      "aliases": ["zigris"],
+      "general": "Shoots, nets and drinks healing potions.",
+      "tank": "Keep him in melee.",
+      "healer": "Light damage.",
+      "dps": "Burn him through his potions."
+    },
+    {
+      "name": "Halycon",
+      "wing": "Lower",
+      "aliases": ["halycon"],
+      "general": "Big worg: Rend and Thrash. When she dies, Gizrul comes running.",
+      "tank": "Stay ready to pick up Gizrul.",
+      "healer": "Keep mana for Gizrul.",
+      "dps": "Burn her, then Gizrul."
+    },
+    {
+      "name": "Gizrul the Slavener",
+      "wing": "Lower",
+      "aliases": ["gizrul"],
+      "general": "Comes after Halycon: Fatal Bite and Frenzy.",
+      "tank": "Use a cooldown in his frenzy.",
+      "healer": "Heavy damage on the tank in the frenzy.",
+      "dps": "Hunters Tranquilizing Shot the frenzy."
+    },
+    {
+      "name": "Overlord Wyrmthalak",
+      "wing": "Lower",
+      "aliases": ["wyrmthalak"],
+      "general": "Cleave, Demoralizing Shout; at half health he calls two Bloodaxe Veterans.",
+      "tank": "Face him away; grab the veterans.",
+      "healer": "Three on the tank at the end.",
+      "dps": "Veterans or crowd control them, then Wyrmthalak."
+    }
+  ]
+}

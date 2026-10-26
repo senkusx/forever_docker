@@ -1,0 +1,111 @@
+{
+  "instance": "Scholomance",
+  "map": 289,
+  "aliases": ["scholo", "scholomance"],
+  "bosses": [
+    {
+      "name": "Kirtonos the Herald",
+      "aliases": ["kirtonos"],
+      "general": "Called with the Blood of Innocents at the balcony brazier. Bat form: swoops, Disarm, Wing Flap. Humanoid form: Curse of Tongues, Shadow Bolt Volley, Dominate Mind.",
+      "tank": "Hold him and pick him back up after each form change.",
+      "healer": "Decurse, dispel the mind control, heal the volley.",
+      "dps": "Burn him; casters decurse between casts."
+    },
+    {
+      "name": "Jandice Barov",
+      "aliases": ["jandice"],
+      "general": "Splits into many illusions: the real Jandice is the one that takes damage. Curse of Blood.",
+      "tank": "Grab the illusions with area threat.",
+      "healer": "Decurse.",
+      "dps": "Find the real one and burn her; area attacks clear the illusions."
+    },
+    {
+      "name": "Rattlegore",
+      "aliases": ["rattlegore"],
+      "general": "Huge bone golem: War Stomp and Knock Away.",
+      "tank": "Back to a wall.",
+      "healer": "Heal after the stomps.",
+      "dps": "Burn him."
+    },
+    {
+      "name": "Marduk Blackpool",
+      "aliases": ["marduk"],
+      "general": "Viewing room event with Vectus: Shadow Bolt Volley and Cleave; students come in waves first.",
+      "tank": "Hold the students, then Marduk.",
+      "healer": "Heal the volley.",
+      "dps": "Students, then the two bosses."
+    },
+    {
+      "name": "Vectus",
+      "aliases": ["vectus"],
+      "general": "Viewing room event: Fire Nova and Flamestrike.",
+      "tank": "Hold him away from the group.",
+      "healer": "Step out of Flamestrike.",
+      "dps": "Melee watch the nova."
+    },
+    {
+      "name": "Ras Frostwhisper",
+      "aliases": ["ras", "frostwhisper"],
+      "general": "Lich: Frostbolt, Frost Nova, Chill Nova, Knock Away. Fire works well on him.",
+      "tank": "Back to a wall.",
+      "healer": "Dispel the frostbolt slows.",
+      "dps": "Fire damage; interrupt Frostbolt."
+    },
+    {
+      "name": "Instructor Malicia",
+      "aliases": ["malicia"],
+      "general": "Heal, Renew and Corruption; she calls the dead.",
+      "tank": "Grab what she calls.",
+      "healer": "Dispel the corruption.",
+      "dps": "Interrupt her heals."
+    },
+    {
+      "name": "Doctor Theolen Krastinov",
+      "aliases": ["krastinov", "theolen", "the butcher"],
+      "general": "The Butcher: hits hard with Rend and Frenzy.",
+      "tank": "Cooldowns in his frenzy.",
+      "healer": "Heavy tank damage.",
+      "dps": "Hunters Tranquilizing Shot the frenzy; burn him."
+    },
+    {
+      "name": "Lorekeeper Polkelt",
+      "aliases": ["polkelt"],
+      "general": "Corrosive Acid and Noxious Catalyst, a disease that bursts on the people around.",
+      "tank": "Plain tank.",
+      "healer": "Cure disease right away.",
+      "dps": "Spread out."
+    },
+    {
+      "name": "The Ravenian",
+      "aliases": ["ravenian"],
+      "general": "Trample, Cleave and Sunder Armor.",
+      "tank": "Face it away from the group.",
+      "healer": "Steady heals.",
+      "dps": "Melee from behind."
+    },
+    {
+      "name": "Lord Alexei Barov",
+      "aliases": ["alexei"],
+      "general": "Unholy Aura burns everyone around him; Corruption.",
+      "tank": "Plain tank.",
+      "healer": "Shadow damage on everyone near.",
+      "dps": "Burn him."
+    },
+    {
+      "name": "Lady Illucia Barov",
+      "aliases": ["illucia"],
+      "general": "Shadow Shock, a fear and Curse of Agony.",
+      "tank": "Fear Ward or Tremor.",
+      "healer": "Decurse.",
+      "dps": "Burn her."
+    },
+    {
+      "name": "Darkmaster Gandling",
+      "aliases": ["gandling", "darkmaster"],
+      "general": "Shadow Portal sends a player into one of the side rooms full of undead, the door locks until they die. Arcane Missiles and a curse.",
+      "tank": "Hold him; if you're ported, tank the room's undead and come back.",
+      "healer": "Decurse; whoever is ported needs heals, go to the door.",
+      "dps": "Burn him; help a ported friend clear the room."
+    }
+  ]
+}

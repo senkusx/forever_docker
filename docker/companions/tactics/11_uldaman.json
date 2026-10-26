@@ -1,0 +1,71 @@
+{
+  "instance": "Uldaman",
+  "map": 70,
+  "aliases": ["ulda", "uldaman"],
+  "bosses": [
+    {
+      "name": "Revelosh",
+      "aliases": ["revelosh"],
+      "general": "Trogg shaman: Lightning Bolt and Chain Lightning.",
+      "tank": "Pull him round a corner into melee.",
+      "healer": "Heal the chain lightning.",
+      "dps": "Ranged spread; interrupt his bolts."
+    },
+    {
+      "name": "Baelog",
+      "aliases": ["baelog", "lost dwarves", "eric", "olaf"],
+      "general": "The Lost Dwarves: Baelog shoots, Eric \"The Swift\" runs fast and hits hard, Olaf blocks with his shield.",
+      "tank": "Grab all three; Eric moves fast, keep him on you.",
+      "healer": "Three on the tank at first: steady heals.",
+      "dps": "Eric first, then Baelog, Olaf last."
+    },
+    {
+      "name": "Ironaya",
+      "aliases": ["ironaya"],
+      "general": "Stone keeper: Arcing Smash cleaves, Knock Away throws the tank, War Stomp at half health.",
+      "tank": "Face her away from everyone, back to a wall.",
+      "healer": "Stay at range, heal through the knockbacks.",
+      "dps": "Melee from behind; step out before the stomp."
+    },
+    {
+      "name": "Obsidian Sentinel",
+      "aliases": ["obsidian sentinel", "sentinel"],
+      "general": "Breaks off Obsidian Shards as it takes damage.",
+      "tank": "Gather the shards on you.",
+      "healer": "Several mobs on the tank as shards pile up.",
+      "dps": "Area attacks on the shards, then the sentinel."
+    },
+    {
+      "name": "Ancient Stone Keeper",
+      "aliases": ["stone keeper"],
+      "general": "Sand storms wander the room and Trample hits the melee.",
+      "tank": "Move it away from the sand storms.",
+      "healer": "Dodge the storms, heal the trample.",
+      "dps": "Stay out of the storms."
+    },
+    {
+      "name": "Galgann Firehammer",
+      "aliases": ["galgann"],
+      "general": "Dark Iron caster: Fire Nova, Flame Lash and Amplify Flames.",
+      "tank": "Hold him in melee.",
+      "healer": "Heal the fire on the melee.",
+      "dps": "Melee step out on Fire Nova; interrupt his casts."
+    },
+    {
+      "name": "Grimlok",
+      "aliases": ["grimlok"],
+      "general": "Trogg chief: Lightning Bolt, Shrink and Bloodlust.",
+      "tank": "Keep him in melee.",
+      "healer": "Heal the bolts.",
+      "dps": "Interrupt his bolts."
+    },
+    {
+      "name": "Archaedas",
+      "aliases": ["archaedas"],
+      "general": "Wakes when the disc is used: Ground Tremor stuns, he awakens Earthen Guardians and later the Vault Warders.",
+      "tank": "Grab the guardians as they wake and hold Archaedas.",
+      "healer": "Heal through the tremors; several adds on the tank.",
+      "dps": "Kill the guardians quickly, then focus Archaedas."
+    }
+  ]
+}

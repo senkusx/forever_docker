@@ -1,0 +1,215 @@
+{
+  "instance": "Blackrock Depths",
+  "map": 230,
+  "aliases": ["brd", "blackrock depths", "depths"],
+  "bosses": [
+    {
+      "name": "Lord Roccor",
+      "aliases": ["roccor"],
+      "general": "Fire and earth shocks and Ground Tremor stuns. Easy.",
+      "tank": "Plain tank and spank.",
+      "healer": "Heal after the stuns.",
+      "dps": "Burn him."
+    },
+    {
+      "name": "High Interrogator Gerstahn",
+      "aliases": ["gerstahn", "interrogator"],
+      "general": "Shadow priest: Shadow Word: Pain, Psychic Scream fears, Mana Burn.",
+      "tank": "Fear Ward or Tremor Totem on you.",
+      "healer": "Dispel Shadow Word: Pain; stay out of her scream range.",
+      "dps": "Interrupt and burn her."
+    },
+    {
+      "name": "Houndmaster Grebmar",
+      "aliases": ["grebmar"],
+      "general": "Bloodlust and Demoralizing Shout, with his hounds around.",
+      "tank": "Grab the hounds with him.",
+      "healer": "Steady heals.",
+      "dps": "Hounds if loose, then Grebmar."
+    },
+    {
+      "name": "Gorosh the Dervish",
+      "aliases": ["gorosh"],
+      "general": "Ring of Law: Whirlwind cuts the melee.",
+      "tank": "Hold him; the Ring's adds come with him.",
+      "healer": "Heal the whirlwind.",
+      "dps": "Melee step out of Whirlwind."
+    },
+    {
+      "name": "Grizzle",
+      "aliases": ["grizzle"],
+      "general": "Ring of Law: Thunderclap and Ground Tremor stun.",
+      "tank": "Hold him.",
+      "healer": "Heal after the stuns.",
+      "dps": "Burn him."
+    },
+    {
+      "name": "Eviscerator",
+      "aliases": ["eviscerator"],
+      "general": "Ring of Law: Shadow Bolt Volley, and a shield that stops spells.",
+      "tank": "Hold him.",
+      "healer": "Heal the volleys.",
+      "dps": "Melee do the work while his spell shield is up."
+    },
+    {
+      "name": "Hedrum the Creeper",
+      "aliases": ["hedrum"],
+      "general": "Ring of Law spider: Paralyzing Poison and webs.",
+      "tank": "Hold him.",
+      "healer": "Cure the poison.",
+      "dps": "Burn him."
+    },
+    {
+      "name": "Ok'thor the Breaker",
+      "aliases": ["okthor"],
+      "general": "Ring of Law caster: Arcane Bolt, Arcane Explosion, Polymorph.",
+      "tank": "Hold him in melee.",
+      "healer": "Dispel the polymorph.",
+      "dps": "Interrupt his bolts; melee watch the explosion."
+    },
+    {
+      "name": "Anub'shiah",
+      "aliases": ["anubshiah"],
+      "general": "Ring of Law: Shadow Bolt, curses and Enveloping Web.",
+      "tank": "Hold him.",
+      "healer": "Decurse.",
+      "dps": "Interrupt his bolts."
+    },
+    {
+      "name": "Pyromancer Loregrain",
+      "aliases": ["loregrain"],
+      "general": "Molten Blast and a Searing Totem.",
+      "tank": "Keep him in melee.",
+      "healer": "Heal the fire damage.",
+      "dps": "Kill the totem, interrupt his blasts."
+    },
+    {
+      "name": "Lord Incendius",
+      "aliases": ["incendius"],
+      "general": "At the Black Anvil: Fire Storm, Fiery Burst, Mighty Blow knocks back, and a curse on everyone.",
+      "tank": "Back to a wall for the knockbacks.",
+      "healer": "Decurse; fire resistance helps.",
+      "dps": "Burn him."
+    },
+    {
+      "name": "Warder Stilgiss",
+      "aliases": ["stilgiss", "verek"],
+      "general": "Frost caster with Verek his hound: Frost Nova, Frost Ward. Verek enrages when Stilgiss dies.",
+      "tank": "Hold both.",
+      "healer": "Dispel the nova on the tank.",
+      "dps": "Stilgiss first, then Verek."
+    },
+    {
+      "name": "Fineous Darkvire",
+      "aliases": ["fineous"],
+      "general": "Dark Iron paladin: Holy Strike and Holy Light.",
+      "tank": "Plain tank and spank.",
+      "healer": "Steady heals.",
+      "dps": "Interrupt Holy Light."
+    },
+    {
+      "name": "Bael'Gar",
+      "aliases": ["baelgar"],
+      "general": "Giant fire elemental: calls lava spawns that split if left alone.",
+      "tank": "Hold him and grab the spawns.",
+      "healer": "Fire resistance helps.",
+      "dps": "Kill the spawns quickly, then him."
+    },
+    {
+      "name": "General Angerforge",
+      "aliases": ["angerforge"],
+      "general": "Cleave, Flurry and Sunder; at low health he calls Anvilrage reservists and medics.",
+      "tank": "Face him away; grab the reinforcements.",
+      "healer": "Several on the tank at the end.",
+      "dps": "Medics first, then the reservists or Angerforge."
+    },
+    {
+      "name": "Golem Lord Argelmach",
+      "aliases": ["argelmach", "golem lord"],
+      "general": "Chain Lightning and Shock; he wakes the golems around his room.",
+      "tank": "Clear or grab the golems; hold Argelmach.",
+      "healer": "Heal the chain lightning.",
+      "dps": "Ranged spread; interrupt his chain lightning."
+    },
+    {
+      "name": "Hurley Blackbreath",
+      "aliases": ["hurley"],
+      "general": "Comes for his stolen ale in the Grim Guzzler: Drunken Rage and fire breath.",
+      "tank": "Face him away.",
+      "healer": "Steady heals.",
+      "dps": "Burn him."
+    },
+    {
+      "name": "Phalanx",
+      "aliases": ["phalanx"],
+      "general": "Golem guard of the Grim Guzzler: Fireball Volley, Mighty Blow knocks back, Thunderclap.",
+      "tank": "Back to a wall.",
+      "healer": "Heal the volley.",
+      "dps": "Burn him."
+    },
+    {
+      "name": "Ribbly Screwspigot",
+      "aliases": ["ribbly"],
+      "general": "Goblin with his friends in the Grim Guzzler. Easy.",
+      "tank": "Hold them all.",
+      "healer": "Light damage.",
+      "dps": "Burn them."
+    },
+    {
+      "name": "Plugger Spazzring",
+      "aliases": ["plugger"],
+      "general": "The barkeep: attacks if you steal the ale. Easy.",
+      "tank": "Plain tank and spank.",
+      "healer": "Light damage.",
+      "dps": "Burn him."
+    },
+    {
+      "name": "Ambassador Flamelash",
+      "aliases": ["flamelash"],
+      "general": "Burning Spirits walk from the runes around the room into him and make him stronger.",
+      "tank": "Hold him in the middle.",
+      "healer": "Heal more if spirits reach him.",
+      "dps": "Kill the spirits before they reach him, then back on him."
+    },
+    {
+      "name": "Doom'rel",
+      "aliases": ["doomrel", "the seven", "seven dwarves", "the seven dwarves"],
+      "general": "The Seven: talk to Doom'rel and the seven dwarves come one at a time, Doom'rel last.",
+      "tank": "Hold each one as it comes; keep them apart.",
+      "healer": "A long fight: pace your mana.",
+      "dps": "Kill each as it comes; interrupt Vile'rel's heals and Haterel's shadow."
+    },
+    {
+      "name": "Anger'rel",
+      "aliases": ["angerrel"],
+      "general": "One of the Seven: a warrior with Sunder and Shield Block.",
+      "tank": "Plain tank.",
+      "healer": "Steady heals.",
+      "dps": "Burn him."
+    },
+    {
+      "name": "Magmus",
+      "aliases": ["magmus"],
+      "general": "Giant golem at the throne room doors: Fiery Burst and War Stomp; the fire jets along the hall stop once he's dead.",
+      "tank": "Hold him away from the jets.",
+      "healer": "Heal through the burst.",
+      "dps": "Burn him."
+    },
+    {
+      "name": "Emperor Dagran Thaurissan",
+      "aliases": ["emperor", "thaurissan", "dagran", "moira"],
+      "general": "Princess Moira heals him: interrupt or crowd control her (don't kill her if someone needs her alive for a quest). Hand of Thaurissan stuns, Avatar of Flame burns all around him.",
+      "tank": "Hold the emperor facing away; heal-interrupts are on the others.",
+      "healer": "Heal through Avatar of Flame.",
+      "dps": "Interrupt Moira's heals and burn the emperor."
+    },
+    {
+      "name": "Panzor the Invincible",
+      "aliases": ["panzor"],
+      "general": "Rare golem: hits hard.",
+      "tank": "Plain tank.",
+      "healer": "Big hits.",
+      "dps": "Burn it."
+    }
+  ]
+}

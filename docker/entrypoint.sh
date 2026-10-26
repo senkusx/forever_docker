@@ -103,8 +103,8 @@ configure_worldserver() {
     setkey "$f" Network.SkipBuildAuthKeyCheck 1
     setkey "$f" Network.EnterEncryptedModeRegionGroup 8
     setkey "$f" Realm.CfgContentSetID 136
-    setkey "$f" GameType "$(realm_game_type)"
-    setkey "$f" Realm.SuperDistrictID 2
+    setkey "$f" GameType 1
+    setkey "$f" Realm.SuperDistrictID 1
     setkey "$f" Updates.EnableDatabases 15
     setkey "$f" Updates.AutoSetup 1
     setkey "$f" DBC.Locale "$(dbc_locale)"
@@ -148,7 +148,7 @@ configure_bnetserver() {
     setkey "$f" PrivateKeyFile "\"$CERTS/forever.key.pem\""
     setkey "$f" LogsDir "\"$ROOT/logs\""
     setkey "$f" Realm.CfgContentSetID 136
-    setkey "$f" Realm.SuperDistrictID 2
+    setkey "$f" Realm.SuperDistrictID 1
     apply_overrides "$f" bnetserver
 }
 
@@ -196,16 +196,9 @@ SQL
 }
 
 # The realm row is created by the auth updates that worldserver applies on its first start.
-# REALM_TYPE (.env): normal, pvp, rp or rppvp. The worldserver's GameType and the realm list icon (players are flagged
-# for PvP in contested and enemy zones on a pvp realm, companions and ambient bots included)
-realm_game_type() {
-    case "${REALM_TYPE:-normal}" in
-        pvp) echo 1 ;;
-        rp) echo 6 ;;
-        rppvp) echo 8 ;;
-        *) echo 0 ;;
-    esac
-}
+# The server is a PvP realm: GameType 1, the realm list's PvP ruleset (content set 136, super district 1). Players and
+# bots are flagged in contested and enemy territory (core patch 0005). The forever branch also creates placeholder realms
+# for the other rulesets (71 PvP, 72 RP, 73 Hardcore, at 127.0.0.1); they are removed so only this realm is offered.
 
 update_realmlist() {
     echo "[entrypoint] waiting for realm ${REALM_ID} in auth.realmlist (worldserver creates it on first start)..."
@@ -214,7 +207,10 @@ update_realmlist() {
     done
     mysql_q "UPDATE auth.realmlist SET name='${REALM_NAME//\'/\'\'}', address='${PUBLIC_ADDRESS}', \
         localAddress='${REALM_LOCAL_ADDRESS}', localSubnetMask='${REALM_LOCAL_SUBNET_MASK}', \
-        port=${REALM_PORT}, contentSetId=136, icon=$(realm_game_type) WHERE id=${REALM_ID}"
+        port=${REALM_PORT}, contentSetId=136, icon=1 WHERE id=${REALM_ID}"
+    mysql_q "DELETE FROM auth.realmcharacters WHERE realmid IN (71,72,73) AND realmid <> ${REALM_ID} \
+        AND realmid IN (SELECT id FROM auth.realmlist WHERE address='127.0.0.1')"
+    mysql_q "DELETE FROM auth.realmlist WHERE id IN (71,72,73) AND id <> ${REALM_ID} AND address='127.0.0.1'"
     echo "[entrypoint] realm ${REALM_ID}: address=${PUBLIC_ADDRESS} port=${REALM_PORT} localAddress=${REALM_LOCAL_ADDRESS}"
 }
 

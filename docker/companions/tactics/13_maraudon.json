@@ -1,0 +1,71 @@
+{
+  "instance": "Maraudon",
+  "map": 349,
+  "aliases": ["mara", "maraudon"],
+  "bosses": [
+    {
+      "name": "Noxxion",
+      "aliases": ["noxxion"],
+      "general": "Toxic Volley poisons everyone and Uppercut; now and then he splits into small Spawns and can't be hurt until they die.",
+      "tank": "Gather the Spawns when he splits.",
+      "healer": "Cure poison, heal the volley.",
+      "dps": "Area attacks on the Spawns, then him."
+    },
+    {
+      "name": "Razorlash",
+      "aliases": ["razorlash"],
+      "general": "Plant beast: Cleave and Puncture.",
+      "tank": "Face him away.",
+      "healer": "Steady heals.",
+      "dps": "From behind."
+    },
+    {
+      "name": "Lord Vyletongue",
+      "aliases": ["vyletongue"],
+      "general": "Satyr lord with his guards: blinks around and fires Multi-Shot.",
+      "tank": "Grab his guards; chase him when he blinks.",
+      "healer": "Heal the multi-shot.",
+      "dps": "Guards first, then him."
+    },
+    {
+      "name": "Celebras the Cursed",
+      "aliases": ["celebras"],
+      "general": "Wrath, Entangling Roots, and he summons treants.",
+      "tank": "Pick up the treants.",
+      "healer": "Dispel the roots.",
+      "dps": "Kill the treants, interrupt his Wrath."
+    },
+    {
+      "name": "Landslide",
+      "aliases": ["landslide"],
+      "general": "Giant rock elemental: Knock Away and Trample, calls small rock adds.",
+      "tank": "Back to a wall, grab the adds.",
+      "healer": "Stay at range.",
+      "dps": "Adds first if loose, else Landslide."
+    },
+    {
+      "name": "Tinkerer Gizlock",
+      "aliases": ["gizlock"],
+      "general": "Goblin engineer: a dragon gun burns everyone in front, and bombs.",
+      "tank": "Face him away from the group.",
+      "healer": "Stay behind him.",
+      "dps": "Spread out, stay out of his front."
+    },
+    {
+      "name": "Rotgrip",
+      "aliases": ["rotgrip"],
+      "general": "Huge crocolisk in the water: Puncture and Fatal Bite.",
+      "tank": "Plain tank, he hits hard.",
+      "healer": "Big hits on the tank.",
+      "dps": "Burn him."
+    },
+    {
+      "name": "Princess Theradras",
+      "aliases": ["theradras", "princess"],
+      "general": "Dust Field hurts everyone near her, she throws Boulders at range and Repulsive Gaze knocks back.",
+      "tank": "Hold her, step back out of the Dust Field and pull her with you.",
+      "healer": "Stay spread at range.",
+      "dps": "Melee step out of the Dust Field; ranged spread for Boulder."
+    }
+  ]
+}

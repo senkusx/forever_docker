@@ -1,0 +1,106 @@
+{
+  "instance": "Scarlet Monastery",
+  "map": 189,
+  "aliases": ["sm", "scarlet monastery", "monastery", "sm gy", "sm lib", "sm arm", "sm cath", "graveyard", "library", "armory", "cathedral"],
+  "bosses": [
+    {
+      "name": "Interrogator Vishas",
+      "wing": "Graveyard",
+      "aliases": ["vishas"],
+      "general": "Shadow Word: Pain on the tank. Easy.",
+      "tank": "Plain tank and spank.",
+      "healer": "Dispel the Shadow Word: Pain.",
+      "dps": "Burn him."
+    },
+    {
+      "name": "Bloodmage Thalnos",
+      "wing": "Graveyard",
+      "aliases": ["thalnos", "bloodmage"],
+      "general": "Flame Spike leaves fire on the ground, Fire Nova around him, Shadow Bolt.",
+      "tank": "Move him out of his Flame Spikes.",
+      "healer": "Step out of the fire, heal the nova.",
+      "dps": "Step out of the Flame Spike, interrupt his bolts."
+    },
+    {
+      "name": "Azshir the Sleepless",
+      "wing": "Graveyard",
+      "aliases": ["azshir"],
+      "general": "Rare: a fear and a soul drain.",
+      "tank": "Fear Ward or Berserker Rage.",
+      "healer": "Heal through the fear.",
+      "dps": "Burn it."
+    },
+    {
+      "name": "Fallen Champion",
+      "wing": "Graveyard",
+      "aliases": ["fallen champion"],
+      "general": "Rare undead warrior. Easy.",
+      "tank": "Plain tank and spank.",
+      "healer": "Light damage.",
+      "dps": "Burn it."
+    },
+    {
+      "name": "Ironspine",
+      "wing": "Graveyard",
+      "aliases": ["ironspine"],
+      "general": "Rare: poisons the tank.",
+      "tank": "Plain tank and spank.",
+      "healer": "Cure the poison.",
+      "dps": "Burn it."
+    },
+    {
+      "name": "Houndmaster Loksey",
+      "wing": "Library",
+      "aliases": ["loksey", "houndmaster"],
+      "general": "Comes with three Scarlet Trackers (dogs) and Bloodlust.",
+      "tank": "Grab the three dogs with him.",
+      "healer": "Several mobs on the tank.",
+      "dps": "Dogs first, then Loksey."
+    },
+    {
+      "name": "Arcanist Doan",
+      "wing": "Library",
+      "aliases": ["doan", "arcanist"],
+      "general": "At half health he shields himself and then casts a big Arcane Explosion around him. Polymorph and Silence.",
+      "tank": "When the bubble goes up, run away from him with everyone, then pull him back.",
+      "healer": "Run away with the group when he bubbles; dispel polymorph.",
+      "dps": "Melee leave when he casts the explosion; interrupt his casts."
+    },
+    {
+      "name": "Herod",
+      "wing": "Armory",
+      "aliases": ["herod"],
+      "general": "Whirlwind cuts everyone in melee, he enrages at low health. When he dies a wave of Scarlet Trainees runs in.",
+      "tank": "Stay on him through the Whirlwind; afterwards gather the trainees for area attacks.",
+      "healer": "Heal the tank hard during Whirlwind; be ready for the trainee wave.",
+      "dps": "Melee step away during Whirlwind; then area attacks on the trainees."
+    },
+    {
+      "name": "Scarlet Commander Mograine",
+      "wing": "Cathedral",
+      "aliases": ["mograine", "commander mograine"],
+      "general": "Paladin: Crusader Strike, Hammer of Justice, Lay on Hands. When he dies Whitemane comes, puts us to sleep and raises him.",
+      "tank": "Hold Mograine; when he is raised pick him up again.",
+      "healer": "Expect the Deep Sleep; heal the tank as soon as you wake.",
+      "dps": "Kill Mograine, then again after Whitemane raises him, then Whitemane."
+    },
+    {
+      "name": "High Inquisitor Whitemane",
+      "wing": "Cathedral",
+      "aliases": ["whitemane"],
+      "general": "Deep Sleep on the whole group, then she resurrects Mograine. Heals and Power Word: Shield.",
+      "tank": "Hold both after the sleep.",
+      "healer": "Dispel her shield if you can.",
+      "dps": "Interrupt her heals and the resurrection; kill Mograine again, then her."
+    },
+    {
+      "name": "High Inquisitor Fairbanks",
+      "wing": "Cathedral",
+      "aliases": ["fairbanks"],
+      "general": "Hidden behind the cathedral: fear, curses and dispels.",
+      "tank": "Fear Ward or Berserker Rage.",
+      "healer": "Decurse, heal through the fear.",
+      "dps": "Burn him."
+    }
+  ]
+}

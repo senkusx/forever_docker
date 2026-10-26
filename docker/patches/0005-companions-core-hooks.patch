@@ -62,7 +62,7 @@ index 97391a1..303d103 100644
          void LoadEquipment(int8 id = 1, bool force = false);
          void SetSpawnHealth();
 diff --git a/src/server/game/Entities/Player/Player.cpp b/src/server/game/Entities/Player/Player.cpp
-index 78d59ec..ae7e013 100644
+index 78d59ec..8ea48f5 100644
 --- a/src/server/game/Entities/Player/Player.cpp
 +++ b/src/server/game/Entities/Player/Player.cpp
 @@ -1010,6 +1010,9 @@ void Player::Update(uint32 p_time)
@@ -75,6 +75,21 @@ index 78d59ec..ae7e013 100644
      // Once per second, update items that have just a limited lifetime
      if (now > m_Last_tick)
      {
+@@ -8130,6 +8133,14 @@ void Player::UpdateHostileAreaState(AreaTableEntry const* area)
+                         pvpInfo.IsInHostileArea = sWorld->IsPvPRealm();
+                 }
+             }
++            // Companions (classic PvP realm rules): the 1.60 zones carry no Contested or EnemiesPvPFlagged flags, only their
++            // faction (FactionGroupMask), so on a PvP realm contested and enemy territory flag everyone, the own faction's
++            // zones and the instances do not
++            else if (sWorld->IsPvPRealm() && !GetMap()->Instanceable())
++            {
++                FactionTemplateEntry const* factionTemplate = GetFactionTemplateEntry();
++                pvpInfo.IsInHostileArea = factionTemplate && !(factionTemplate->FriendGroup & area->FactionGroupMask);
++            }
+         }
+     }
+     else
 diff --git a/src/server/game/Entities/Player/Player.h b/src/server/game/Entities/Player/Player.h
 index d87f3ab..4fed20e 100644
 --- a/src/server/game/Entities/Player/Player.h

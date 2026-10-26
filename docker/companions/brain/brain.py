@@ -42,7 +42,7 @@ ORDER_WORDS = {
     "dismiss", "heal", "dispel", "decurse", "cleanse", "protect", "save", "spread", "stack", "normal", "retreat",
     "run", "flee", "fallback", "cc", "sheep", "control", "interrupt", "taunt", "mark", "burst", "cooldowns",
     "bless", "rebuff", "buff", "equip", "salvation", "might", "wisdom", "kings", "light", "sanctuary",
-    "plan", "prefer", "avoid", "allow", "prefs", "give", "hand", "loot", "potions", "autocc",
+    "plan", "prefer", "avoid", "allow", "prefs", "give", "hand", "loot", "potions", "autocc", "face", "tank", "tactics",
 }
 # what a player who is not the leader may ask of the companions
 HELP_WORDS = {"heal", "dispel", "decurse", "cleanse", "protect", "save", "assist", "status", "bless", "rebuff", "buff",
@@ -80,6 +80,9 @@ they mean and turn it into the concrete orders below, for the companions concern
 - attack (the leader's target) | pull (tank: pull the leader's target) | focus skull|cross|moon|square|triangle|diamond|circle|star (the marked target)
 - assist <name> (attack what that player attacks) | heal <name> | dispel <name> | protect <name> (tank: taunt off them, others: help them)
 - spread | stack | normal (how close they stand)
+- face away (tank: turns the enemy it tanks away from the group, for the next fight) | face normal | tank here (tank: holds the \
+next enemy where the leader stands). Asked of the tank in any words ("face the boss away from us", "turn him around", "drag \
+it over here"), the tank does it: give it the order and let it say so, never refuse
 - in fights, enemies are numbered E1, E2...: kill E2 | cc E3 (crowd control: polymorph, shackle undead, banish, hibernate,
   scare beast, gouge - only a companion that knows it, on a creature type it works on) | interrupt E1 (that caster's casts)
   | taunt E2 (tank) | mark skull E2 (raid markers: skull = kill first, cross = second, moon = crowd controlled) | burst (cooldowns now)
@@ -105,6 +108,11 @@ prefer frost nova because adds keep reaching the healer; "Shield Wall when you g
 companion's class has. "prefs" makes them tell what they were told.
 - give me <item name|potions|food|drink|bandages|junk> (it opens a trade with the leader) | loot all|useful|off | \
 potions on|off (drink potions when low) | autocc on|off (crowd control extra adds on its own)
+Boss tactics: the situation lists the bosses of the instance and "tactics" lines (general, then each role's part) for the \
+boss named or fought. Asked how a boss works or what to do, answer from those lines, each companion for its own role in \
+its own words (the tank its positioning and threat, the healer what to heal and dispel, a damage dealer the kill order and \
+what to avoid); without a tactics line for it, say what you are not sure of instead of inventing. A player's instruction \
+is followed even when it differs from the usual tactics.
 Only the leader decides following, roles, stance and dismiss; other players may ask for help (heal, dispel, protect, \
 assist). Relay what the companions know when asked (health, mana, who is low, enemies, markers, rares nearby, what \
 someone said earlier) from the situation, briefly.
@@ -197,6 +205,12 @@ def build_request(event, memory):
                 "personality would make, or nothing.")
     elif channel == "whisper":
         task = f"{speaker} whispers to {bots[0][1]}: {message}\nOnly {bots[0][1]} can answer (the answer is whispered back)."
+    elif channel in ("say", "yell"):
+        how = "yells" if channel == "yell" else "says out loud nearby"
+        named = context_line(event, "spoken to")
+        task = (f"{speaker} {how}: {message}\nCompanions who heard it: {names}. They answer out loud (the same channel) only if it "
+                "is for them or worth a reaction from their personality" + (f"; {named} was named and answers" if named else "") +
+                ". No orders here: orders only come through party chat or whispers (if asked to do something, a companion may say so).")
     elif kind == "group" and context_line(event, "spoken to"):
         named = context_line(event, "spoken to")
         task = (f"{speaker} says in party chat, to {named}: {message}\n{named} answers (and does what is asked); another companion "
@@ -251,8 +265,10 @@ def actions_from(event, data, order_mode="all"):
     by_name = {name.lower(): guid for guid, name, _, _ in bots}
     leader = leader_of(event).lower()
     speaker = (event.get("speaker") or "").lower()
-    # callouts and banter only talk; a player who is not the leader only gets help; tactics only assign tactics
-    if event["kind"] in ("callout", "event", "test") or order_mode == "none":
+    # callouts, banter and what was said out loud only talk; a player who is not the leader only gets help; tactics only
+    # assign tactics
+    aloud = event["channel"] in ("say", "yell")
+    if event["kind"] in ("callout", "event", "test") or order_mode == "none" or aloud:
         allowed = set()
     elif event["kind"] == "tactics":
         allowed = TACTIC_WORDS
@@ -293,7 +309,7 @@ def actions_from(event, data, order_mode="all"):
         used.add(guid)
         actions.append({
             "bot_guid": guid,
-            "channel": "whisper" if whisper else "party",
+            "channel": "whisper" if whisper else (event["channel"] if aloud else "party"),
             "target": event["speaker"] if whisper else "",
             "say": say,
             "commands": "\n".join(orders),

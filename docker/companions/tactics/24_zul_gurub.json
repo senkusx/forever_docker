@@ -1,0 +1,149 @@
+{
+  "instance": "Zul'Gurub",
+  "map": 309,
+  "aliases": [
+    "zg",
+    "zulgurub",
+    "zul gurub"
+  ],
+  "bosses": [
+    {
+      "name": "High Priestess Jeklik",
+      "aliases": [
+        "jeklik",
+        "bat"
+      ],
+      "general": "Bat phase: bat swarms, Charge and silencing screech. Troll phase at half health: she heals (interrupt), and bat riders drop fire bombs.",
+      "tank": "Back to a wall; pick up the bat swarms.",
+      "healer": "Heal through the fire bombs; stay out of the fire.",
+      "dps": "Interrupt her Great Heal; kill the bats, step out of the fire."
+    },
+    {
+      "name": "High Priest Venoxis",
+      "aliases": [
+        "venoxis",
+        "snake"
+      ],
+      "general": "Troll phase: Holy Nova, Holy Fire, Renew (dispel it). Snake phase at half health: poison clouds and Venom Spit. Four Razzashi Cobras guard him: kill them first.",
+      "tank": "Hold him; in snake form move him out of the clouds.",
+      "healer": "Dispel his Renew, cure poison.",
+      "dps": "Cobras first, interrupt Holy Fire; step out of the poison clouds."
+    },
+    {
+      "name": "High Priestess Mar'li",
+      "aliases": [
+        "marli",
+        "spider"
+      ],
+      "general": "Troll phase: spider eggs hatch, Poison Bolt Volley, Drain Life. Spider phase: Enveloping Webs, Charge.",
+      "tank": "Hold her and the spiders; she drops threat in spider form.",
+      "healer": "Cure poison on everyone.",
+      "dps": "Kill the hatchlings, interrupt Drain Life."
+    },
+    {
+      "name": "Bloodlord Mandokir",
+      "aliases": [
+        "mandokir",
+        "raptor"
+      ],
+      "general": "Rides his raptor Ohgan. Threatening Gaze: whoever he watches must stand still or be killed. He levels up on kills; spirits revive the dead.",
+      "tank": "Off-tank Ohgan; main tank on Mandokir facing away (cleave).",
+      "healer": "Stop casting when he watches you.",
+      "dps": "Watched: stop casting and attacking and don't move. Focus Mandokir while Ohgan stays off-tanked."
+    },
+    {
+      "name": "Gri'lek",
+      "aliases": [
+        "grilek",
+        "edge of madness"
+      ],
+      "general": "Edge of Madness: grows and fixates on a random player, Avatar makes him huge.",
+      "tank": "Pick him back up after each fixate.",
+      "healer": "Keep the fixated player alive.",
+      "dps": "Kite him if he fixates on you."
+    },
+    {
+      "name": "Hazza'rah",
+      "aliases": [
+        "hazzarah"
+      ],
+      "general": "Edge of Madness: summons Nightmare Illusions and puts players to sleep.",
+      "tank": "Grab the illusions.",
+      "healer": "Dispel the sleep.",
+      "dps": "Kill the illusions fast."
+    },
+    {
+      "name": "Renataki",
+      "aliases": [
+        "renataki"
+      ],
+      "general": "Edge of Madness: vanishes and ambushes random players, Thousand Blades.",
+      "tank": "Pick him back up when he reappears.",
+      "healer": "Heal the ambushed player.",
+      "dps": "Watch threat after his vanish."
+    },
+    {
+      "name": "Wushoolay",
+      "aliases": [
+        "wushoolay"
+      ],
+      "general": "Edge of Madness: Chain Lightning and Lightning Cloud.",
+      "tank": "Hold her.",
+      "healer": "Heal the chain lightning.",
+      "dps": "Spread out, step out of the clouds."
+    },
+    {
+      "name": "Gahz'ranka",
+      "aliases": [
+        "gahzranka"
+      ],
+      "general": "Fished up with Mudskunk Lure: Frost Breath in front, Massive Geyser throws players up.",
+      "tank": "Face it away from the raid.",
+      "healer": "Heal the falling damage.",
+      "dps": "From the sides."
+    },
+    {
+      "name": "High Priest Thekal",
+      "aliases": [
+        "thekal",
+        "tiger"
+      ],
+      "general": "With Zealots Zath and Lor'Khan: all three must die within 10 seconds or they rise. Then Thekal's tiger form: Force Punch, tigers join.",
+      "tank": "Three tanks on the three trolls; take Thekal again in tiger form.",
+      "healer": "Heal all three tanks.",
+      "dps": "Bring all three down together, then the tiger."
+    },
+    {
+      "name": "High Priestess Arlokk",
+      "aliases": [
+        "arlokk",
+        "panther"
+      ],
+      "general": "Called with the gong. Marks a player for the panthers, vanishes and returns; panthers keep coming from the sides.",
+      "tank": "Grab the panthers; pick her up when she reappears.",
+      "healer": "Heal the marked player.",
+      "dps": "Kill panthers on the marked player; burn her when she's out."
+    },
+    {
+      "name": "Jin'do the Hexxer",
+      "aliases": [
+        "jindo"
+      ],
+      "general": "Hex on the tank, Brain Wash totems mind control, Healing Wards, and Delusions: cursed players see shades only they can kill.",
+      "tank": "Off-tank takes over while the main tank is hexed.",
+      "healer": "Dispel the hex; decurse Delusions only after the shade dies.",
+      "dps": "Kill the Brain Wash totem and the Healing Ward at once; cursed players kill their shades."
+    },
+    {
+      "name": "Hakkar",
+      "aliases": [
+        "hakkar",
+        "soulflayer"
+      ],
+      "general": "Blood Siphon drains everyone: be Poisoned Blood (from a Son of Hakkar) or you feed him. Corrupted Blood spreads, Cause Insanity, Will of Hakkar mind controls.",
+      "tank": "Two tanks; Cause Insanity drops one, the other taunts.",
+      "healer": "Keep the poisoned alive before Siphon; spread for Corrupted Blood.",
+      "dps": "Kill a Son of Hakkar before each Siphon and stand in its poison; spread out."
+    }
+  ]
+}

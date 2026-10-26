@@ -1,0 +1,55 @@
+{
+  "instance": "The Stockade",
+  "map": 34,
+  "aliases": ["stocks", "stockade", "stockades", "the stockade"],
+  "bosses": [
+    {
+      "name": "Targorr the Dread",
+      "aliases": ["targorr"],
+      "general": "Frenzies at low health.",
+      "tank": "Use a cooldown at the end.",
+      "healer": "Heal harder in his frenzy.",
+      "dps": "Burn him fast."
+    },
+    {
+      "name": "Kam Deepfury",
+      "aliases": ["kam"],
+      "general": "Dwarf warrior: Shield Slam and Parry. Easy.",
+      "tank": "Plain tank and spank.",
+      "healer": "Light damage.",
+      "dps": "Hit him from behind."
+    },
+    {
+      "name": "Hamhock",
+      "aliases": ["hamhock"],
+      "general": "Ogre shaman: Chain Lightning and Bloodlust.",
+      "tank": "Keep him on you.",
+      "healer": "Heal the chain lightning.",
+      "dps": "Ranged spread out, interrupt his casts."
+    },
+    {
+      "name": "Bazil Thredd",
+      "aliases": ["bazil"],
+      "general": "Defias leader in the prison: Smoke Bomb stuns.",
+      "tank": "Hold him through the stuns.",
+      "healer": "Heal after the stuns.",
+      "dps": "Burn him."
+    },
+    {
+      "name": "Dextren Ward",
+      "aliases": ["dextren"],
+      "general": "Mortal Strike and a fear.",
+      "tank": "Fear Ward or Berserker Rage help.",
+      "healer": "Mortal Strike cuts healing: heal ahead.",
+      "dps": "Burn him."
+    },
+    {
+      "name": "Bruegal Ironknuckle",
+      "aliases": ["bruegal"],
+      "general": "Rare dwarf: hits hard.",
+      "tank": "Cooldowns if you're low level.",
+      "healer": "Big hits on the tank.",
+      "dps": "Burn him."
+    }
+  ]
+}

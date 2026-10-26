@@ -20,6 +20,8 @@ namespace Companions::Commands
     bool SpeechPreference(Player* commander, std::vector<Player*> const& bots, std::string const& message, bool quiet);
     // a party or raid line from a player: orders for the companions, else talk for the AI brain
     void OnPartyChat(Player* speaker, std::string const& msg, Group* group);
+    // /say or /yell near bots: conversation only, the orders go through party chat and whispers
+    void OnOpenChat(Player* speaker, bool yell, std::string const& msg);
 }
 
 #endif

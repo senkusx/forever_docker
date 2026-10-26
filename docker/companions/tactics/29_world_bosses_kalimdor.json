@@ -1,0 +1,47 @@
+{
+  "instance": "Kalimdor",
+  "map": 1,
+  "aliases": [],
+  "bosses": [
+    {
+      "name": "Azuregos",
+      "aliases": ["azuregos"],
+      "general": "Blue dragon in Azshara: Mark of Frost, Frost Breath in front, Mana Storm, and he teleports everyone near to him (threat reset).",
+      "tank": "Face him away; take him back after each teleport.",
+      "healer": "Out of the Mana Storm.",
+      "dps": "Stop after his teleport until the tank has him again."
+    },
+    {
+      "name": "Emeriss",
+      "aliases": ["emeriss"],
+      "general": "Dragon of Nightmare: Noxious Breath in front, tail sweep behind, sleeping fog, players who die grow mushrooms.",
+      "tank": "Face her away, nature resistance.",
+      "healer": "Out of the green fog.",
+      "dps": "Flanks only."
+    },
+    {
+      "name": "Lethon",
+      "aliases": ["lethon"],
+      "general": "Dragon of Nightmare: Shadow Bolt Whirl, shades from every player heal him.",
+      "tank": "Face him away.",
+      "healer": "Out of the green fog.",
+      "dps": "Kill the shades before they reach him."
+    },
+    {
+      "name": "Taerar",
+      "aliases": ["taerar"],
+      "general": "Dragon of Nightmare: Arcane Blast, a fear, and he splits into three shades.",
+      "tank": "Fear Ward; tanks for the shades.",
+      "healer": "Out of the green fog.",
+      "dps": "Kill the shades when he splits."
+    },
+    {
+      "name": "Ysondre",
+      "aliases": ["ysondre"],
+      "general": "Dragon of Nightmare: Lightning Wave chains, calls Demented Druid Spirits.",
+      "tank": "Face her away; pick up the spirits.",
+      "healer": "Out of the green fog.",
+      "dps": "Spread for the lightning."
+    }
+  ]
+}

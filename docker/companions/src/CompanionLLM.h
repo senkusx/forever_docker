@@ -28,6 +28,8 @@ namespace Companions::CompanionLLM
     bool OnChatToBot(Player* bot, Player* speaker, std::string const& channel, std::string const& message);
     // a party line that is not an order: one event for all the brain-linked bots of this owner in the group
     bool OnGroupChat(Player* owner, Player* speaker, std::vector<Player*> const& bots, std::string const& message, Player* addressed);
+    // a /say or /yell the bots around heard (channel "say" or "yell"): they may answer out loud, never with orders
+    bool OnOpenChat(Player* speaker, std::vector<Player*> const& bots, std::string const& channel, std::string const& message, Player* addressed);
     // something the bot noticed (out of mana, adds...): worded by the brain, or the canned line when it has none
     void OnCallout(Player* bot, std::string const& kind, std::string const& detail, std::string const& canned);
     // banter: "levelup", "boss"... (only with Companions.LLM.Banter = 1)

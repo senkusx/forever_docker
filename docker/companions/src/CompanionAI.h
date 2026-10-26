@@ -136,6 +136,12 @@ namespace Companions
         void OrderDispel(ObjectGuid target) { _dispelTarget = target; _dispelUntil = GameTime::Now() + Seconds(8); }
         void OrderProtect(ObjectGuid target) { _protectTarget = target; _protectUntil = GameTime::Now() + Seconds(25); }
         void OrderRetreat();
+        // says it in party chat (or whispers it) after a while: several companions telling something in turn
+        void SayLater(std::string text, uint32 delayMs, ObjectGuid whisperTo = ObjectGuid::Empty);
+        // tank positioning for the next fight: the enemy turned away from the group, or held where the player stands
+        void OrderFaceAway(bool on) { _faceAway = on; }
+        void OrderTankHere(Position const& spot) { _tankSpot = spot; }
+        bool FacesAway() const { return _faceAway; }
         void OrderCast(std::string spell, ObjectGuid target) { _pendingCast = std::move(spell); _pendingCastTarget = target; }
         // tactics (players or the AI brain): keep this enemy crowd controlled, interrupt this caster, use cooldowns now
         void OrderCrowdControl(ObjectGuid target);
@@ -279,6 +285,7 @@ namespace Companions
         Unit* SelectTankTarget();
         // a damage dealer near the tank's threat on its target: another target, or nullptr to hold
         Unit* KeepUnderTank(Unit* target);
+        bool TankPosition(Unit* target);    // tank: walks to the spot or the far side of what it tanks; true while moving
         bool RecoverThreat();       // tank: taunts back an enemy on another player (an area taunt for a crowd)
         void UpdatePetTaunt();      // the pet's taunt on autocast only without a tank in the group
         bool IsValidEnemy(Unit* unit, float maxDistance = 60.0f) const;   // ordered targets reach further
@@ -356,6 +363,8 @@ namespace Companions
         bool _restRequested = false;
         bool _eating = false;
         uint32 _restTimer = 0;
+        struct LaterLine { TimePoint Due; std::string Text; ObjectGuid WhisperTo; };
+        std::vector<LaterLine> _later;
         struct HealCast { ObjectGuid Target; uint32 SpellId = 0; uint32 Amount = 0; };
         HealCast _healCast;         // the heal with a cast time it is casting now
         std::string _pendingCast;
@@ -391,6 +400,10 @@ namespace Companions
         TimePoint _burstUntil = { };
         ObjectGuid _waitingFor;         // melee waiting for the tank to take this enemy
         bool _holdingThreat = false;    // near the tank's threat: not hitting for now
+        bool _faceAway = false;         // told to turn what it tanks away from the group (until the fight after it ends)
+        Optional<Position> _tankSpot;   // told to tank there ("tank here")
+        bool _tankOrderUsed = false;    // a fight with those orders went on: they end with it
+        TimePoint _tankMoveAt;
         int8 _petTaunt = -1;            // the pet taunt autocast as last set (-1 not yet)
         ObjectGuid _petTauntOf;         // ... for that pet
         TimePoint _ccCheckAt = { };

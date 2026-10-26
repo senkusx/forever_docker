@@ -3,6 +3,7 @@
  */
 
 #include "CompanionLLM.h"
+#include "CompanionTactics.h"
 #include "AsyncCallbackProcessor.h"
 #include "CellImpl.h"
 #include "CompanionAI.h"
@@ -174,7 +175,7 @@ namespace Companions::CompanionLLM
                      << (ai ? RoleName(ai->GetEffectiveRole()) : "dps") << "|" << Abilities(bot) << "\n";
             }
             BotRecord const* record = RecordOf(mainBot);
-            std::string context = BuildContext(mainBot, voiced);
+            std::string context = BuildContext(mainBot, voiced) + Tactics::BrainContext(mainBot, message);
             if (addressed)
                 context += "spoken to: " + addressed->GetName() + "\n";
             CharacterDatabase.PExecute("INSERT INTO companion_llm_events (bot_guid, owner_guid, kind, channel, speaker, message, context, bots, provider_id) "
@@ -191,15 +192,24 @@ namespace Companions::CompanionLLM
             if (!bot || !bot->IsInWorld())
                 return;
 
+            bool const aloud = action.Channel == "say" || action.Channel == "yell";
             if (!action.Say.empty())
             {
                 std::string say = action.Say.substr(0, 250);
                 Player* receiver = action.Target.empty() ? nullptr : ObjectAccessor::FindPlayerByName(action.Target);
+                Language const tongue = bot->GetTeam() == ALLIANCE ? LANG_COMMON : LANG_ORCISH;
                 if (action.Channel == "whisper" && receiver)
                     bot->Whisper(say, LANG_UNIVERSAL, receiver);
+                else if (action.Channel == "say")
+                    bot->Say(say, tongue);
+                else if (action.Channel == "yell")
+                    bot->Yell(say, tongue);
                 else
                     ai->Say(say);
             }
+            // orders come through party chat and whispers only
+            if (aloud)
+                return;
 
             // orders: one per line, the same words a player types in party chat
             Player* owner = ObjectAccessor::FindPlayer(ai->GetOwnerGUID());
@@ -404,6 +414,27 @@ namespace Companions::CompanionLLM
         if (addressed && std::find(voiced.begin(), voiced.end(), addressed) != voiced.end())
             main = addressed;
         Insert(owner, main, "group", "party", speaker->GetName(), message, voiced, ProviderOf(main), addressed);
+        return true;
+    }
+
+    bool OnOpenChat(Player* speaker, std::vector<Player*> const& bots, std::string const& channel, std::string const& message, Player* addressed)
+    {
+        if (!GetConfig().LLMEnable)
+            return false;
+        std::vector<Player*> voiced;
+        if (addressed && IsEnabledFor(addressed))
+            voiced.push_back(addressed);
+        for (Player* bot : bots)
+            if (bot != addressed && voiced.size() < 4 && IsEnabledFor(bot))
+                voiced.push_back(bot);
+        if (voiced.empty())
+            return false;
+        if (Flooding(speaker->GetGUID(), 1500))
+            return true;
+        Player* main = voiced.front();
+        CompanionAI* ai = sCompanionMgr->GetAI(main);
+        Insert(ai ? ObjectAccessor::FindPlayer(ai->GetOwnerGUID()) : nullptr, main, "group", channel, speaker->GetName(), message, voiced,
+            ProviderOf(main), addressed);
         return true;
     }
 

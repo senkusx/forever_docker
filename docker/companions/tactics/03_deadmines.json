@@ -1,0 +1,79 @@
+{
+  "instance": "The Deadmines",
+  "map": 36,
+  "aliases": ["deadmines", "the deadmines", "vc", "van cleef"],
+  "bosses": [
+    {
+      "name": "Rhahk'Zor",
+      "aliases": ["rhahkzor", "rhak"],
+      "general": "Ogre foreman behind the first door: hits hard, nothing else.",
+      "tank": "Use your cooldowns if you're low level, he slams hard.",
+      "healer": "Keep the tank topped, his hits are big.",
+      "dps": "Burn him."
+    },
+    {
+      "name": "Miner Johnson",
+      "aliases": ["johnson"],
+      "general": "Rare miner: Rend on the tank, easy.",
+      "tank": "Plain tank and spank.",
+      "healer": "Heal the bleed.",
+      "dps": "Burn him."
+    },
+    {
+      "name": "Sneed's Shredder",
+      "aliases": ["shredder", "sneeds shredder"],
+      "general": "Sneed in his shredder: Terrify fears, Distracting Pain. When the shredder breaks, Sneed jumps out: kill him too.",
+      "tank": "Hold the shredder, then grab Sneed when he pops out.",
+      "healer": "Heal through the fear.",
+      "dps": "Shredder first, then Sneed right away."
+    },
+    {
+      "name": "Sneed",
+      "aliases": ["sneed"],
+      "general": "Jumps out of his broken shredder: Disarm, otherwise easy.",
+      "tank": "Pick him up as soon as he lands.",
+      "healer": "Light damage.",
+      "dps": "Burn him."
+    },
+    {
+      "name": "Gilnid",
+      "aliases": ["gilnid", "smelter"],
+      "general": "The smelter goblin: Molten Metal splashes fire, he comes with goblin crafters.",
+      "tank": "Pull the crafters with him and keep them on you.",
+      "healer": "Heal the splash damage.",
+      "dps": "Crafters first, then Gilnid."
+    },
+    {
+      "name": "Mr. Smite",
+      "aliases": ["smite", "mr smite"],
+      "general": "At two thirds and one third health he stuns everyone near (Smite Stomp), runs to his chest and switches weapons: two axes, then a big hammer.",
+      "tank": "Tank him near the chest so the weapon swap is quick; expect harder hits after each swap.",
+      "healer": "Top everyone before each stomp; the hammer phase hits the tank hard.",
+      "dps": "Ranged stay out of the stomp; burn him in the hammer phase."
+    },
+    {
+      "name": "Captain Greenskin",
+      "aliases": ["greenskin"],
+      "general": "On the ship with his pirates: Cleave and Poisoned Harpoon.",
+      "tank": "Face him away from the group for the Cleave; pick up the pirates.",
+      "healer": "Cure the poison.",
+      "dps": "Pirates first if they're loose, then the captain; stay behind him."
+    },
+    {
+      "name": "Edwin VanCleef",
+      "aliases": ["vancleef", "van cleef", "edwin"],
+      "general": "Defias leader: Thrash gives him extra hits, and at half health he calls two Defias Blackguards.",
+      "tank": "Hold him and grab both Blackguards when they come.",
+      "healer": "Thrash spikes the tank; heal ahead of it.",
+      "dps": "Kill the Blackguards when they come, then VanCleef."
+    },
+    {
+      "name": "Cookie",
+      "aliases": ["cookie"],
+      "general": "The murloc cook in the ship: eats to heal himself, otherwise easy.",
+      "tank": "Plain tank and spank.",
+      "healer": "Light damage.",
+      "dps": "Burn him so his healing doesn't matter."
+    }
+  ]
+}

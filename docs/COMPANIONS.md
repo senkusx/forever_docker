@@ -10,11 +10,13 @@ A server-side AI plays each one in its role:
   dealer pulls it. Warriors: Shield Slam, Revenge, Sunder, Thunder Clap, Demoralizing Shout, Concussion Blow, Shield
   Block, Cleave. Paladins (no taunt): Righteous Fury, Seal of Fury, Judgement, Consecration, Holy Shield, Holy Strike,
   Holy Wrath and Exorcism on undead and demons. Bears: Swipe on packs, Lacerate, Demoralizing Roar, Faerie Fire.
-- **Healer**: heals by priority (tank first), picks the cheapest rank that covers the damage (smaller ones when mana
+- **Healer**: heals and does nothing else in a fight (no damage spells, no wand); heals by priority (tank first), picks the cheapest rank that covers the damage (smaller ones when mana
   runs low), counts the heals already coming (other healers' casts, yours included, and the heal over time ticks),
   uses group heals, shields and HoTs, dispels and resurrects. It lets small damage be: in combat it starts on the tank
   below 85% and on the others below 75% (lower as its mana drops), stops a heal whose target got full before it lands,
-  and out of combat tops up only with mana to spare.
+  and out of combat tops up only with mana to spare. A hybrid tanking or dealing damage (paladin, druid, shaman) leaves
+  the healing to the group's healer while one is near with mana, itself included: it heals only a life about to end
+  with no heal on its way.
 - **Damage**: attacks the skull, then the cross, then your target, then the tank's target. On a pull the melee walk
   up with the tank and wait behind the enemy until the tank has it. They stand behind enemies (melee) or at range
   (casters, hunters), interrupt casts, use AoE only when no crowd-controlled enemy is near, and keep an add out of a
@@ -86,7 +88,9 @@ through bnetserver's login, like the launcher.
 
 ## Orders
 
-Type them in party chat. Start with a bot's name to talk to one bot ("Jaina stay"), or whisper it.
+Type them in party, raid (warnings too) or instance chat. Start with a bot's name to talk to one bot ("Jaina stay"), or
+whisper it. /say and /yell are only for talking: the bots around hear them and may answer out loud (with the brain on),
+but take no orders there.
 
 | Order | What it does |
 |---|---|
@@ -107,7 +111,9 @@ Type them in party chat. Start with a bot's name to talk to one bot ("Jaina stay
 | `role tank` / `role heal` / `role dps` / `role auto` | change role (talents and gear follow) |
 | `rest` | eat and drink to full |
 | `cast <spell> [on me / on target]` | cast a spell now ("cast polymorph on target") |
-| `tactics` | the encounter in a sentence or two: your target's, else the boss they fight |
+| `tactics [boss]` | how a boss works and each role's part: the boss named, else your target, else the one they fight; in an instance without a boss, its list of bosses. Plain questions work too: "what's the strat for Baron?", "how do we do Gandling?", "what bosses are in Scholomance?" |
+| `face away` / `face normal` (tank) | turns the next enemy it tanks away from the group, as with any boss whose front hurts / tanks it where it stands. Plain words work: "face the boss away from us", "turn him around" |
+| `tank here` (tank) | holds the next enemy where you stand ("tank him here", "bring it to me") |
 | `plan <steps>` | several steps carried out in order (see below); `plan` shows it, `cancel plan` stops it |
 | `prefer <spell> [below 30]` / `avoid <spell>` / `allow <spell>` / `prefs [clear]` | lasting changes to how it uses an ability (see below) |
 | `give me <item\|potions\|food\|drink\|bandages\|junk>` | it opens a trade with you and puts it in |
@@ -339,7 +345,7 @@ owner: `login <character>`, `party <owner> [role]`, `raid <owner> [size]`, `say 
 [count]` (enemies in front of the group for 5 minutes), `fire <bot> [spell]` (a hostile ground effect under it), `give <bot>
 <item>` / `equip <bot> <it|name>` (loot decisions), `status <owner>`, `near <owner> [yards]` (creatures around, their health and mechanics rules), `ambient <owner>` (the zone as the ambient
 bots see it and what each one does), `invite <owner> <name>` (a /invite), `order <owner> <order>`, `why <bot>` (what it sees),
-`spells <bot>`, `auras <name> [spell]` (auras on a character and who cast them, the area triggers that spell made), `kill <bot>`, `logout <owner>`. `why <bot>` also shows where it stands around you and its last casts. Administrators only (the permission of `.server shutdown`).
+`spells <bot>`, `tactics <owner> <question>` (what the companions answer to it), `auras <name> [spell]` (auras on a character and who cast them, the area triggers that spell made), `kill <bot>`, `logout <owner>`. `why <bot>` also shows where it stands around you and its last casts. Administrators only (the permission of `.server shutdown`).
 
 ## Good to know
 
@@ -354,6 +360,14 @@ bots see it and what each one does), `invite <owner> <name>` (a /invite), `order
 - Mounts: each companion rides its own race's mount (horses, wolves, rams, sabers, skeletal horses, kodos,
   mechanostriders, raptors), or its class mount (Felsteed, Warhorse) when it knows it, swift when its player rides a swift
   one.
+- Tank positioning: on a boss (and anything whose breath or cleave hurts) the tank walks round to the far side of it from
+  the group, so it shows the group its back; `face away` asks it for any enemy, `tank here` holds the next one where you
+  stand.
+- Boss tactics: `docker/companions/tactics/*.json` describe every boss of the classic dungeons and raids (and the world
+  bosses): what the fight is, then the tank's, the healers' and the damage dealers' part. Asked in chat, the tank tells the
+  fight and each companion its role's part; the brain gets the same text and the instance's list of bosses. The texts are
+  written for this project (in plain words, from the classic encounters and this server's boss scripts); edit the JSON
+  and run `scripts/gen-tactics.py`, which writes `docker/sql/world/2026_10_26_92_world_companions_boss_tactics.sql`.
 - Threat: with a tank in the group the tank's first job is any enemy on someone else (Taunt, Growl; Challenging Shout,
   Challenging Roar or Consecration when three or more got loose), before buffs, dispels and interrupts. The damage
   dealers let it open every pull, keep under its threat (85% of it in melee, 90% at range: another target, else they

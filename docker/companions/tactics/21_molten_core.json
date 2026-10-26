@@ -1,0 +1,87 @@
+{
+  "instance": "Molten Core",
+  "map": 409,
+  "aliases": ["mc", "molten core"],
+  "bosses": [
+    {
+      "name": "Lucifron",
+      "aliases": ["lucifron"],
+      "general": "Two Flamewaker Protectors with him mind control people: kill them first. Lucifron casts Impending Doom and Lucifron's Curse on the raid.",
+      "tank": "One tank on each Protector, one on Lucifron facing away (Shadow Shock).",
+      "healer": "Priests and paladins dispel Impending Doom; mages and druids remove the curse; free the mind controlled.",
+      "dps": "Protectors first, then Lucifron."
+    },
+    {
+      "name": "Magmadar",
+      "aliases": ["magmadar", "dog"],
+      "general": "Panic fears everyone near him about every 30 seconds, Lava Bombs leave fire under players, and he goes into Frenzy.",
+      "tank": "Fear Ward and Tremor Totem on you; tank him at the back so the raid sees his side.",
+      "healer": "Stay out of fear range if you can; heal the tank hard through Frenzy.",
+      "dps": "Hunters Tranquilizing Shot the Frenzy. Step out of Lava Bombs."
+    },
+    {
+      "name": "Gehennas",
+      "aliases": ["gehennas"],
+      "general": "Two Flamewakers with him. Gehennas' Curse cuts healing by 75%, Rain of Fire on the raid, Shadow Bolt.",
+      "tank": "Off-tanks take the Flamewakers (their Fist of Ragnaros stuns); main tank on Gehennas.",
+      "healer": "Decurse right away.",
+      "dps": "Flamewakers first, then Gehennas. Move out of Rain of Fire."
+    },
+    {
+      "name": "Garr",
+      "aliases": ["garr", "firesworn"],
+      "general": "Eight Firesworn: each one dying explodes and makes Garr stronger. Banish some, off-tank the rest, kill them one at a time away from the raid, then Garr.",
+      "tank": "Main tank on Garr; off-tanks hold one Firesworn each.",
+      "healer": "Anti-magic pulses strip buffs; heal the off-tanks.",
+      "dps": "Kill the Firesworn one by one where the tank calls, step back when one is low."
+    },
+    {
+      "name": "Shazzrah",
+      "aliases": ["shazzrah"],
+      "general": "Blinks to a random player and casts Arcane Explosion around himself. Shazzrah's Curse doubles magic damage; Deaden Magic on himself.",
+      "tank": "Run to him after every blink; threat resets.",
+      "healer": "Ranged stand apart; decurse.",
+      "dps": "Purge or dispel Deaden Magic; ranged spread out."
+    },
+    {
+      "name": "Baron Geddon",
+      "aliases": ["geddon"],
+      "general": "Living Bomb: that player runs away from everyone before it blows. Inferno burns everyone near him. Ignite Mana drains mana: dispel it.",
+      "tank": "Run out during Inferno, come back after.",
+      "healer": "Dispel Ignite Mana; heal the bomb carrier.",
+      "dps": "Run out with a bomb, out of Inferno; at the very end he explodes, move away."
+    },
+    {
+      "name": "Golemagg the Incinerator",
+      "aliases": ["golemagg"],
+      "general": "Two Core Ragers: an off-tank holds them away, nobody attacks them (they die with him). Pyroblast on random players, Earthquake at 10%.",
+      "tank": "Main tank on Golemagg (Magma Splash stacks); off-tank the two Ragers apart.",
+      "healer": "Heal the Pyroblasts; the main tank takes stacking fire damage.",
+      "dps": "Only Golemagg. Melee leave when he's at 10% (Earthquake)."
+    },
+    {
+      "name": "Sulfuron Harbinger",
+      "aliases": ["sulfuron"],
+      "general": "Four Flamewaker Priests heal and cast Shadow Word: Pain: kill them first, interrupting Dark Mending.",
+      "tank": "Off-tanks on the priests; main tank on Sulfuron (Hand of Ragnaros knocks back).",
+      "healer": "Dispel Shadow Word: Pain.",
+      "dps": "Priests one by one, interrupt Dark Mending, then Sulfuron."
+    },
+    {
+      "name": "Majordomo Executus",
+      "aliases": ["majordomo", "domo"],
+      "general": "He submits when his eight guards die: four Flamewaker Healers, four Elites. He shields them with Magic Reflection and Damage Shield.",
+      "tank": "Tanks on the Elites; Majordomo teleports a tank into the fire now and then.",
+      "healer": "Heal the teleported tank.",
+      "dps": "Healers first, then Elites. Casters stop on Magic Reflection, melee on Damage Shield."
+    },
+    {
+      "name": "Ragnaros",
+      "aliases": ["ragnaros", "rag", "raggy"],
+      "general": "Wrath of Ragnaros knocks back everyone in melee; with nobody in melee he hits the raid with Magma Blast. He submerges and eight Sons of Flame come: kill them.",
+      "tank": "Two tanks: one takes over after a knockback. Keep someone in melee always.",
+      "healer": "Fire resistance; heal the tanks through Elemental Fire.",
+      "dps": "Melee behind him, ranged spread. Kill the Sons of Flame when he submerges."
+    }
+  ]
+}

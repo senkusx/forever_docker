@@ -1,0 +1,39 @@
+{
+  "instance": "Ragefire Chasm",
+  "map": 389,
+  "aliases": ["rfc", "ragefire", "ragefire chasm"],
+  "bosses": [
+    {
+      "name": "Oggleflint",
+      "aliases": ["oggleflint"],
+      "general": "Trogg chief with a couple of troggs around him. A plain fight: clear his friends, then him.",
+      "tank": "Pull him with his troggs and keep them all on you.",
+      "healer": "Light damage, keep the tank up.",
+      "dps": "Kill the troggs first if they go for the healer, then Oggleflint."
+    },
+    {
+      "name": "Taragaman the Hungerer",
+      "aliases": ["taragaman"],
+      "general": "Big demon: Fire Nova burns everyone near him and Uppercut knocks the tank away.",
+      "tank": "Back him into a wall so Uppercut doesn't throw you far, and get straight back in after one.",
+      "healer": "Fire Nova hits all the melee: heal through it, stay at range.",
+      "dps": "Casters and hunters stay out of Fire Nova range; melee keep their health up."
+    },
+    {
+      "name": "Jergosh the Invoker",
+      "aliases": ["jergosh"],
+      "general": "Caster: Immolate on someone and Curse of Weakness on the tank.",
+      "tank": "Pull him round a corner so he comes into melee.",
+      "healer": "Heal through Immolate; mages and druids remove his curse.",
+      "dps": "Interrupt his casts and burn him."
+    },
+    {
+      "name": "Bazzalan",
+      "aliases": ["bazzalan"],
+      "general": "Satyr rogue: Sinister Strike and poison on the tank.",
+      "tank": "Plain tank and spank.",
+      "healer": "Cure the poison on the tank.",
+      "dps": "Burn him."
+    }
+  ]
+}

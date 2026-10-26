@@ -21,6 +21,7 @@
 #include "CompanionAmbient.h"
 #include "CompanionScaling.h"
 #include "CompanionSpells.h"
+#include "CompanionTactics.h"
 #include "Group.h"
 #include "CellImpl.h"
 #include "Creature.h"
@@ -38,6 +39,7 @@
 #include "ScriptMgr.h"
 #include "Spell.h"
 #include "TemporarySummon.h"
+#include "World.h"
 #include "WorldSession.h"
 #include <cstring>
 #include <sstream>
@@ -213,6 +215,29 @@ namespace Companions
         }
 
         // loose phrasing for the orders players use most ("go all out" = burst)
+        // positioning asked of the tank in plain words: "face the boss away from the group", "turn him around", "tank him here",
+        // "bring it to me"
+        std::string TankOrder(std::string const& lower)
+        {
+            bool const turn = ContainsWord(lower, "face") || ContainsWord(lower, "facing") || ContainsWord(lower, "turn")
+                || ContainsWord(lower, "point") || ContainsWord(lower, "rotate");
+            bool const negated = ContainsWord(lower, "don't") || ContainsWord(lower, "dont") || ContainsWord(lower, "stop")
+                || ContainsWord(lower, "normal") || ContainsWord(lower, "anywhere");
+            if (turn && negated)
+                return "face normal";
+            if (turn && (ContainsWord(lower, "away") || ContainsWord(lower, "around")))
+                return "face away";
+            bool const it = ContainsWord(lower, "him") || ContainsWord(lower, "her") || ContainsWord(lower, "it") || ContainsWord(lower, "them")
+                || ContainsWord(lower, "boss");
+            bool const move = ContainsWord(lower, "bring") || ContainsWord(lower, "drag") || ContainsWord(lower, "pull")
+                || ContainsWord(lower, "keep") || ContainsWord(lower, "hold");
+            bool const here = ContainsWord(lower, "here") || lower.find("on me") != std::string::npos || lower.find("to me") != std::string::npos
+                || lower.find("where i am") != std::string::npos || lower.find("where i stand") != std::string::npos;
+            if (here && (ContainsWord(lower, "tank") || (move && it)))
+                return "tank here";
+            return "";
+        }
+
         std::string Canonical(std::string const& text)
         {
             std::string lower = ToLower(text);
@@ -280,7 +305,8 @@ namespace Companions
                "pull, stop, retreat, assist [name], heal <name|me>, dispel <name|me>, protect <name|me>, cc <marker>, interrupt <marker>, "
                "taunt <marker>, burst, bless <name|me> salvation|might|wisdom|kings|light, rebuff <name|me> [buff], equip <item|it|upgrades>, "
                "spread, stack, normal, passive, aggressive, "
-               "role tank|heal|dps, rest, cast <spell> [on me|on target|on <name>], tactics, status, gear, dismiss, help. "
+               "role tank|heal|dps, rest, cast <spell> [on me|on target|on <name>], tactics [boss], face away|normal (tank), tank here, "
+               "status, gear, dismiss, help. "
                "Also: plan <steps> (pull p1|next, <bot> cc <marker>; rest; ready; wait 10), prefer|avoid|allow <spell> [below 30], prefs [clear], "
                "give me <item|potions|food>, loot all|useful|off, potions on|off, autocc on|off; or say it plainly "
                "(\"use more frost nova\", \"attack this pack, then rest and pull the next one when we're ready\").";
@@ -293,7 +319,9 @@ namespace Companions
         std::string trimmed = said;
         while (!trimmed.empty() && (trimmed.back() == '!' || trimmed.back() == '.' || trimmed.back() == '?' || trimmed.back() == ' '))
             trimmed.pop_back();
-        std::string const canonical = Canonical(trimmed);
+        std::string canonical = Canonical(trimmed);
+        if (canonical.empty())
+            canonical = TankOrder(ToLower(trimmed));
         std::string const& text = canonical.empty() ? trimmed : canonical;
         std::vector<std::string> words = Split(ToLower(text));
         if (words.empty() || bots.empty())
@@ -509,6 +537,34 @@ namespace Companions
             forEach([spread](Player*, CompanionAI* ai) { ai->SetSpread(spread); });
             Ack(bots, quiet, order == "spread" ? "Spreading out." : order == "stack" ? "Stacking up." : "Okay.");
         }
+        else if ((order == "face" && words.size() >= 2) || (order == "tank" && words.size() >= 2 && words[1] == "here"))
+        {
+            // the tanks among them: the enemy turned away from the group, or held where the commander stands (next fight)
+            bool any = false;
+            forEach([&](Player* bot, CompanionAI* ai)
+            {
+                if (ai->GetEffectiveRole() != Role::Tank)
+                    return;
+                any = true;
+                if (order == "tank")
+                {
+                    ai->OrderTankHere(commander->GetPosition());
+                    if (!quiet)
+                        ai->Say("I'll hold it right here.");
+                }
+                else
+                {
+                    ai->OrderFaceAway(words[1] != "normal");
+                    if (!quiet)
+                        ai->Say(words[1] != "normal" ? "I'll turn it away from you, stay behind it." : "Fine, I'll tank it where it stands.");
+                }
+                (void)bot;
+            });
+            if (!any && !quiet && bots.size() == 1)
+                if (CompanionAI* ai = sCompanionMgr->GetAI(bots.front()))
+                    ai->Say("I'm not the tank, but I'll keep out of its front.");
+            return any || bots.size() == 1;
+        }
         else if (order == "retreat" || order == "run" || order == "flee" || order == "fallback")
         {
             forEach([](Player*, CompanionAI* ai) { ai->OrderRetreat(); });
@@ -603,17 +659,21 @@ namespace Companions
         }
         else if (order == "tactics" || order == "strat" || order == "strategy")
         {
-            // what the companions know of a boss: the commander's target, else one they fight
-            Unit* selected = commander->GetSelectedUnit();
-            Mechanics::Encounter const* encounter = selected && selected->ToCreature() ? Mechanics::EncounterFor(selected->GetEntry()) : nullptr;
-            for (Player* bot : bots)
-                if (CompanionAI* ai = sCompanionMgr->GetAI(bot); ai && !encounter)
-                    for (Unit* enemy : ai->View().Enemies)
-                        if (Creature* creature = enemy->ToCreature(); creature && !encounter)
-                            encounter = Mechanics::EncounterFor(creature->GetEntry());
-            if (CompanionAI* ai = sCompanionMgr->GetAI(bots.front()))
-                ai->Say(encounter ? std::string(encounter->Name) + ": " + encounter->Note
-                                  : "Target the boss and ask again, I know the dungeon and raid bosses.");
+            // what the companions know of a boss: the one named ("tactics baron"), the commander's target, one they fight,
+            // else the bosses of the instance; each companion tells its role's part
+            std::vector<Tactics::Line> lines = Tactics::Answer(commander, bots, bots.size() == 1 ? bots.front() : nullptr,
+                words.size() > 1 ? text : "tactics boss");
+            if (lines.empty())
+            {
+                // the older notes (CompanionMechanics.cpp) for a boss the table lacks
+                Unit* selected = commander->GetSelectedUnit();
+                Mechanics::Encounter const* encounter = selected && selected->ToCreature() ? Mechanics::EncounterFor(selected->GetEntry()) : nullptr;
+                if (CompanionAI* ai = sCompanionMgr->GetAI(bots.front()))
+                    ai->Say(encounter ? std::string(encounter->Name) + ": " + encounter->Note
+                                      : "Name the boss or target it and ask again, I know the dungeon and raid bosses.");
+            }
+            else
+                Tactics::Tell(lines, quiet ? commander : nullptr);
         }
         else if (order == "gear" || order == "regear")
         {
@@ -778,6 +838,7 @@ namespace Companions
                 { "equip",  HandleTestEquip,  rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "fire",   HandleTestFire,   rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "auras",  HandleTestAuras,  rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
+                { "tactics", HandleTestTactics, rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
             };
             static ChatCommandTable botTable =
             {
@@ -1419,19 +1480,36 @@ namespace Companions
             Player* puppet = Puppet(handler, owner);
             if (!puppet)
                 return true;
-            handler->PSendSysMessage("%s: level %u, %u%% health, map %u (%.1f %.1f %.1f), %s", puppet->GetName().c_str(), uint32(puppet->GetLevel()),
+            handler->PSendSysMessage("%s: level %u, %u%% health, map %u (%.1f %.1f %.1f), %s%s", puppet->GetName().c_str(), uint32(puppet->GetLevel()),
                 uint32(puppet->GetHealthPct()), puppet->GetMapId(), puppet->GetPositionX(), puppet->GetPositionY(), puppet->GetPositionZ(),
-                puppet->IsInCombat() ? "in combat" : "idle");
+                puppet->IsInCombat() ? "in combat" : "idle", puppet->IsPvP() ? ", PvP flagged" : "");
             if (sPlans->HasPlan(puppet->GetGUID()))
                 handler->PSendSysMessage("plan: %s", sPlans->Describe(puppet->GetGUID()).c_str());
             for (Player* bot : sCompanionMgr->GetBotsOf(puppet->GetGUID()))
             {
                 CompanionAI* ai = sCompanionMgr->GetAI(bot);
                 Unit* victim = bot->GetVictim();
-                handler->PSendSysMessage("  %s | %.1f yards | %s | spells %u | %s", ai ? ai->StatusLine().c_str() : bot->GetName().c_str(),
+                handler->PSendSysMessage("  %s | %.1f yards | %s | spells %u | %s%s", ai ? ai->StatusLine().c_str() : bot->GetName().c_str(),
                     bot->GetDistance(puppet), victim ? victim->GetName().c_str() : "-", ai ? uint32(ai->Spells().Size()) : 0,
-                    sCompanionFactory->DescribeGear(bot).c_str());
+                    sCompanionFactory->DescribeGear(bot).c_str(), bot->IsPvP() ? " | PvP" : "");
             }
+            return true;
+        }
+
+        // .bot test tactics <owner> <question>: what the companions answer, as they would say it in party chat (said too)
+        static bool HandleTestTactics(ChatHandler* handler, std::string owner, Tail text)
+        {
+            Player* puppet = Puppet(handler, owner);
+            if (!puppet)
+                return true;
+            std::string const question(text);
+            std::vector<Tactics::Line> lines = Tactics::AsksTactics(question) || ToLower(question).rfind("tactics", 0) == 0
+                ? Tactics::Answer(puppet, sCompanionMgr->GetBotsOf(puppet->GetGUID()), nullptr, question) : std::vector<Tactics::Line>();
+            if (lines.empty())
+                handler->SendSysMessage("(no tactics answer: the question goes to the orders and the brain)");
+            for (Tactics::Line const& line : lines)
+                handler->PSendSysMessage("  +%u ms %s: %s", line.DelayMs, line.Bot->GetName().c_str(), line.Text.c_str());
+            Commands::OnPartyChat(puppet, question, puppet->GetGroup());
             return true;
         }
 
@@ -1769,6 +1847,22 @@ namespace Companions
             if (ToLower(bot->GetName()) == first)
                 named = bot;
 
+        // "what's the strat for Baron?", "how do we do this boss", "what bosses are in strat": they tell what they know
+        if (Tactics::AsksTactics(msg))
+        {
+            Player* asked = named;
+            if (!asked)
+                for (Player* bot : all)
+                    if (ContainsWord(ToLower(msg), ToLower(bot->GetName())))
+                        asked = bot;
+            std::vector<Tactics::Line> lines = Tactics::Answer(player, all, asked, msg);
+            if (!lines.empty())
+            {
+                Tactics::Tell(lines);
+                return;
+            }
+        }
+
         Player* addressed = named;
         if (named)
         {
@@ -1809,6 +1903,32 @@ namespace Companions
             return;
         if (addressed)
             CompanionLLM::OnChatToBot(addressed, player, "party", msg);
+    }
+
+    void Commands::OnOpenChat(Player* speaker, bool yell, std::string const& msg)
+    {
+        if (msg.empty() || msg[0] == '.' || msg[0] == '!' || !speaker->IsInWorld())
+            return;
+        // the bots of its faction in earshot (as far as the game carries a /say or a /yell)
+        float const range = sWorld->getFloatConfig(yell ? CONFIG_LISTEN_RANGE_YELL : CONFIG_LISTEN_RANGE_SAY);
+        std::string const lower = ToLower(msg);
+        std::vector<Player*> heard;
+        Player* named = nullptr;
+        for (MapReference const& ref : speaker->GetMap()->GetPlayers())
+        {
+            Player* bot = ref.GetSource();
+            CompanionAI* ai = bot && bot != speaker && bot->GetSession()->IsBot() ? sCompanionMgr->GetAI(bot) : nullptr;
+            if (!ai || !bot->IsAlive() || bot->GetTeam() != speaker->GetTeam() || !bot->IsWithinDistInMap(speaker, range))
+                continue;
+            bool const isNamed = ContainsWord(lower, ToLower(bot->GetName()));
+            if (isNamed)
+                named = bot;
+            // companions listen to what is said around them; a town bot answers when it is named
+            if (isNamed || !ai->IsAmbient())
+                heard.push_back(bot);
+        }
+        if (!heard.empty())
+            CompanionLLM::OnOpenChat(speaker, heard, yell ? "yell" : "say", msg, named);
     }
 
     // ------------------------------------------------------------------ hooks
@@ -1858,19 +1978,32 @@ namespace Companions
             }
         }
 
-        // party chat, after it was shown: orders for the owner's bots, else a question for the brain
+        // party, raid (warnings too) and instance chat, after it was shown: orders for the owner's bots, else a question for
+        // the brain
         void OnChatSent(Player* player, uint32 type, uint32 /*lang*/, std::string const& msg, Group* group) override
         {
-            if (type == CHAT_MSG_PARTY || type == CHAT_MSG_PARTY_LEADER)
-                if (!player->GetSession()->IsBot())
-                    Commands::OnPartyChat(player, msg, group);
+            switch (type)
+            {
+                case CHAT_MSG_PARTY:
+                case CHAT_MSG_PARTY_LEADER:
+                case CHAT_MSG_RAID:
+                case CHAT_MSG_RAID_LEADER:
+                case CHAT_MSG_RAID_WARNING:
+                case CHAT_MSG_INSTANCE_CHAT:
+                case CHAT_MSG_INSTANCE_CHAT_LEADER:
+                    if (!player->GetSession()->IsBot())
+                        Commands::OnPartyChat(player, msg, group);
+                    break;
+                default:
+                    break;
+            }
         }
 
-        void OnChat(Player* player, uint32 type, uint32 /*lang*/, std::string& msg, Group* group) override
+        // /say and /yell: the bots around hear it and may answer out loud, but take no orders there
+        void OnChatSent(Player* player, uint32 type, uint32 /*lang*/, std::string const& msg) override
         {
-            if (type == CHAT_MSG_RAID || type == CHAT_MSG_RAID_LEADER)
-                if (!player->GetSession()->IsBot())
-                    Commands::OnPartyChat(player, msg, group);
+            if ((type == CHAT_MSG_SAY || type == CHAT_MSG_YELL) && !player->GetSession()->IsBot())
+                Commands::OnOpenChat(player, type == CHAT_MSG_YELL, msg);
         }
 
         void OnChatSent(Player* player, uint32 /*type*/, uint32 /*lang*/, std::string const& msg, Player* receiver) override
@@ -1894,6 +2027,12 @@ namespace Companions
             }
             if (sPlans->StartNatural(player, sCompanionMgr->GetBotsOf(player->GetGUID()), msg, false))
                 return;
+            if (Tactics::AsksTactics(msg))
+                if (std::vector<Tactics::Line> lines = Tactics::Answer(player, { receiver }, receiver, msg); !lines.empty())
+                {
+                    Tactics::Tell(lines, player);
+                    return;
+                }
             if (Commands::ExecuteOrder(player, { receiver }, msg, true))
                 return;
             if (!CompanionLLM::OnChatToBot(receiver, player, "whisper", msg))
