@@ -11,7 +11,9 @@
 #include "CompanionConfig.h"
 #include "CompanionFactory.h"
 #include "CompanionLLM.h"
+#include "CompanionMechanics.h"
 #include "CompanionMgr.h"
+#include "CompanionScaling.h"
 #include "Group.h"
 #include "CellImpl.h"
 #include "Creature.h"
@@ -25,6 +27,7 @@
 #include "Player.h"
 #include "RBAC.h"
 #include "ScriptMgr.h"
+#include "Spell.h"
 #include "TemporarySummon.h"
 #include "WorldSession.h"
 #include <sstream>
@@ -158,7 +161,7 @@ namespace Companions
                "pull, stop, retreat, assist [name], heal <name|me>, dispel <name|me>, protect <name|me>, cc <marker>, interrupt <marker>, "
                "taunt <marker>, burst, bless <name|me> salvation|might|wisdom|kings|light, rebuff <name|me> [buff], equip <item|it|upgrades>, "
                "spread, stack, normal, passive, aggressive, "
-               "role tank|heal|dps, rest, cast <spell> [on me|on target|on <name>], status, gear, dismiss, help";
+               "role tank|heal|dps, rest, cast <spell> [on me|on target|on <name>], tactics, status, gear, dismiss, help";
     }
 
     bool Commands::ExecuteOrder(Player* commander, std::vector<Player*> const& bots, std::string const& text, bool quiet)
@@ -466,6 +469,20 @@ namespace Companions
         {
             forEach([](Player*, CompanionAI* ai) { ai->Say(ai->StatusLine()); });
         }
+        else if (order == "tactics" || order == "strat" || order == "strategy")
+        {
+            // what the companions know of a boss: the commander's target, else one they fight
+            Unit* selected = commander->GetSelectedUnit();
+            Mechanics::Encounter const* encounter = selected && selected->ToCreature() ? Mechanics::EncounterFor(selected->GetEntry()) : nullptr;
+            for (Player* bot : bots)
+                if (CompanionAI* ai = sCompanionMgr->GetAI(bot); ai && !encounter)
+                    for (Unit* enemy : ai->View().Enemies)
+                        if (Creature* creature = enemy->ToCreature(); creature && !encounter)
+                            encounter = Mechanics::EncounterFor(creature->GetEntry());
+            if (CompanionAI* ai = sCompanionMgr->GetAI(bots.front()))
+                ai->Say(encounter ? std::string(encounter->Name) + ": " + encounter->Note
+                                  : "Target the boss and ask again, I know the dungeon and raid bosses.");
+        }
         else if (order == "gear" || order == "regear")
         {
             forEach([](Player* bot, CompanionAI*) { sCompanionMgr->QueuePrepare(bot->GetGUID(), 0, true); });
@@ -506,6 +523,7 @@ namespace Companions
                 { "spawn",  HandleTestSpawn,  rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "status", HandleTestStatus, rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "go",     HandleTestGo,     rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
+                { "near",   HandleTestNear,   rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "order",  HandleTestOrder,  rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "spells", HandleTestSpells, rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "why",    HandleTestWhy,    rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
@@ -1112,6 +1130,37 @@ namespace Companions
             return true;
         }
 
+        // creatures around the stand-in: entry, health (raid scaling) and what the mechanics know of them
+        static bool HandleTestNear(ChatHandler* handler, std::string owner, Optional<float> range)
+        {
+            Player* puppet = Puppet(handler, owner);
+            if (!puppet)
+                return true;
+            std::list<Creature*> creatures;
+            Trinity::AllWorldObjectsInRange check(puppet, range.value_or(40.0f));
+            Trinity::CreatureListSearcher<Trinity::AllWorldObjectsInRange> searcher(puppet, creatures, check);
+            Cell::VisitGridObjects(puppet, searcher, range.value_or(40.0f));
+            uint32 shown = 0;
+            for (Creature* creature : creatures)
+            {
+                if (creature->IsPet() || creature->IsTotem() || ++shown > 25)
+                    continue;
+                Spell const* casting = creature->GetCurrentSpell(CURRENT_CHANNELED_SPELL);
+                if (!casting)
+                    casting = creature->GetCurrentSpell(CURRENT_GENERIC_SPELL);
+                std::string ruled;
+                for (auto const& [spellId, application] : creature->GetAppliedAuras())
+                    if (!Mechanics::RulesForSpell(spellId).empty())
+                        ruled += " " + std::to_string(spellId);
+                handler->PSendSysMessage("  %u %s | %llu/%llu hp | %.1f yards | rules %u | casting %u%s | at %.1f %.1f%s", creature->GetEntry(),
+                    creature->GetName().c_str(), (unsigned long long)creature->GetHealth(), (unsigned long long)creature->GetMaxHealth(),
+                    creature->GetDistance(puppet), uint32(Mechanics::RulesFor(creature->GetEntry()).size()),
+                    casting ? casting->GetSpellInfo()->Id : 0, ruled.empty() ? "" : (" | auras" + ruled).c_str(), creature->GetPositionX(),
+                    creature->GetPositionY(), creature->IsAlive() ? "" : " | dead");
+            }
+            return true;
+        }
+
         static bool HandleTestGo(ChatHandler* handler, std::string owner, uint32 mapId, float x, float y, float z)
         {
             if (Player* puppet = Puppet(handler, owner))
@@ -1222,6 +1271,7 @@ namespace Companions
             handler->PSendSysMessage("  form %u rage %d, victim %s at %.1f (melee %u), casts: %s", uint32(bot->GetShapeshiftForm()), ai->Rage(),
                 victim ? victim->GetName().c_str() : "-", victim ? bot->GetDistance(victim) : 0.0f, uint32(victim && ai->InMelee(victim)),
                 ai->RecentCasts().c_str());
+            handler->PSendSysMessage("  mechanics: %s", ai->MechanicsLine().c_str());
             return true;
         }
 
@@ -1419,4 +1469,5 @@ void AddCompanionsScripts()
     new Companions::companions_commandscript();
     new Companions::companions_playerscript();
     new Companions::companions_worldscript();
+    Companions::AddScalingScripts();
 }

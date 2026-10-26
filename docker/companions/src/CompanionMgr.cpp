@@ -382,7 +382,7 @@ namespace Companions
             SaveRecord(*record);
         }
 
-        Player* owner = ObjectAccessor::FindPlayer(ownerGuid);
+        Player* owner = ObjectAccessor::FindConnectedPlayer(ownerGuid);    // also while he zones (in no map for a moment)
         if (!owner)
         {
             Dismiss(botGuid, true);
@@ -747,7 +747,9 @@ namespace Companions
             return;
         EnsureSeesWorld(bot);
 
-        Player* owner = ObjectAccessor::FindPlayer(ai->GetOwnerGUID());
+        // connected, not "in world": between two maps (a loading screen into a dungeon) the owner is in no map, and the
+        // bots wait for him instead of leaving
+        Player* owner = ObjectAccessor::FindConnectedPlayer(ai->GetOwnerGUID());
         if (!owner)
         {
             Dismiss(bot->GetGUID(), true);

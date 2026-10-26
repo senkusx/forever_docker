@@ -8,6 +8,7 @@
 #include "CompanionAI.h"
 #include "CompanionCommands.h"
 #include "CompanionConfig.h"
+#include "CompanionMechanics.h"
 #include "CompanionMgr.h"
 #include "Creature.h"
 #include "DatabaseEnv.h"
@@ -632,6 +633,17 @@ namespace Companions::CompanionLLM
                                 ss << ", marked " << IconName(icon);
                     ss << ")\n";
                 }
+
+                // what the bots know of the encounter (CompanionMechanics.cpp): the brain's tactics build on it
+                std::vector<uint32> told;
+                for (Unit* enemy : view.Enemies)
+                    if (Creature* creature = enemy->ToCreature())
+                        if (Mechanics::Encounter const* encounter = Mechanics::EncounterFor(creature->GetEntry()))
+                            if (std::find(told.begin(), told.end(), encounter->Entry) == told.end())
+                            {
+                                told.push_back(encounter->Entry);
+                                ss << "boss tactics, " << encounter->Name << ": " << encounter->Note << "\n";
+                            }
             }
         }
 

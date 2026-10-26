@@ -8,6 +8,7 @@
 #include "CompanionConfig.h"
 #include "CompanionFactory.h"
 #include "CompanionLLM.h"
+#include "CompanionMechanics.h"
 #include "CompanionMgr.h"
 #include "Creature.h"
 #include "GameObject.h"
@@ -363,6 +364,9 @@ namespace Companions
         // floor light up
         if (AvoidGroundEffects())
             return;
+        // boss mechanics: out of a cast, a breath's front, a debuffed friend's way; spread, polarity, cover
+        if (combat && UpdateMechanics())
+            return;
 
         // charging (Charge, Intercept, Feral Charge) or thrown back: any new movement order would fight the effect and stutter
         if (_bot->HasUnitState(UNIT_STATE_CHARGING) || _bot->GetMotionMaster()->GetCurrentMovementGeneratorType() == EFFECT_MOTION_TYPE)
@@ -701,6 +705,9 @@ namespace Companions
         {
             if (!IsValidEnemy(unit, maxDistance))
                 return;
+            // a mind controlled friend is crowd controlled (MechanicSpells), never fought
+            if (unit->GetTypeId() == TYPEID_PLAYER && std::find(_view.Members.begin(), _view.Members.end(), unit) != _view.Members.end())
+                return;
             if (std::find(_view.Enemies.begin(), _view.Enemies.end(), unit) == _view.Enemies.end())
                 _view.Enemies.push_back(unit);
         };
@@ -822,7 +829,7 @@ namespace Companions
                 if (IsValidEnemy(forced, 100.0f))
                     return forced;
 
-        auto usable = [this](Unit* unit) { return unit && IsValidEnemy(unit) && !IsCrowdControlTarget(unit); };
+        auto usable = [this](Unit* unit) { return unit && IsValidEnemy(unit) && !IsCrowdControlTarget(unit) && IsMechanicTarget(unit); };
 
         if (!_protectTarget.IsEmpty())
             for (Unit* enemy : _view.Enemies)
@@ -842,6 +849,10 @@ namespace Companions
                     return marked;
             }
         }
+
+        // the adds a boss fight is won by (healers, totems, larvae...)
+        if (Unit* first = KillFirstTarget())
+            return first;
 
         Unit* pick = nullptr;
         // assist the owner (he leads), else the tank
@@ -992,6 +1003,9 @@ namespace Companions
         if (UpdateDispels())
             return;
 
+        if (MechanicSpells())
+            return;
+
         // a battle resurrection (druid) when nobody is in danger
         if (role == Role::Healer && !InjuredAllies(60.0f, 40.0f))
             for (Player* member : _view.Members)
@@ -1050,7 +1064,24 @@ namespace Companions
                     ++loose;
             if (loose >= 3 && _class->AoeTaunt())
                 return;
-            if (target->GetVictim() && target->GetVictim() != _bot && _class->Taunt(target))
+            // tank swaps (Mortal Wound, marks, Shadow of Ebonroc...): the other tank takes it at the stacks the rule names, and
+            // the one who handed it over does not take it back while the debuff lasts
+            bool handedOver = false;
+            if (Creature* boss = target->ToCreature())
+                for (Mechanics::Rule const* rule : Mechanics::RulesFor(boss->GetEntry()))
+                    if (rule->Type == Mechanics::Kind::TankSwap)
+                    {
+                        Unit* holder = target->GetVictim();
+                        Aura* mine = _bot->GetAura(rule->Spell);
+                        uint32 myStacks = mine ? std::max<uint32>(1, mine->GetStackAmount()) : 0;
+                        if (holder && holder != _bot && IsTank(holder) && myStacks > 0)
+                            handedOver = true;
+                        else if (holder && holder != _bot && IsTank(holder) && myStacks == 0)
+                            if (Aura* theirs = holder->GetAura(rule->Spell))
+                                if (std::max<uint32>(1, theirs->GetStackAmount()) >= std::max<uint32>(1, rule->Value) && _class->Taunt(target))
+                                    return;
+                    }
+            if (!handedOver && target->GetVictim() && target->GetVictim() != _bot && _class->Taunt(target))
                 return;
         }
 
@@ -1155,14 +1186,21 @@ namespace Companions
         if (role == Role::Tank || role == Role::Healer || _bot->GetClass() == CLASS_ROGUE || GameTime::Now() < _ccCheckAt)
             return false;
         _ccCheckAt = GameTime::Now() + Seconds(2);
-        if (_view.Enemies.size() < 3)
+        // adds a boss fight wants controlled (Firesworn banished, Flamewakers sheeped...) count from two
+        auto ruled = [](Unit const* enemy)
+        {
+            Creature const* creature = enemy->ToCreature();
+            return creature && Mechanics::HasRule(creature->GetEntry(), Mechanics::Kind::CrowdControlNpc);
+        };
+        bool const anyRuled = std::any_of(_view.Enemies.begin(), _view.Enemies.end(), ruled);
+        if (_view.Enemies.size() < (anyRuled ? 2u : 3u))
             return false;
 
         // keep two to kill at least; never the kill target, the tank's, a marked one or one half dead
         uint32 controlled = 0;
         for (Unit* enemy : _view.Enemies)
             controlled += IsCrowdControlTarget(enemy) ? 1 : 0;
-        if (_view.Enemies.size() - controlled < 3)
+        if (_view.Enemies.size() - controlled < (anyRuled ? 2u : 3u))
             return false;
         Unit* tankTarget = _view.Tank && _view.Tank != _bot ? _view.Tank->GetVictim() : nullptr;
         Group* group = _bot->GetGroup();
@@ -1177,8 +1215,8 @@ namespace Companions
                     continue;
             if (group && (group->GetTargetIcon(ICON_SKULL) == enemy->GetGUID() || group->GetTargetIcon(ICON_CROSS) == enemy->GetGUID()))
                 continue;
-            // the healthiest one is the one the group would reach last
-            if (!pick || enemy->GetHealthPct() > pick->GetHealthPct())
+            // the ones the fight names first, else the healthiest one, the one the group would reach last
+            if (!pick || (ruled(enemy) && !ruled(pick)) || (ruled(enemy) == ruled(pick) && enemy->GetHealthPct() > pick->GetHealthPct()))
                 pick = enemy;
         }
         if (!pick)
@@ -1231,6 +1269,14 @@ namespace Companions
                     break;
                 }
         }
+        // lava and slime: the floor itself burns
+        if (!danger && InLiquid(_bot->GetPositionX(), _bot->GetPositionY(), _bot->GetPositionZ(), true))
+        {
+            center = _bot->GetPosition();
+            radius = 4.0f;
+            lasts = 3000;
+            danger = true;
+        }
         // ground effects of newer content are area triggers
         if (!danger)
             for (AreaTrigger* trigger : _bot->GetInsideAreaTriggers())
@@ -1267,7 +1313,7 @@ namespace Companions
             float y = center.GetPositionY() + std::sin(away + turn) * out;
             float z = _bot->GetPositionZ();
             _bot->UpdateAllowedPositionZ(x, y, z);
-            if (_bot->IsWithinLOS(x, y, z + 1.5f) && std::fabs(z - _bot->GetPositionZ()) < 6.0f)
+            if (_bot->IsWithinLOS(x, y, z + 1.5f) && std::fabs(z - _bot->GetPositionZ()) < 6.0f && !InLiquid(x, y, z, false))
             {
                 dest.Relocate(x, y, z);
                 break;
@@ -1317,6 +1363,10 @@ namespace Companions
         bool healer = role == Role::Healer;
         if (!_class->CanHeal())
             return false;
+        // Nefarian's priest call and the like: its heals would hurt
+        for (auto const& [spellId, application] : _bot->GetAppliedAuras())
+            if (Mechanics::FindSpellRule(spellId, Mechanics::Kind::NoHealWithAura))
+                return false;
 
         // hybrids in another role only save lives
         float threshold = healer ? (inCombat ? 92.0f : 80.0f) : (inCombat ? 30.0f : 60.0f);
@@ -1386,13 +1436,25 @@ namespace Companions
         uint32 mask = 0;
         for (DispelableAura const& dispelable : list)
             if (Aura* aura = dispelable.GetAura())
-                if (aura->GetSpellInfo()->Dispel < 32)
+                if (aura->GetSpellInfo()->Dispel < 32 && !Mechanics::FindSpellRule(aura->GetId(), Mechanics::Kind::NoDispel))
                     mask |= 1u << aura->GetSpellInfo()->Dispel;
         return mask;
     }
 
     bool CompanionAI::UpdateDispels()
     {
+        // what a boss fight names first (Impending Doom, Living Bomb's friends...)
+        for (Player* member : _view.Members)
+        {
+            if (!member->IsAlive() || _bot->GetDistance(member) > 36.0f)
+                continue;
+            bool urgent = false;
+            for (auto const& [spellId, application] : member->GetAppliedAuras())
+                if (Mechanics::FindSpellRule(spellId, Mechanics::Kind::DispelFirst))
+                    urgent = true;
+            if (urgent && DispellableMask(member) && _class->Dispel(member))
+                return true;
+        }
         for (Player* member : _view.Members)
         {
             if (!member->IsAlive() || _bot->GetDistance(member) > 36.0f)
@@ -1406,6 +1468,19 @@ namespace Companions
     bool CompanionAI::UpdateInterrupts()
     {
         std::vector<Unit*> order = _view.Enemies;
+        // heals, fears and what a boss rule names go first
+        auto priority = [](Unit* unit)
+        {
+            Spell* spell = unit->GetCurrentSpell(CURRENT_GENERIC_SPELL);
+            if (!spell)
+                spell = unit->GetCurrentSpell(CURRENT_CHANNELED_SPELL);
+            if (!spell)
+                return 0;
+            if (Mechanics::FindSpellRule(spell->GetSpellInfo()->Id, Mechanics::Kind::Interrupt))
+                return 2;
+            return Mechanics::IsUrgentInterrupt(spell->GetSpellInfo()) ? 1 : 0;
+        };
+        std::stable_sort(order.begin(), order.end(), [&](Unit* a, Unit* b) { return priority(a) > priority(b); });
         if (!_interruptTarget.IsEmpty())
         {
             if (GameTime::Now() >= _interruptUntil)
@@ -1686,6 +1761,13 @@ namespace Companions
             float dist = _bot->GetDistance(anchor);
             if (_stance == Stance::Stay)
                 return;
+            // a boss mechanic put it where it is: it stays there unless the tank is out of reach
+            if (HoldsForMechanic() && dist < 38.0f)
+            {
+                if (target)
+                    FaceTarget(target);
+                return;
+            }
             if (dist > 30.0f || !_bot->IsWithinLOSInMap(anchor))
             {
                 if (_movement != MoveMode::Follow || _moveTarget != anchor->GetGUID())
@@ -1730,19 +1812,37 @@ namespace Companions
         MotionMaster* motion = _bot->GetMotionMaster();
         bool chasing = motion->GetCurrentMovementGeneratorType() == CHASE_MOTION_TYPE;
 
+        // a boss mechanic is active (a cast to stay out of, spreading, a debuffed friend): no running back in
+        if (HoldsForMechanic() && (melee || _bot->GetDistance(target) <= _class->RangedDistance() + 5.0f))
+        {
+            if (_movement == MoveMode::Chase)
+            {
+                StopMovement();
+                _movement = MoveMode::None;
+            }
+            FaceTarget(target);
+            return;
+        }
+
         if (melee)
         {
             Optional<ChaseAngle> angle;
             if (role == Role::MeleeDps && target->GetVictim() && target->GetVictim() != _bot)
                 angle = ChaseAngle(float(M_PI), float(M_PI_4));
+            // behind or at the flanks of a boss whose front (and tail) hurts
+            if (role == Role::MeleeDps && _mechanicAngle)
+                angle = ChaseAngle(*_mechanicAngle, float(M_PI) / 6.0f);
             float wantMin = 0.0f, wantMax = angle ? 1.0f : 0.0f;
-            if (_movement != MoveMode::Chase || !chasing || _moveTarget != target->GetGUID() || _moveRangeMin != wantMin || _moveRangeMax != wantMax)
+            float wantAngle = _mechanicAngle && role == Role::MeleeDps ? *_mechanicAngle : -1.0f;
+            if (_movement != MoveMode::Chase || !chasing || _moveTarget != target->GetGUID() || _moveRangeMin != wantMin || _moveRangeMax != wantMax
+                || _moveAngle != wantAngle)
             {
                 motion->MoveChase(target, {}, angle);
                 _movement = MoveMode::Chase;
                 _moveTarget = target->GetGUID();
                 _moveRangeMin = wantMin;
                 _moveRangeMax = wantMax;
+                _moveAngle = wantAngle;
             }
             return;
         }
@@ -1751,13 +1851,20 @@ namespace Companions
         // when the mob comes for us, stand and cast: running in circles helps nobody
         // casters and hunters stand well back (out of cleaves and the hunter's dead zone)
         float minRange = (target->GetVictim() == _bot) ? 0.0f : std::min(18.0f, maxRange - 6.0f);
-        if (_movement != MoveMode::Chase || !chasing || _moveTarget != target->GetGUID() || _moveRangeMin != minRange || _moveRangeMax != maxRange)
+        // out of a breath's front: at its side, well back
+        Optional<ChaseAngle> angle;
+        if (_mechanicAngle)
+            angle = ChaseAngle(*_mechanicAngle, float(M_PI) / 4.0f);
+        float wantAngle = _mechanicAngle ? *_mechanicAngle : -1.0f;
+        if (_movement != MoveMode::Chase || !chasing || _moveTarget != target->GetGUID() || _moveRangeMin != minRange || _moveRangeMax != maxRange
+            || _moveAngle != wantAngle)
         {
-            motion->MoveChase(target, ChaseRange(minRange, minRange + 2.0f, std::max(minRange + 3.0f, maxRange - 5.0f), maxRange));
+            motion->MoveChase(target, ChaseRange(minRange, minRange + 2.0f, std::max(minRange + 3.0f, maxRange - 5.0f), maxRange), angle);
             _movement = MoveMode::Chase;
             _moveTarget = target->GetGUID();
             _moveRangeMin = minRange;
             _moveRangeMax = maxRange;
+            _moveAngle = wantAngle;
         }
     }
 

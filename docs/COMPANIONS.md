@@ -94,6 +94,7 @@ Type them in party chat. Start with a bot's name to talk to one bot ("Jaina stay
 | `role tank` / `role heal` / `role dps` / `role auto` | change role (talents and gear follow) |
 | `rest` | eat and drink to full |
 | `cast <spell> [on me / on target]` | cast a spell now ("cast polymorph on target") |
+| `tactics` | the encounter in a sentence or two: your target's, else the boss they fight |
 | `status` | health, mana, role |
 | `gear` | look again for the best gear |
 | `dismiss` | leave |
@@ -107,6 +108,41 @@ do not break it.
 Other commands: `.bot role <name|all> <role>`, `.bot gear [name]`, `.bot talents <name> [respec]`,
 `.bot personality <name> <text>`, `.bot llm on|off [name]`, `.bot delete <name>` (only companions you created;
 your own characters are never deleted), `.bot help`.
+
+## Boss fights
+
+The companions know the scripted encounters of the classic dungeons and raids (Molten Core, Onyxia, Blackwing Lair,
+Zul'Gurub, both Ahn'Qiraj, Naxxramas and the dungeon bosses), with the spell and creature ids of this server's scripts
+(`docker/companions/src/CompanionMechanics.cpp`, 150 rules and 75 boss notes). In a fight they:
+
+- step out of what a boss casts around itself (Inferno, Whirlwind, Locust Swarm, Arcane Explosion...) and out of the band
+  of a line attack (Onyxia's Deep Breath, Impale, Dark Glare);
+- keep out of the front of breaths and cleaves, and out of the tail too where it sweeps (Onyxia, Vaelastrasz, the BWL
+  drakes, Nefarian, Sapphiron): melee stand behind or at a flank, ranged at a side;
+- run away from everyone with debuffs that hurt the others (Living Bomb, Burning Adrenaline, Mutating Injection,
+  Detonate Mana, Conflagration), and the others keep away from whoever has one;
+- spread where hits jump from player to player (C'Thun, Hakkar, Kel'Thuzad, Zeliek...), keep away from void zones,
+  tornadoes, clouds and fissures;
+- kill first the adds a fight is won by (Flamewaker Priests and Healers, Sons of Flame, Jin'do's totems, Larvae, Spawns
+  of Fankriss, Web Wraps, Eye Tentacles...) and leave alone what must not be attacked (Core Ragers, Majordomo, the twin
+  emperor they are immune to; casters stop on Magic Reflection, melee on Damage Shield);
+- interrupt heals, fears and the casts a rule names first (Dark Mending, Great Heal, Holy Fire, Arcane Explosion, Frostbolt);
+  dispel the debuffs a rule names first and leave those that must stay (Hakkar's Poisonous Blood, Wyvern Sting);
+- swap tanks on stacks (Mortal Wound, the Horsemen's marks, Shadow of Ebonroc, Burning Adrenaline);
+- answer fears (priests keep Fear Ward on the tank, shamans drop Tremor Totem, warriors Berserker Rage), Tranquilizing Shot
+  frenzies, purge Deaden Magic and Renew, crowd control mind controlled friends (never kill them), stand still under
+  Mandokir's Threatening Gaze, stop healing under Nefarian's priest call, take their Thaddius charge to its side and hide
+  behind an ice block from Sapphiron's Frost Breath.
+
+Casts nobody wrote a rule for are read from the spell itself: an area around the caster with a cast time is left by all
+but the tank, a boss seen casting a cone is not faced again, heals and crowd control are interrupted first. The brain
+gets each boss's note with its tactical review. Some fights still need a player: Razorgore's orb, Razuvious's
+Understudies (priest mind control), Heigan's dance and Gothik's split are only described to the bots.
+
+**40-player raids for 20**: Onyxia, Molten Core, Blackwing Lair, Temple of Ahn'Qiraj and Naxxramas are tuned for a raid
+of 20: their creatures, adds the scripts summon included, have half their health (`Raid20.Health`, applied when they
+spawn: reset the instance after a change) and deal 80% of their damage to players and pets (`Raid20.Damage`). Zul'Gurub and
+Ruins of Ahn'Qiraj are 20-player raids already. `Raid20.Enable 0` brings the 40-player numbers back.
 
 ## Optional: the AI brain
 
@@ -200,6 +236,9 @@ who loves ale` (or the panel) gives a bot a character. Banter (comments on level
 | `Companions.LLM.TacticsInterval` | 15 | seconds between two tactical reviews of a fight |
 | `Companions.LLM.Banter` | 0 | comments on level ups |
 | `Companions.LLM.MaxAge` | 45 | seconds after which an unanswered line is dropped |
+| `Companions.Raid20.Enable` | 1 | the 40-player raids are tuned for 20 |
+| `Companions.Raid20.Health` | 0.5 | share of their creatures' health (when they spawn) |
+| `Companions.Raid20.Damage` | 0.8 | share of the damage they deal to players and pets |
 
 All of these (but `Enable` and the account) can be changed live in the web panel.
 
@@ -209,7 +248,7 @@ From the worldserver console (`docker compose attach worldserver`) or SOAP, `.bo
 owner: `login <character>`, `party <owner> [role]`, `raid <owner> [size]`, `say <owner> <text>` (a party line), `create <owner> <class> [role]`, `go <owner> <map> <x> <y> <z>`,
 `fight <owner>` (attack the nearest enemy), `pull <owner>` (the tank pulls the nearest one), `spawn <owner> <entry>
 [count]` (enemies in front of the group for 5 minutes), `fire <bot> [spell]` (a hostile ground effect under it), `give <bot>
-<item>` / `equip <bot> <it|name>` (loot decisions), `status <owner>`, `order <owner> <order>`, `why <bot>` (what it sees),
+<item>` / `equip <bot> <it|name>` (loot decisions), `status <owner>`, `near <owner> [yards]` (creatures around, their health and mechanics rules), `order <owner> <order>`, `why <bot>` (what it sees),
 `spells <bot>`, `kill <bot>`, `logout <owner>`. `why <bot>` also shows where it stands around you and its last casts. Administrators only (the permission of `.server shutdown`).
 
 ## Good to know
@@ -220,10 +259,13 @@ owner: `login <character>`, `party <owner> [role]`, `raid <owner> [size]`, `say 
 - Loot: with group loot a companion rolls **Need** only on a clear upgrade it can use (at least 5% better than what it
   wears in that slot) and puts it on; it passes on everything else, the greed rolls are yours. With master loot it keeps
   what you give it in its bags until you say `equip it`. Gear it looted or was given is kept when it regears.
-- Raid loot: `docker/sql/world/2026_10_25_90_world_companions_vanilla_loot.sql` adds the vanilla loot Forever's tables
-  lack in Molten Core, Blackwing Lair, Zul'Gurub and both Ahn'Qiraj raids (the Qiraji idols and ring, the enchanting
-  formulas, world drops...), from TrinityCore's 3.3.5 database where those raids are unchanged, only with items the
-  Forever client knows and never replacing Forever's own loot. The worldserver's updater applies it.
+- Dungeon and raid loot: `docker/sql/world/2026_10_25_90_world_companions_vanilla_loot.sql` adds the vanilla loot
+  Forever's tables lack, for 302 creatures of the classic dungeons (Ragefire Chasm to Dire Maul, Scholomance, Stratholme)
+  and of Molten Core, Blackwing Lair, Zul'Gurub, both Ahn'Qiraj raids and Lord Kazzak (boss drops, recipes, the Qiraji idols, world
+  drops of the level range...) and for the dungeon chests that lack items, from TrinityCore's 3.3.5 database where these
+  places are unchanged. Only items the Forever client knows, never replacing Forever's own loot, each item on the creature
+  that drops it. Onyxia and Naxxramas are left out (remade at level 80 in that database); the Forever dungeons (Ruins of
+  Lordaeron, Hall of Thanes) already have their own boss loot. The worldserver's updater applies it.
 - The companions you create live on the account `COMPANIONS` (nobody can log into it).
 - How it works: a small core patch (`docker/patches/0005-companions-core-hooks.patch`) lets a session without a
   client exist (`WorldSession::IsBot`), gives each bot a per-update hook and exposes the login loader. The module

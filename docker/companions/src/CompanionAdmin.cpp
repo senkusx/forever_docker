@@ -10,6 +10,7 @@
 #include "CompanionCommands.h"
 #include "CompanionConfig.h"
 #include "CompanionFactory.h"
+#include "CompanionMechanics.h"
 #include "CompanionMgr.h"
 #include "DatabaseEnv.h"
 #include "DB2Stores.h"
@@ -509,6 +510,23 @@ namespace Companions
         return true;
     }
 
+    // .bot admin mechanics [entry]: COMP|MECH|rules|encounters, then a creature's rules and note
+    static bool HandleMechanics(ChatHandler* handler, Optional<uint32> entry)
+    {
+        handler->SendSysMessage("COMP|MECH|" + std::to_string(Mechanics::RuleCount()) + "|" + std::to_string(Mechanics::EncounterCount()));
+        if (!entry)
+            return true;
+        for (Mechanics::Rule const* rule : Mechanics::RulesFor(*entry))
+        {
+            std::ostringstream ss;
+            ss << "COMP|MECHRULE|" << uint32(rule->Type) << "|" << rule->Spell << "|" << rule->Radius << "|" << rule->Value << "|" << uint32(rule->Roles);
+            handler->SendSysMessage(ss.str());
+        }
+        if (Mechanics::Encounter const* encounter = Mechanics::EncounterFor(*entry))
+            handler->SendSysMessage(std::string("COMP|MECHNOTE|") + encounter->Name + "|" + encounter->Note);
+        return true;
+    }
+
     // .bot admin config list: COMP|SET|key|value|type|min|max|stored
     static bool HandleConfigList(ChatHandler* handler)
     {
@@ -568,6 +586,7 @@ namespace Companions
             { "config",     configTable },
             { "builds",     HandleBuilds,     PERM_ADMIN, Console::Yes },
             { "items",      HandleItems,      PERM_ADMIN, Console::Yes },
+            { "mechanics",  HandleMechanics,  PERM_ADMIN, Console::Yes },
         };
         return table;
     }

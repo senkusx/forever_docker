@@ -156,6 +156,7 @@ namespace Companions
         bool IsAssignedCrowdControl(Unit const* unit) const;
         bool AttackedByGroup(Unit const* unit) const;
         std::string RecentCasts() const;    // test harness: what it did lately
+        std::string MechanicsLine() const;  // test harness: the boss mechanics it follows right now
 
         // ---- helpers for ClassAI ----
         uint32 SpellIdOf(std::string_view name) const { return _spells.Best(name); }
@@ -233,7 +234,15 @@ namespace Companions
         void FormationSlot(bool travelling, float& angle, float& halfWidth, float& minDist, float& maxDist) const;
         bool FollowPullingTank();
         bool AvoidGroundEffects();      // out of fire, poison clouds and other hostile ground effects
+        // boss mechanics (CompanionMechanics.h): out of casts, debuffs, fronts and lines; spreading, polarity, hiding
+        bool UpdateMechanics();
+        bool MechanicSpells();                          // Fear Ward, Tranquilizing Shot, Purge, crowd control the mind controlled
+        bool IsMechanicTarget(Unit const* unit) const;  // false: a rule says this bot leaves it alone (immune, reflecting...)
+        Unit* KillFirstTarget() const;
+        bool HoldsForMechanic() const { return GameTime::Now() < _mechanicHold; }
+        uint8 RoleBit() const;
         bool InDangerZone(Position const& pos, float margin) const;
+        bool InLiquid(float x, float y, float z, bool harmfulOnly) const;   // lava and slime (or any liquid) at that spot
         void HandleLoot();              // roll Need on upgrades, Pass on the rest; put on what it won
         Item* ScanBags();
         bool AutoCrowdControl(Unit* killTarget);   // a pack: control one add, like a mage sheeps without being asked
@@ -261,6 +270,7 @@ namespace Companions
         ObjectGuid _moveTarget;
         float _moveRangeMin = 0.0f;
         float _moveRangeMax = 0.0f;
+        float _moveAngle = -1.0f;       // chase angle asked for (-1: none)
         Position _stayPosition;
 
         ObjectGuid _forcedTarget;       // ordered "attack"/"pull"
@@ -310,6 +320,13 @@ namespace Companions
         TimePoint _avoidUntil = { };
         struct DangerZone { Position Center; float Radius; TimePoint Until; };
         std::vector<DangerZone> _dangerZones;   // ground effects it stepped out of, while they last
+        TimePoint _mechanicHold = { };  // a mechanic is active: no chasing into it
+        TimePoint _mechanicMoveUntil = { };
+        TimePoint _mechanicScanAt = { };
+        Optional<float> _mechanicAngle; // chase angle around the target a mechanic asks for (behind, flanks)
+        std::vector<ObjectGuid> _hazards;   // creatures to keep away from (void zones, tornadoes, clouds)
+        TimePoint _fearWardAt = { };
+        std::string _mechanicDebug;     // test harness: why the last search found no spot
         uint32 _ccCasts = 0;            // casts on the current assignment: two that do not hold and it gives up
         float _formationSide = 1.0f;    // melee: left or right of the owner
         std::deque<std::pair<TimePoint, std::string>> _recentCasts;

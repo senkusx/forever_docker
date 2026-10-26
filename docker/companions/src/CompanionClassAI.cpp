@@ -16,6 +16,7 @@
 #include "SpellInfo.h"
 #include "SpellMgr.h"
 #include <algorithm>
+#include <span>
 
 namespace Companions
 {
@@ -739,9 +740,11 @@ namespace Companions
             Item* weapon = _ai.MainHand();
             if (!weapon || weapon->GetEnchantmentId(TEMP_ENCHANTMENT_SLOT))
                 return false;
-            std::initializer_list<std::string_view> imbues = MyRole() == Role::MeleeDps
-                ? std::initializer_list<std::string_view>{ "windfury weapon", "flametongue weapon", "rockbiter weapon" }
-                : std::initializer_list<std::string_view>{ "flametongue weapon", "rockbiter weapon" };
+            // plain arrays: a list chosen by ?: would point at a temporary that is gone by the loop
+            static constexpr std::string_view MeleeImbues[] = { "windfury weapon", "flametongue weapon", "rockbiter weapon" };
+            static constexpr std::string_view CasterImbues[] = { "flametongue weapon", "rockbiter weapon" };
+            std::span<std::string_view const> imbues = MyRole() == Role::MeleeDps ? std::span<std::string_view const>(MeleeImbues)
+                                                                                  : std::span<std::string_view const>(CasterImbues);
             for (std::string_view imbue : imbues)
             {
                 uint32 spellId = _ai.SpellIdOf(imbue);

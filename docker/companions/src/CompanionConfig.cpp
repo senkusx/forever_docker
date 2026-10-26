@@ -62,6 +62,9 @@ namespace Companions
                 { "LLM.MaxAge",        'i', 10, 300, [](Config& c) -> void* { return &c.LLMMaxAge; } },
                 { "LLM.Tactics",       'b', 0, 1,   [](Config& c) -> void* { return &c.LLMTactics; } },
                 { "LLM.TacticsInterval", 'i', 5, 60, [](Config& c) -> void* { return &c.LLMTacticsInterval; } },
+                { "Raid20.Enable",     'b', 0, 1,   [](Config& c) -> void* { return &c.Raid20Enable; } },
+                { "Raid20.Health",     'f', 0.1f, 1, [](Config& c) -> void* { return &c.Raid20Health; } },
+                { "Raid20.Damage",     'f', 0.1f, 1, [](Config& c) -> void* { return &c.Raid20Damage; } },
             };
             return settings;
         }
@@ -157,6 +160,9 @@ namespace Companions
         c.LLMMaxAge       = std::clamp<uint32>(sConfigMgr->GetIntDefault("Companions.LLM.MaxAge", 45, true), 10, 300);
         c.LLMTactics      = sConfigMgr->GetBoolDefault("Companions.LLM.Tactics", true, true);
         c.LLMTacticsInterval = std::clamp<uint32>(sConfigMgr->GetIntDefault("Companions.LLM.TacticsInterval", 15, true), 5, 60);
+        c.Raid20Enable    = sConfigMgr->GetBoolDefault("Companions.Raid20.Enable", true, true);
+        c.Raid20Health    = std::clamp(sConfigMgr->GetFloatDefault("Companions.Raid20.Health", 0.5f, true), 0.1f, 1.0f);
+        c.Raid20Damage    = std::clamp(sConfigMgr->GetFloatDefault("Companions.Raid20.Damage", 0.8f, true), 0.1f, 1.0f);
 
         // what the web panel saved wins over the file
         for (auto const& [key, value] : _stored)

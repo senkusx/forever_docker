@@ -152,6 +152,9 @@ def build_request(event, memory):
                 "- a healer or caster enemy casting: interrupt E# by a companion that has an interrupt\n"
                 "- an enemy hitting a healer or caster: taunt E# for the tank\n"
                 "- a boss or a hard fight: burst for the damage dealers\n"
+                "- a \"boss tactics\" line: what the encounter needs (the companions already step out of casts, keep out of breaths, "
+                "run with debuffs, kill the named adds first and swap tanks on their own); order what it adds, like the kill order "
+                "of its adds, crowd control or interrupts\n"
                 "At most one short line in total, in the words of the companion who calls it (naming the enemies, not their numbers), "
                 "everyone else with an empty say. Never change roles in a fight. Companions and what they can do:\n" + team)
     elif kind == "test":

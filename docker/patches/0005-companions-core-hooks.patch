@@ -1,3 +1,66 @@
+diff --git a/src/server/game/Entities/Creature/Creature.cpp b/src/server/game/Entities/Creature/Creature.cpp
+index d8dd964..1cf5c83 100644
+--- a/src/server/game/Entities/Creature/Creature.cpp
++++ b/src/server/game/Entities/Creature/Creature.cpp
+@@ -1622,6 +1622,13 @@ void Creature::SelectLevel()
+     UpdateLevelDependantStats();
+ }
+ 
++float (*CreatureScaleHooks::HealthScale)(Creature const* creature) = nullptr;
++
++float Creature::HealthScale() const
++{
++    return CreatureScaleHooks::HealthScale && !IsPet() ? CreatureScaleHooks::HealthScale(this) : 1.0f;
++}
++
+ void Creature::UpdateLevelDependantStats()
+ {
+     CreatureTemplate const* cInfo = GetCreatureTemplate();
+@@ -1637,7 +1644,7 @@ void Creature::UpdateLevelDependantStats()
+         ClassicCreatureClassLevelStats const* classicBase = classicStats ? sObjectMgr->GetCreatureClassicClassLevelStats(level, cInfo->unit_class) : nullptr;
+         if (classicBase)
+         {
+-            uint32 health = std::max(1u, uint32(std::round(GetHealthMod(classification) * classicBase->Health * classicStats->HealthMultiplier)));
++            uint32 health = std::max(1u, uint32(std::round(GetHealthMod(classification) * classicBase->Health * classicStats->HealthMultiplier * HealthScale())));
+             SetCreateHealth(health);
+             SetMaxHealth(health);
+             SetHealth(health);
+@@ -1675,7 +1682,7 @@ void Creature::UpdateLevelDependantStats()
+     float healthmod = GetHealthMod(classification);
+ 
+     uint32 basehp = GetMaxHealthByLevel(level);
+-    uint32 health = uint32(basehp * healthmod);
++    uint32 health = std::max(1u, uint32(basehp * healthmod * HealthScale()));
+ 
+     SetCreateHealth(health);
+     SetMaxHealth(health);
+diff --git a/src/server/game/Entities/Creature/Creature.h b/src/server/game/Entities/Creature/Creature.h
+index 97391a1..303d103 100644
+--- a/src/server/game/Entities/Creature/Creature.h
++++ b/src/server/game/Entities/Creature/Creature.h
+@@ -78,6 +78,14 @@ static constexpr size_t CREATURE_TAPPERS_SOFT_CAP = 5;
+ typedef std::vector<uint8> CreatureTextRepeatIds;
+ typedef std::unordered_map<uint8, CreatureTextRepeatIds> CreatureTextRepeatGroup;
+ 
++// Companions: set by the bot module; scales the health of a creature when its stats are computed (e.g. 40-player raids tuned
++// for 20). Null or 1 leaves it unchanged.
++class Creature;
++struct TC_GAME_API CreatureScaleHooks
++{
++    static float (*HealthScale)(Creature const* creature);
++};
++
+ class TC_GAME_API Creature : public Unit, public GridObject<Creature>, public MapObject
+ {
+     public:
+@@ -103,6 +111,7 @@ class TC_GAME_API Creature : public Unit, public GridObject<Creature>, public Ma
+         void LoadCreaturesSparringHealth(bool force = false);
+         void SelectLevel();
+         void UpdateLevelDependantStats();
++        float HealthScale() const;                          // companions: CreatureScaleHooks
+         void SelectWildBattlePetLevel();
+         void LoadEquipment(int8 id = 1, bool force = false);
+         void SetSpawnHealth();
 diff --git a/src/server/game/Entities/Player/Player.cpp b/src/server/game/Entities/Player/Player.cpp
 index 78d59ec..ae7e013 100644
 --- a/src/server/game/Entities/Player/Player.cpp
@@ -262,6 +325,83 @@ index 829ffd1..b1452fd 100644
  
      WorldObject* target = m_targets.GetObjectTarget();
  
+diff --git a/src/server/scripts/Custom/Classic/instances/blackwing_lair/classic_boss_razorgore.cpp b/src/server/scripts/Custom/Classic/instances/blackwing_lair/classic_boss_razorgore.cpp
+index 06bf2aa..81324e0 100644
+--- a/src/server/scripts/Custom/Classic/instances/blackwing_lair/classic_boss_razorgore.cpp
++++ b/src/server/scripts/Custom/Classic/instances/blackwing_lair/classic_boss_razorgore.cpp
+@@ -563,7 +563,7 @@ struct classic_trigger_orb_of_command : public ScriptedAI
+                         // TC: the charm handling already stops Razorgore's own movement and swaps the AI.
+                     }
+ 
+-                    pRazorgore->SetMaxHealth(225000);
++                    pRazorgore->SetMaxHealth(uint32(225000 * pRazorgore->HealthScale()));
+ 
+                     if (Unit* pChanneler = ObjectAccessor::GetUnit(*me, m_uiPossesseurGuid))
+                     {
+@@ -589,8 +589,8 @@ struct classic_trigger_orb_of_command : public ScriptedAI
+                 }
+                 else if (!pRazorgore->HasAura(CLASSIC_BWL_SPELL_POSSESS) && !m_uiPossesseurGuid.IsEmpty()) // Possess finished
+                 {
+-                    if (pRazorgore->GetMaxHealth() != CLASSIC_BWL_RAZORGORE_MAX_HEALTH_DURING_POSESSION)
+-                        pRazorgore->SetMaxHealth(CLASSIC_BWL_RAZORGORE_MAX_HEALTH_DURING_POSESSION);
++                    if (pRazorgore->GetMaxHealth() != uint32(CLASSIC_BWL_RAZORGORE_MAX_HEALTH_DURING_POSESSION * pRazorgore->HealthScale()))
++                        pRazorgore->SetMaxHealth(uint32(CLASSIC_BWL_RAZORGORE_MAX_HEALTH_DURING_POSESSION * pRazorgore->HealthScale()));
+ 
+                     pRazorgore->GetMotionMaster()->Initialize();
+                     ClassicBwlRazSetChannel(me, ObjectGuid::Empty, 0);
+diff --git a/src/server/scripts/Custom/Classic/instances/blackwing_lair/classic_instance_blackwing_lair.cpp b/src/server/scripts/Custom/Classic/instances/blackwing_lair/classic_instance_blackwing_lair.cpp
+index 4769fda..7f614c4 100644
+--- a/src/server/scripts/Custom/Classic/instances/blackwing_lair/classic_instance_blackwing_lair.cpp
++++ b/src/server/scripts/Custom/Classic/instances/blackwing_lair/classic_instance_blackwing_lair.cpp
+@@ -864,8 +864,9 @@ struct classic_go_oeuf_raz : public GameObjectAI
+                 if (pInstance->GetData(CLASSIC_BWL_DATA_EGG) == DONE)
+                 {
+                     pUser->RemoveAllAuras();
+-                    if (pUser->GetMaxHealth() != CLASSIC_BWL_RAZORGORE_MAX_HEALTH_DURING_POSESSION)
+-                        pUser->SetMaxHealth(CLASSIC_BWL_RAZORGORE_MAX_HEALTH_DURING_POSESSION);
++                    uint32 const maxHealth = uint32(CLASSIC_BWL_RAZORGORE_MAX_HEALTH_DURING_POSESSION * pUser->ToCreature()->HealthScale());
++                    if (pUser->GetMaxHealth() != maxHealth)
++                        pUser->SetMaxHealth(maxHealth);
+                     pUser->CastSpell(pUser, CLASSIC_BWL_SPELL_WARMING_FLAMES, true);
+                 }
+             }
+diff --git a/src/server/scripts/Custom/Classic/instances/naxxramas/classic_boss_kelthuzad.cpp b/src/server/scripts/Custom/Classic/instances/naxxramas/classic_boss_kelthuzad.cpp
+index 57e65b5..b4ce4a5 100644
+--- a/src/server/scripts/Custom/Classic/instances/naxxramas/classic_boss_kelthuzad.cpp
++++ b/src/server/scripts/Custom/Classic/instances/naxxramas/classic_boss_kelthuzad.cpp
+@@ -941,8 +941,8 @@ struct classic_unstoppable_abomination_ai : public classic_kt_p1AddAI
+     void Reset() override
+     {
+         mortalWoundTimer = 7500;
+-        me->SetMaxHealth(90000);
+-        me->SetHealth(90000);
++        me->SetMaxHealth(uint32(90000 * me->HealthScale()));
++        me->SetFullHealth();
+     }
+ 
+     void UpdateAI(uint32 diff) override
+@@ -970,8 +970,8 @@ struct classic_soldier_frozen_wastes_ai : public classic_kt_p1AddAI
+ 
+     void Reset() override
+     {
+-        me->SetMaxHealth(2000);
+-        me->SetHealth(2000);
++        me->SetMaxHealth(uint32(2000 * me->HealthScale()));
++        me->SetFullHealth();
+     }
+ 
+     void UpdateAI(uint32 /*diff*/) override
+@@ -1003,8 +1003,8 @@ struct classic_soul_weaver_ai : public classic_kt_p1AddAI
+     void Reset() override
+     {
+         hasHitSomeone = false;
+-        me->SetMaxHealth(70000);
+-        me->SetHealth(70000);
++        me->SetMaxHealth(uint32(70000 * me->HealthScale()));
++        me->SetFullHealth();
+     }
+ 
+     void UpdateAI(uint32 /*diff*/) override
 diff --git a/src/server/scripts/Custom/custom_script_loader.cpp b/src/server/scripts/Custom/custom_script_loader.cpp
 index 977f5fd..63baa90 100644
 --- a/src/server/scripts/Custom/custom_script_loader.cpp

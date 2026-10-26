@@ -45,6 +45,10 @@ namespace Companions
         uint32 LLMMaxAge = 45;              // seconds after which an unanswered line is dropped
         bool LLMTactics = true;             // in fights the brain assigns kill order, crowd control, interrupts, cooldowns
         uint32 LLMTacticsInterval = 15;     // seconds between two tactical reviews of the same fight
+
+        bool Raid20Enable = true;           // the 40-player raids are tuned for 20 (see CompanionScaling.h)
+        float Raid20Health = 0.5f;          // share of their creatures' health (applies when they spawn)
+        float Raid20Damage = 0.8f;          // share of the damage they deal to players and pets
     };
 
     // one setting the web panel can read and change
