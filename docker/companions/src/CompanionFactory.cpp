@@ -1337,6 +1337,8 @@ namespace Companions
         uint32 maxQuality = GetConfig().GearMaxQuality;
         if (BotRecord const* record = sCompanionMgr->GetRecord(bot->GetGUID()); record && record->GearQuality)
             maxQuality = record->GearQuality;
+        else if (CompanionAI const* ai = sCompanionMgr->GetAI(bot); ai && ai->IsAmbient())
+            maxQuality = GetConfig().AmbientGearQuality;     // the world's own adventurers: mostly greens
         for (uint32 invType : invTypes)
         {
             auto itr = _gearByInvType.find(invType);

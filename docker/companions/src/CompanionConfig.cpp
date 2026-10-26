@@ -65,6 +65,13 @@ namespace Companions
                 { "Raid20.Enable",     'b', 0, 1,   [](Config& c) -> void* { return &c.Raid20Enable; } },
                 { "Raid20.Health",     'f', 0.1f, 1, [](Config& c) -> void* { return &c.Raid20Health; } },
                 { "Raid20.Damage",     'f', 0.1f, 1, [](Config& c) -> void* { return &c.Raid20Damage; } },
+                { "Ambient.Enable",    'b', 0, 1,   [](Config& c) -> void* { return &c.AmbientEnable; } },
+                { "Ambient.Density",   'i', 0, 30,  [](Config& c) -> void* { return &c.AmbientDensity; } },
+                { "Ambient.CityDensity", 'i', 0, 40, [](Config& c) -> void* { return &c.AmbientCityDensity; } },
+                { "Ambient.MaxTotal",  'i', 0, 300, [](Config& c) -> void* { return &c.AmbientMaxTotal; } },
+                { "Ambient.Radius",    'f', 60, 300, [](Config& c) -> void* { return &c.AmbientRadius; } },
+                { "Ambient.PoolSize",  'i', 20, 1000, [](Config& c) -> void* { return &c.AmbientPoolSize; } },
+                { "Ambient.GearQuality", 'i', 1, 4, [](Config& c) -> void* { return &c.AmbientGearQuality; } },
             };
             return settings;
         }
@@ -163,6 +170,13 @@ namespace Companions
         c.Raid20Enable    = sConfigMgr->GetBoolDefault("Companions.Raid20.Enable", true, true);
         c.Raid20Health    = std::clamp(sConfigMgr->GetFloatDefault("Companions.Raid20.Health", 0.5f, true), 0.1f, 1.0f);
         c.Raid20Damage    = std::clamp(sConfigMgr->GetFloatDefault("Companions.Raid20.Damage", 0.8f, true), 0.1f, 1.0f);
+        c.AmbientEnable   = sConfigMgr->GetBoolDefault("Companions.Ambient.Enable", true, true);
+        c.AmbientDensity  = std::clamp<uint32>(sConfigMgr->GetIntDefault("Companions.Ambient.Density", 6, true), 0, 30);
+        c.AmbientCityDensity = std::clamp<uint32>(sConfigMgr->GetIntDefault("Companions.Ambient.CityDensity", 12, true), 0, 40);
+        c.AmbientMaxTotal = std::clamp<uint32>(sConfigMgr->GetIntDefault("Companions.Ambient.MaxTotal", 60, true), 0, 300);
+        c.AmbientRadius   = std::clamp(sConfigMgr->GetFloatDefault("Companions.Ambient.Radius", 150.0f, true), 60.0f, 300.0f);
+        c.AmbientPoolSize = std::clamp<uint32>(sConfigMgr->GetIntDefault("Companions.Ambient.PoolSize", 200, true), 20, 1000);
+        c.AmbientGearQuality = std::clamp<uint32>(sConfigMgr->GetIntDefault("Companions.Ambient.GearQuality", 2, true), 1, 4);
 
         // what the web panel saved wins over the file
         for (auto const& [key, value] : _stored)

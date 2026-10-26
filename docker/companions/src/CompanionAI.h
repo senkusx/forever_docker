@@ -204,6 +204,14 @@ namespace Companions
         void Say(std::string const& text);  // party chat (or say when alone)
 
         void OnOwnerTeleported() { _movement = MoveMode::None; }
+
+        // ambient bots (CompanionAmbient.h): no owner, they live their own life around home (grinding, questing, the
+        // auction house...); invited to a group they become a companion of whoever invited them
+        void SetAmbient(Position const& home, bool city);
+        bool IsAmbient() const { return _ambient; }
+        bool IsAmbientCity() const { return _ambientCity; }
+        void BecomeCompanion(ObjectGuid owner);
+        std::string AmbientLine() const;    // test harness: what it is doing
         void OnRevived();
 
     private:
@@ -251,6 +259,10 @@ namespace Companions
         void DisengageAll();
         bool EnsureReagents(SpellInfo const* info);
         bool NeedsRest() const;
+        void UpdateAmbient();
+        bool AmbientGrind();
+        bool AmbientVisit();
+        bool AmbientWander(float range);
 
         Player* _bot;
         ObjectGuid _owner;
@@ -327,6 +339,17 @@ namespace Companions
         std::vector<ObjectGuid> _hazards;   // creatures to keep away from (void zones, tornadoes, clouds)
         TimePoint _fearWardAt = { };
         std::string _mechanicDebug;     // test harness: why the last search found no spot
+        // ambient life
+        enum class Activity : uint8 { None, Grind, Visit, Wander, Sit };
+        bool _ambient = false;
+        bool _ambientCity = false;
+        Position _ambientHome;
+        Activity _activity = Activity::None;
+        TimePoint _activityUntil = { };
+        bool _activityArrived = false;
+        Position _activitySpot;
+        ObjectGuid _activityTarget;
+        uint32 _activityDwell = 0;      // ms to stay once there
         uint32 _ccCasts = 0;            // casts on the current assignment: two that do not hold and it gives up
         float _formationSide = 1.0f;    // melee: left or right of the owner
         std::deque<std::pair<TimePoint, std::string>> _recentCasts;

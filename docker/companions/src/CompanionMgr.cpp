@@ -6,6 +6,7 @@
 #include "AccountMgr.h"
 #include "CharacterCache.h"
 #include "CompanionAI.h"
+#include "CompanionAmbient.h"
 #include "CompanionConfig.h"
 #include "CompanionFactory.h"
 #include "CompanionLLM.h"
@@ -51,6 +52,7 @@ namespace Companions
         LoadRecords();
         sCompanionFactory->Initialize();
         CompanionLLM::Initialize();
+        sCompanionAmbient->Initialize();
         TC_LOG_INFO("server.worldserver", "Companions: {} bots known, companion account {}", _records.size(), _botAccountId);
     }
 
@@ -307,7 +309,7 @@ namespace Companions
             error = "You already have the maximum number of companions (" + std::to_string(config.MaxPerPlayer) + ").";
             return false;
         }
-        if (_ais.size() + _pendingLogins.size() >= config.MaxTotal)
+        if (CountAll() >= config.MaxTotal)
         {
             error = "The server has reached its companion limit (" + std::to_string(config.MaxTotal) + " in the game).";
             return false;
@@ -352,6 +354,152 @@ namespace Companions
             pendingSession->HandlePlayerLogin(static_cast<LoginQueryHolder const&>(result));
             FinishLogin(pendingSession, botGuid, ownerGuid);
         });
+        return true;
+    }
+
+    uint32 CompanionMgr::CountAll() const
+    {
+        return uint32(_ais.size() + _pendingLogins.size()) - CountAmbient();
+    }
+
+    uint32 CompanionMgr::CountAmbient() const
+    {
+        uint32 count = 0;
+        for (auto const& [guid, ai] : _ais)
+            count += ai->IsAmbient() ? 1 : 0;
+        for (auto const& [guid, pending] : _pendingLogins)
+            count += pending.Ambient ? 1 : 0;
+        return count;
+    }
+
+    std::vector<Player*> CompanionMgr::GetPuppets() const
+    {
+        std::vector<Player*> puppets;
+        for (auto const& [guid, session] : _puppets)
+            if (Player* puppet = session->GetPlayer())
+                puppets.push_back(puppet);
+        return puppets;
+    }
+
+    bool CompanionMgr::LoginAmbient(ObjectGuid botGuid, WorldLocation const& where, uint32 zoneId, uint8 level, bool city)
+    {
+        if (_shuttingDown || IsBotGuid(botGuid) || IsLoggingIn(botGuid) || ObjectAccessor::FindConnectedPlayer(botGuid))
+            return false;
+        CharacterCacheEntry const* cache = sCharacterCache->GetCharacterCacheByGuid(botGuid);
+        if (!cache || cache->IsDeleted)
+            return false;
+
+        // it logs in where it is wanted (no far teleport after the login): written before the login loads the character
+        CharacterDatabase.DirectExecute(Trinity::StringFormat("UPDATE characters SET map = {}, instance_id = 0, position_x = {}, position_y = {}, "
+            "position_z = {}, orientation = {}, zone = {}, transguid = 0, trans_x = 0, trans_y = 0, trans_z = 0, trans_o = 0 WHERE guid = {}",
+            where.GetMapId(), where.GetPositionX(), where.GetPositionY(), where.GetPositionZ(), where.GetOrientation(), zoneId,
+            botGuid.GetCounter()).c_str());
+
+        WorldSession* session = CreateBotSession(cache->AccountId, nullptr);
+        std::shared_ptr<LoginQueryHolder> holder = std::make_shared<LoginQueryHolder>(cache->AccountId, botGuid);
+        if (!holder->Initialize())
+        {
+            delete session;
+            return false;
+        }
+        _pendingLogins[botGuid] = { session, ObjectGuid::Empty, true };
+        Position home = where.GetPosition();
+        _loginCallbacks.AddCallback(CharacterDatabase.DelayQueryHolder(holder)).AfterComplete([this, botGuid, home, level, city](SQLQueryHolderBase const& result)
+        {
+            auto itr = _pendingLogins.find(botGuid);
+            if (itr == _pendingLogins.end())
+                return;
+            WorldSession* pendingSession = itr->second.Session;
+            _pendingLogins.erase(itr);
+            if (_shuttingDown)
+            {
+                delete pendingSession;
+                return;
+            }
+            pendingSession->HandlePlayerLogin(static_cast<LoginQueryHolder const&>(result));
+            FinishAmbientLogin(pendingSession, botGuid, home, level, city);
+        });
+        return true;
+    }
+
+    void CompanionMgr::FinishAmbientLogin(WorldSession* session, ObjectGuid botGuid, Position const& home, uint8 level, bool city)
+    {
+        Player* bot = session->GetPlayer();
+        if (!bot)
+        {
+            TC_LOG_ERROR("server.worldserver", "Companions: ambient login of {} failed", botGuid.ToString());
+            delete session;
+            return;
+        }
+        EnsureSeesWorld(bot);
+        _sessions[botGuid] = session;
+        auto ai = std::make_unique<CompanionAI>(bot, ObjectGuid::Empty, DpsRoleForClass(bot->GetClass()));
+        ai->SetAmbient(home, city);
+        _ais[botGuid] = std::move(ai);
+        // left the world dead last time: back on its feet
+        if (!bot->IsAlive())
+        {
+            bot->ResurrectPlayer(1.0f);
+            bot->SpawnCorpseBones();
+        }
+        sCompanionFactory->Prepare(bot, level, DpsRoleForClass(bot->GetClass()), true);
+        bot->SetPassOnGroupLoot(true);
+        TC_LOG_DEBUG("server.worldserver", "Companions: ambient {} (level {}) in zone {}", bot->GetName(), uint32(bot->GetLevel()), bot->GetZoneId());
+    }
+
+    void CompanionMgr::UpdateAmbientBot(Player* bot, CompanionAI* ai)
+    {
+        // invited to a group: it joins whoever invited it, as a companion of theirs
+        Group* invite = bot->GetGroupInvite();
+        if (!invite)
+            return;
+        Player* inviter = ObjectAccessor::FindConnectedPlayer(invite->GetLeaderGUID());
+        std::string why;
+        if (inviter && !IsBotGuid(inviter->GetGUID()) && AdoptAmbient(bot, ai, inviter, why))
+        {
+            WorldPackets::Party::PartyInviteResponse response{ WorldPacket(CMSG_PARTY_INVITE_RESPONSE) };
+            response.Accept = true;
+            bot->GetSession()->HandlePartyInviteResponseOpcode(response);
+            ai->Say("Sure, count me in!");
+            return;
+        }
+        bot->UninviteFromGroup();
+        if (inviter && !why.empty())
+            bot->Whisper(why, LANG_UNIVERSAL, inviter);
+    }
+
+    bool CompanionMgr::AdoptAmbient(Player* bot, CompanionAI* ai, Player* inviter, std::string& why)
+    {
+        Config const& config = GetConfig();
+        if (!config.Enable)
+            return false;
+        if (bot->GetTeam() != inviter->GetTeam())
+            return false;
+        if (CountBotsOf(inviter->GetGUID()) >= config.MaxPerPlayer)
+        {
+            why = "Thanks, but you already have enough companions with you.";
+            return false;
+        }
+        if (CountAll() >= config.MaxTotal)
+        {
+            why = "Sorry, not right now.";
+            return false;
+        }
+        BotRecord record;
+        record.Guid = bot->GetGUID();
+        record.Owner = inviter->GetGUID();
+        record.Created = true;
+        record.Active = true;
+        record.UseLLM = config.LLMDefaultOn;
+        AddRecord(record);
+        ai->BecomeCompanion(inviter->GetGUID());
+        sCompanionAmbient->Forget(bot->GetGUID());
+        // a companion keeps up with its owner from now on, gear of a companion included
+        if (config.SyncLevel && inviter->GetLevel() > bot->GetLevel())
+            QueuePrepare(bot->GetGUID(), inviter->GetLevel(), config.AutoGear);
+        else if (config.AutoGear)
+            QueuePrepare(bot->GetGUID(), 0, true);
+        TC_LOG_INFO("server.worldserver", "Companions: {} (ambient) joined {} as a companion", bot->GetName(), inviter->GetName());
         return true;
     }
 
@@ -658,6 +806,7 @@ namespace Companions
         }
 
         ProcessLogouts();
+        sCompanionAmbient->Update(diff);
 
         std::vector<PendingPrepare> prepares;
         prepares.swap(_prepareQueue);
@@ -746,6 +895,12 @@ namespace Companions
         if (!bot->IsInWorld() || bot->IsBeingTeleported())
             return;
         EnsureSeesWorld(bot);
+
+        if (ai->IsAmbient())
+        {
+            UpdateAmbientBot(bot, ai);
+            return;
+        }
 
         // connected, not "in world": between two maps (a loading screen into a dungeon) the owner is in no map, and the
         // bots wait for him instead of leaving

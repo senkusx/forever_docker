@@ -13,6 +13,7 @@
 #include "CompanionLLM.h"
 #include "CompanionMechanics.h"
 #include "CompanionMgr.h"
+#include "CompanionAmbient.h"
 #include "CompanionScaling.h"
 #include "Group.h"
 #include "CellImpl.h"
@@ -26,6 +27,7 @@
 #include "ObjectMgr.h"
 #include "Player.h"
 #include "RBAC.h"
+#include "PartyPackets.h"
 #include "ScriptMgr.h"
 #include "Spell.h"
 #include "TemporarySummon.h"
@@ -524,6 +526,8 @@ namespace Companions
                 { "status", HandleTestStatus, rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "go",     HandleTestGo,     rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "near",   HandleTestNear,   rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
+                { "ambient", HandleTestAmbient, rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
+                { "invite", HandleTestInvite, rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "order",  HandleTestOrder,  rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "spells", HandleTestSpells, rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "why",    HandleTestWhy,    rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
@@ -1161,6 +1165,35 @@ namespace Companions
             return true;
         }
 
+        // the ambient bots around the stand-in: what the zone is to them, and what each one does
+        static bool HandleTestAmbient(ChatHandler* handler, std::string owner)
+        {
+            Player* puppet = Puppet(handler, owner);
+            if (!puppet)
+                return true;
+            handler->PSendSysMessage("%s", sCompanionAmbient->Describe(puppet).c_str());
+            for (MapReference const& ref : puppet->GetMap()->GetPlayers())
+                if (Player* bot = ref.GetSource())
+                    if (CompanionAI* ai = sCompanionMgr->GetAI(bot); ai && ai->IsAmbient() && bot->GetDistance(puppet) < 300.0f)
+                        handler->PSendSysMessage("  %s, level %u %s, class %u | %.0f yards | %s%s", bot->GetName().c_str(), uint32(bot->GetLevel()),
+                            bot->GetTeam() == ALLIANCE ? "Alliance" : "Horde", uint32(bot->GetClass()), bot->GetDistance(puppet),
+                            ai->AmbientLine().c_str(), bot->IsInCombat() ? " | fighting" : "");
+            return true;
+        }
+
+        // the stand-in invites a player by name, the way /invite does (an ambient bot answers it by joining as a companion)
+        static bool HandleTestInvite(ChatHandler* handler, std::string owner, std::string name)
+        {
+            Player* puppet = Puppet(handler, owner);
+            if (!puppet)
+                return true;
+            WorldPackets::Party::PartyInviteClient invite{ WorldPacket(CMSG_PARTY_INVITE) };
+            invite.TargetName = name;
+            puppet->GetSession()->HandlePartyInviteOpcode(invite);
+            handler->PSendSysMessage("%s invites %s", puppet->GetName().c_str(), name.c_str());
+            return true;
+        }
+
         static bool HandleTestGo(ChatHandler* handler, std::string owner, uint32 mapId, float x, float y, float z)
         {
             if (Player* puppet = Puppet(handler, owner))
@@ -1423,6 +1456,12 @@ namespace Companions
             CompanionAI* ai = sCompanionMgr->GetAI(receiver);
             if (!ai)
                 return;
+            if (ai->IsAmbient())
+            {
+                receiver->Whisper(urand(0, 1) ? "Hey! Busy out here, but invite me if you want a hand."
+                                              : "Hi there. Need help? Send me a group invite.", LANG_UNIVERSAL, player);
+                return;
+            }
             if (ai->GetOwnerGUID() != player->GetGUID())
             {
                 if (!CompanionLLM::OnChatToBot(receiver, player, "whisper", msg))

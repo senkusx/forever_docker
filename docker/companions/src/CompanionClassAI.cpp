@@ -520,7 +520,8 @@ namespace Companions
             {
                 if (target->GetVictim() == Me() && !Has(target, "wing clip") && Cast("wing clip", target))
                     return true;
-                if (Cast("mongoose bite", target) || Cast("raptor strike", target))
+                // Raptor Strike waits for the next swing: queued once, not every tick
+                if (Cast("mongoose bite", target) || (!NextSwingQueued() && Cast("raptor strike", target)))
                     return true;
                 return false;
             }

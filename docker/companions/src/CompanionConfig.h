@@ -49,6 +49,14 @@ namespace Companions
         bool Raid20Enable = true;           // the 40-player raids are tuned for 20 (see CompanionScaling.h)
         float Raid20Health = 0.5f;          // share of their creatures' health (applies when they spawn)
         float Raid20Damage = 0.8f;          // share of the damage they deal to players and pets
+
+        bool AmbientEnable = true;          // random bots around players in the open world (CompanionAmbient.h)
+        uint32 AmbientDensity = 6;          // ambient bots around each player in the open world
+        uint32 AmbientCityDensity = 12;     // ... in a capital city
+        uint32 AmbientMaxTotal = 60;        // ambient bots on the whole server
+        float AmbientRadius = 150.0f;       // yards around a player they count in (and appear in)
+        uint32 AmbientPoolSize = 200;       // characters kept for them (reused, recycled when too high in level)
+        uint32 AmbientGearQuality = 2;      // highest item quality they wear (2 green, 3 blue)
     };
 
     // one setting the web panel can read and change

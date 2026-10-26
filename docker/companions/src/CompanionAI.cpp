@@ -399,8 +399,11 @@ namespace Companions
 
         if (slowTick)
         {
-            NoticeSituation();
-            CompanionLLM::ConsiderTactics(_bot);
+            if (!_ambient)
+            {
+                NoticeSituation();
+                CompanionLLM::ConsiderTactics(_bot);
+            }
             HandleLoot();
         }
 
@@ -409,6 +412,8 @@ namespace Companions
 
         if (combat)
             UpdateCombat();
+        else if (_ambient)
+            UpdateAmbient();
         else
             UpdateIdle();
 
@@ -619,7 +624,8 @@ namespace Companions
             return;
         }
 
-        if (!GetConfig().AutoRevive)
+        // an ambient bot that died is taken out of the world by CompanionAmbient
+        if (!GetConfig().AutoRevive || _ambient)
             return;
 
         Player* owner = ObjectAccessor::GetPlayer(*_bot, _owner);
@@ -1788,7 +1794,8 @@ namespace Companions
         }
 
         bool melee = role == Role::Tank || role == Role::MeleeDps;
-        EngageTarget(target, melee);
+        // a hunter caught in melee swings its weapon (and its Raptor Strike goes off with the swing)
+        EngageTarget(target, melee || (_bot->GetClass() == CLASS_HUNTER && InMelee(target)));
 
         // a ground effect still burning nearby: stay out of it (melee go in only for a target standing outside it)
         if (!_dangerZones.empty() && (!melee || InDangerZone(target->GetPosition(), 1.0f)))

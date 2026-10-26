@@ -144,6 +144,29 @@ of 20: their creatures, adds the scripts summon included, have half their health
 spawn: reset the instance after a change) and deal 80% of their damage to players and pets (`Raid20.Damage`). Zul'Gurub and
 Ruins of Ahn'Qiraj are 20-player raids already. `Raid20.Enable 0` brings the 40-player numbers back.
 
+## A living world: ambient bots
+
+Random characters appear around players in the open world and live there on their own, so a zone does not feel empty:
+
+- in the open world they hunt the zone's mobs at their level (never one a player is near), walk up to quest givers and
+  wander; in capital cities they stand at the auction house, the bank, the inn, flight masters, trainers and vendors,
+  or sit down a while;
+- their level comes from the mobs around (any level, half of them at the cap, in a city), their gear from their level
+  (greens by default, `Ambient.GearQuality`);
+- a zone of one faction gets bots of that faction (a Horde zone gets Horde bots, even around an Alliance player);
+  contested zones (Stranglethorn, Arathi, Hillsbrad...) both;
+- they leave when no player has been around for 15 seconds, after dying, or after 8 to 20 minutes out of sight, and
+  others come;
+- **invite one to your group and it joins you as a companion** (yours from then on: `.bot` commands, the web panel,
+  level and gear with you), as long as you have room for another companion. Whispered, they answer that they are busy
+  and to send an invite.
+
+`Ambient.Density` sets how many are around each player in the open world (6), `Ambient.CityDensity` in a capital (12),
+`Ambient.MaxTotal` on the whole server (60), `Ambient.Radius` how far around a player they count (150 yards); all of
+them in the web panel, "A living world". The characters are kept in a pool (`Ambient.PoolSize`, 200; table
+`characters.companion_ambient`) and reused, levelled up where needed; when the pool is full one far above the level
+needed is deleted for a new one. They count as online players.
+
 ## Optional: the AI brain
 
 With the brain on, an AI model speaks for the companions linked to it. They hear the party chat and react like
@@ -239,6 +262,12 @@ who loves ale` (or the panel) gives a bot a character. Banter (comments on level
 | `Companions.Raid20.Enable` | 1 | the 40-player raids are tuned for 20 |
 | `Companions.Raid20.Health` | 0.5 | share of their creatures' health (when they spawn) |
 | `Companions.Raid20.Damage` | 0.8 | share of the damage they deal to players and pets |
+| `Companions.Ambient.Enable` | 1 | ambient bots around players in the open world |
+| `Companions.Ambient.Density` / `CityDensity` | 6 / 12 | around each player, in the open world / in a capital |
+| `Companions.Ambient.MaxTotal` | 60 | ambient bots on the whole server |
+| `Companions.Ambient.Radius` | 150 | yards around a player they appear and count in |
+| `Companions.Ambient.GearQuality` | 2 | best item quality they wear |
+| `Companions.Ambient.PoolSize` | 200 | characters kept for them |
 
 All of these (but `Enable` and the account) can be changed live in the web panel.
 
@@ -248,7 +277,8 @@ From the worldserver console (`docker compose attach worldserver`) or SOAP, `.bo
 owner: `login <character>`, `party <owner> [role]`, `raid <owner> [size]`, `say <owner> <text>` (a party line), `create <owner> <class> [role]`, `go <owner> <map> <x> <y> <z>`,
 `fight <owner>` (attack the nearest enemy), `pull <owner>` (the tank pulls the nearest one), `spawn <owner> <entry>
 [count]` (enemies in front of the group for 5 minutes), `fire <bot> [spell]` (a hostile ground effect under it), `give <bot>
-<item>` / `equip <bot> <it|name>` (loot decisions), `status <owner>`, `near <owner> [yards]` (creatures around, their health and mechanics rules), `order <owner> <order>`, `why <bot>` (what it sees),
+<item>` / `equip <bot> <it|name>` (loot decisions), `status <owner>`, `near <owner> [yards]` (creatures around, their health and mechanics rules), `ambient <owner>` (the zone as the ambient
+bots see it and what each one does), `invite <owner> <name>` (a /invite), `order <owner> <order>`, `why <bot>` (what it sees),
 `spells <bot>`, `kill <bot>`, `logout <owner>`. `why <bot>` also shows where it stands around you and its last casts. Administrators only (the permission of `.server shutdown`).
 
 ## Good to know
