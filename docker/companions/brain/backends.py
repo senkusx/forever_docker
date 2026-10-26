@@ -147,6 +147,10 @@ class OpenAICompatible:
                 body["response_format"] = {"type": "json_schema", "json_schema": {"name": "companions", "schema": schema, "strict": True}}
             elif kind == "json_object":
                 body["response_format"] = {"type": "json_object"}
+            # fields this server wants in the request, e.g. {"enable_thinking": false} for Qwen 3 on Alibaba Model Studio
+            extra = self.options.get("body")
+            if isinstance(extra, dict):
+                body.update(extra)
             try:
                 response = httpx.post(f"{self.endpoint}/chat/completions", json=body, headers=self.headers, timeout=self.timeout)
             except httpx.HTTPError as e:
