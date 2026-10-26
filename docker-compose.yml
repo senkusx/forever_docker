@@ -6,6 +6,7 @@ x-trinity-env: &trinity-env
   DB_PORT: 3306
   DB_USER: ${DB_USER:-trinity}
   DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+  REALM_TYPE: ${REALM_TYPE:-normal}   # normal | pvp | rp | rppvp
 
 services:
   mysql:

@@ -72,6 +72,7 @@ namespace Companions
                 { "Ambient.Radius",    'f', 60, 300, [](Config& c) -> void* { return &c.AmbientRadius; } },
                 { "Ambient.PoolSize",  'i', 20, 1000, [](Config& c) -> void* { return &c.AmbientPoolSize; } },
                 { "Ambient.GearQuality", 'i', 1, 4, [](Config& c) -> void* { return &c.AmbientGearQuality; } },
+                { "Ambient.CompanionChance", 'i', 0, 100, [](Config& c) -> void* { return &c.AmbientCompanionChance; } },
             };
             return settings;
         }
@@ -177,6 +178,7 @@ namespace Companions
         c.AmbientRadius   = std::clamp(sConfigMgr->GetFloatDefault("Companions.Ambient.Radius", 150.0f, true), 60.0f, 300.0f);
         c.AmbientPoolSize = std::clamp<uint32>(sConfigMgr->GetIntDefault("Companions.Ambient.PoolSize", 200, true), 20, 1000);
         c.AmbientGearQuality = std::clamp<uint32>(sConfigMgr->GetIntDefault("Companions.Ambient.GearQuality", 2, true), 1, 4);
+        c.AmbientCompanionChance = std::clamp<uint32>(sConfigMgr->GetIntDefault("Companions.Ambient.CompanionChance", 20, true), 0, 100);
 
         // what the web panel saved wins over the file
         for (auto const& [key, value] : _stored)

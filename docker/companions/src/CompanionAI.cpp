@@ -906,6 +906,83 @@ namespace Companions
         return pick;
     }
 
+    Unit* CompanionAI::KeepUnderTank(Unit* target)
+    {
+        _holdingThreat = false;
+        Unit* tank = _view.Tank;
+        if (!tank || tank == _bot || !tank->IsAlive() || !IsTank(tank) || !_forcedTarget.IsEmpty())
+            return target;
+        Role const role = GetEffectiveRole();
+        // the enemy pulls off the tank at 110% of its threat in melee and 130% at range: stay below it with room to spare
+        float const cap = role == Role::MeleeDps ? 0.9f : 1.0f;
+        auto nearTank = [&](Unit* enemy)
+        {
+            if (enemy->GetVictim() != tank || !enemy->CanHaveThreatList())
+                return false;
+            float const tankThreat = enemy->GetThreatManager().GetThreat(tank);
+            return tankThreat > 0.0f && enemy->GetThreatManager().GetThreat(_bot) >= tankThreat * cap;
+        };
+        if (!nearTank(target))
+            return target;
+        // another one the tank holds with room under its threat (in reach for melee), the weakest first; else hold
+        Unit* other = nullptr;
+        for (Unit* enemy : _view.Enemies)
+            if (enemy != target && IsValidEnemy(enemy) && !IsCrowdControlTarget(enemy) && IsMechanicTarget(enemy) && !nearTank(enemy)
+                && (role != Role::MeleeDps || _bot->GetDistance(enemy) < 10.0f) && (!other || enemy->GetHealthPct() < other->GetHealthPct()))
+                other = enemy;
+        if (other)
+            return other;
+        _holdingThreat = true;
+        _waitingFor = target->GetGUID();
+        if (_bot->GetVictim())
+            _bot->AttackStop();
+        _bot->InterruptSpell(CURRENT_AUTOREPEAT_SPELL);     // the wand or auto shot too
+        return nullptr;
+    }
+
+    bool CompanionAI::SafeToAoe(Position const& center, float radius) const
+    {
+        Unit* tank = _view.Tank;
+        if (!tank || tank == _bot || !tank->IsAlive() || !IsTank(tank))
+            return true;
+        if (Elapsed(_combatStart) < 4000)
+            return false;       // the tank picks the pack up first
+        for (Unit* enemy : _view.Enemies)
+        {
+            if (enemy->GetExactDist(&center) > radius + enemy->GetCombatReach() || !enemy->CanHaveThreatList())
+                continue;
+            if (enemy->GetVictim() != tank)
+                return false;   // one the tank does not hold: area damage would take it
+            float const tankThreat = enemy->GetThreatManager().GetThreat(tank);
+            if (tankThreat <= 0.0f || enemy->GetThreatManager().GetThreat(_bot) >= tankThreat * 0.7f)
+                return false;
+        }
+        return true;
+    }
+
+    void CompanionAI::UpdatePetTaunt()
+    {
+        Creature* creature = GetPet();
+        Pet* pet = creature ? creature->ToPet() : nullptr;
+        if (!pet)
+            return;
+        // Growl, Torment and the like pull the enemies off a tank: on with nobody else to tank, off with a tank in the group
+        bool const otherTank = _view.Tank && _view.Tank != _bot && _view.Tank->IsAlive() && IsTank(_view.Tank);
+        int8 const wanted = otherTank ? 0 : 1;
+        if (_petTaunt == wanted && _petTauntOf == pet->GetGUID())
+            return;
+        _petTaunt = wanted;
+        _petTauntOf = pet->GetGUID();
+        for (auto const& [spellId, petSpell] : pet->m_spells)
+        {
+            if (petSpell.state == PETSPELL_REMOVED || petSpell.active == ACT_PASSIVE)
+                continue;
+            SpellInfo const* info = sSpellMgr->GetSpellInfo(spellId, DIFFICULTY_NONE);
+            if (info && info->IsAutocastable() && (info->HasEffect(SPELL_EFFECT_ATTACK_ME) || info->HasAura(SPELL_AURA_MOD_TAUNT)))
+                pet->ToggleAutocast(info, wanted == 1);
+        }
+    }
+
     Unit* CompanionAI::SelectTankTarget()
     {
         if (!_protectTarget.IsEmpty())
@@ -1032,6 +1109,8 @@ namespace Companions
         }
 
         Unit* target = role == Role::Tank ? SelectTankTarget() : SelectTarget();
+        if (target && role != Role::Tank)
+            target = KeepUnderTank(target);
         if (!target)
         {
             if (role == Role::Healer)
@@ -1049,8 +1128,8 @@ namespace Companions
                     _moveRangeMax = 7.0f;
                 }
             }
-            else
-                FollowOwner();
+            else if (!_holdingThreat)
+                FollowOwner();      // (holding for threat at range: it stays where it stands)
             return;
         }
 
@@ -1754,6 +1833,41 @@ namespace Companions
         return true;
     }
 
+    // its own mount: the warlock's or paladin's when it knows it, else one of its race's (a gnome on a mechanostrider, a
+    // dwarf on a ram), always the same one for this bot; swift (100%) when its player rides a swift one
+    uint32 CompanionAI::MountFor(bool swift) const
+    {
+        struct ClassMount { uint8 Class; uint32 Normal; uint32 Swift; };
+        static ClassMount const ClassMounts[] = { { CLASS_WARLOCK, 5784, 23161 }, { CLASS_PALADIN, 13819, 23214 } };
+        for (ClassMount const& mount : ClassMounts)
+            if (_bot->GetClass() == mount.Class)
+            {
+                if (swift && _bot->HasSpell(mount.Swift))
+                    return mount.Swift;
+                if (_bot->HasSpell(mount.Normal))
+                    return mount.Normal;
+            }
+
+        static std::unordered_map<uint8, std::pair<std::vector<uint32>, std::vector<uint32>>> const RaceMounts = {
+            { RACE_HUMAN,    { { 458, 470, 472, 6648 },          { 23227, 23228, 23229 } } },  // horses
+            { RACE_ORC,      { { 580, 6653, 6654 },              { 23250, 23251, 23252 } } },  // wolves
+            { RACE_DWARF,    { { 6777, 6898, 6899 },             { 23238, 23239, 23240 } } },  // rams
+            { RACE_NIGHTELF, { { 8394, 10789, 10793 },           { 23219, 23221, 23338 } } },  // sabers
+            { RACE_UNDEAD_PLAYER, { { 17462, 17463, 17464 },     { 17465, 23246 } } },         // skeletal horses
+            { RACE_TAUREN,   { { 18989, 18990 },                 { 23247, 23248, 23249 } } },  // kodos
+            { RACE_GNOME,    { { 10873, 10969, 17453, 17454 },   { 23222, 23223, 23225 } } },  // mechanostriders
+            { RACE_TROLL,    { { 8395, 10796, 10799 },           { 23241, 23242, 23243 } } },  // raptors
+        };
+        auto itr = RaceMounts.find(_bot->GetRace());
+        if (itr == RaceMounts.end())
+            return 0;
+        std::vector<uint32> known;
+        for (uint32 spell : swift ? itr->second.second : itr->second.first)
+            if (sSpellMgr->GetSpellInfo(spell, DIFFICULTY_NONE))
+                known.push_back(spell);
+        return known.empty() ? 0 : known[_bot->GetGUID().GetCounter() % known.size()];
+    }
+
     void CompanionAI::UpdateMount()
     {
         Player* owner = _view.Owner;
@@ -1764,8 +1878,13 @@ namespace Companions
             && _bot->GetMap()->IsWorldMap() && _bot->IsOutdoors())
         {
             Unit::AuraEffectList const& mounts = owner->GetAuraEffectsByType(SPELL_AURA_MOUNTED);
-            if (!mounts.empty())
-                _bot->CastSpell(_bot, mounts.front()->GetId(), CastSpellExtraArgs(TRIGGERED_FULL_MASK));
+            if (mounts.empty())
+                return;
+            bool swift = false;
+            for (AuraEffect const* speed : owner->GetAuraEffectsByType(SPELL_AURA_MOD_INCREASE_MOUNTED_SPEED))
+                swift = swift || speed->GetAmount() >= 100;
+            uint32 mount = MountFor(swift);
+            _bot->CastSpell(_bot, mount ? mount : mounts.front()->GetId(), CastSpellExtraArgs(TRIGGERED_FULL_MASK));
         }
         else if (!owner->IsMounted() && _bot->IsMounted())
             _bot->RemoveAurasByType(SPELL_AURA_MOUNTED);
@@ -2456,6 +2575,7 @@ namespace Companions
         Creature* pet = GetPet();
         if (!pet || !pet->IsAlive() || !target || pet->GetVictim() == target)
             return;
+        UpdatePetTaunt();
         _bot->GetSession()->HandlePetActionHelper(pet, pet->GetGUID(), COMMAND_ATTACK, ACT_COMMAND, target->GetGUID(), Position());
     }
 

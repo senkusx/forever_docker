@@ -198,6 +198,8 @@ namespace Companions
         uint32 EnemiesNear(Position const& pos, float radius) const;           // engaged enemies around a point
         uint32 EnemiesAttacking(Unit const* unit) const;
         bool AnyCrowdControlledNear(Position const& pos, float radius) const;  // AoE would break a CC
+        // area damage there would not pull enemies off the tank (none in the first seconds, none near its threat)
+        bool SafeToAoe(Position const& center, float radius) const;
         bool IsTank(Unit const* unit) const;
         bool IsHealer(Unit const* unit) const;
         Unit* LowestAlly(float maxPct, float range, bool includePets = false) const;
@@ -268,8 +270,12 @@ namespace Companions
         bool UpdateEatDrink();
         bool UpdatePendingCast();
         void UpdateMount();
+        uint32 MountFor(bool swift) const;          // its own race's (or class's) mount spell, 0 for none
         Unit* SelectTarget();
         Unit* SelectTankTarget();
+        // a damage dealer near the tank's threat on its target: another target, or nullptr to hold
+        Unit* KeepUnderTank(Unit* target);
+        void UpdatePetTaunt();      // the pet's taunt on autocast only without a tank in the group
         bool IsValidEnemy(Unit* unit, float maxDistance = 60.0f) const;   // ordered targets reach further
         bool IsCrowdControlTarget(Unit const* unit) const;
         void MoveForCombat(Unit* target);
@@ -377,6 +383,9 @@ namespace Companions
         TimePoint _interruptUntil = { };
         TimePoint _burstUntil = { };
         ObjectGuid _waitingFor;         // melee waiting for the tank to take this enemy
+        bool _holdingThreat = false;    // near the tank's threat: not hitting for now
+        int8 _petTaunt = -1;            // the pet taunt autocast as last set (-1 not yet)
+        ObjectGuid _petTauntOf;         // ... for that pet
         TimePoint _ccCheckAt = { };
         TimePoint _chargeSettleUntil = { };
         TimePoint _avoidUntil = { };

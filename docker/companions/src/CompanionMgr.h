@@ -90,8 +90,12 @@ namespace Companions
         uint32 CountAmbient() const;                              // ambient bots online or logging in
 
         // ---- ambient bots (CompanionAmbient.h) ----
-        // log a character of the pool in at that spot, at least that level, living on its own there
-        bool LoginAmbient(ObjectGuid botGuid, WorldLocation const& where, uint32 zoneId, uint8 level, bool city);
+        // log a character of the pool in at that spot, at least that level, living on its own there; borrowed: a player's
+        // companion not out with its player, about town as it is (no new level, gear or name)
+        bool LoginAmbient(ObjectGuid botGuid, WorldLocation const& where, uint32 zoneId, uint8 level, bool city, bool borrowed = false);
+        // a companion (made by the companions, not a player's own character) that is not out and not online, of that side
+        ObjectGuid PickIdleCompanion(::Team team) const;
+        bool IsLeaving(ObjectGuid botGuid) const;       // dismissed, logs out on the next update
         std::vector<Player*> GetPuppets() const;
         bool IsLoggingIn(ObjectGuid botGuid) const { return _pendingLogins.count(botGuid) != 0; }
         void ArrangeFormation(ObjectGuid owner);
@@ -132,7 +136,7 @@ namespace Companions
         static void AckTeleports(Player* player);
         static void EnsureSeesWorld(Player* player);
         void FinishLogin(WorldSession* session, ObjectGuid botGuid, ObjectGuid ownerGuid);
-        void FinishAmbientLogin(WorldSession* session, ObjectGuid botGuid, Position const& home, uint8 level, bool city);
+        void FinishAmbientLogin(WorldSession* session, ObjectGuid botGuid, Position const& home, uint8 level, bool city, bool borrowed);
         void UpdateAmbientBot(Player* bot, CompanionAI* ai);
         bool AdoptAmbient(Player* bot, CompanionAI* ai, Player* inviter, std::string& why);   // invited: a companion now
         void ProcessLogouts();
@@ -153,6 +157,7 @@ namespace Companions
         std::unordered_map<ObjectGuid, std::unique_ptr<CompanionAI>> _ais;
         std::unordered_map<ObjectGuid, PendingLogin> _pendingLogins;
         std::vector<std::pair<ObjectGuid, bool>> _logoutQueue;                  // bot, keep active
+        std::unordered_map<ObjectGuid, ObjectGuid> _resummons;                  // borrowed bot -> owner who wants it: logs in at him after its logout
         std::vector<std::pair<ObjectGuid, uint32>> _restoreQueue;               // owner, delay ms
         struct PendingPrepare { ObjectGuid Bot; uint8 Level; bool Regear; bool Respec; };
         std::vector<PendingPrepare> _prepareQueue;

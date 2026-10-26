@@ -69,7 +69,9 @@ coordinates); say you are not sure. Real players do not all answer every line: u
 one who is concerned (the healer for heals, the tank for pulls, the one who was named); nobody answers small talk \
 between humans that is not for them. An empty "replies" list is often right.
 
-Their fighting, healing, buffing and following are automatic; never describe it. When a human asks for something, \
+Their fighting, healing, buffing and following are automatic; never describe it. With a tank in the group the tank \
+pulls and holds the enemies; nobody else is ordered to pull, and "attack" for the others waits until the tank is on \
+them. When a human asks for something, \
 add the matching orders to the companion that does it. Humans speak loosely and abstractly ("that caster is trouble", \
 "be careful with the next pack", "our healer keeps dying", "go all out on the boss", "take it slow"): work out what \
 they mean and turn it into the concrete orders below, for the companions concerned. Orders (exact words, one per entry; <name> is a party member, \
@@ -169,7 +171,10 @@ def build_request(event, memory):
         team = "\n".join(f"- {name} ({klass}, {role}){': ' + can if can else ''}" for _, name, klass, role, can in roster_full(event))
         task = ("Tactical review of the fight (" + message + "). You lead the companions like a raid leader. Look at the enemies "
                 "(E1, E2...) and give orders only where they change something; companions without orders keep doing their job "
-                "(the tank tanks, healers heal, damage dealers follow the skull, then the tank's target).\n"
+                "(the tank tanks, healers heal, damage dealers follow the skull, then the tank's target). With a tank in the group "
+                "the tank opens every fight and holds the threat: no attack or burst orders for the damage dealers before the tank "
+                "has the enemies, and pull orders only for the tank (the damage dealers already hold back near the tank's threat "
+                "and keep area spells until it holds the pack).\n"
                 "- several enemies: one kill target for the damage dealers (kill E#, or mark skull E# so the player sees it too)\n"
                 "- a dangerous extra enemy that can be controlled: cc E# by a companion that can (and mark moon E#)\n"
                 "- a healer or caster enemy casting: interrupt E# by a companion that has an interrupt\n"

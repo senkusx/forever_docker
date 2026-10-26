@@ -63,6 +63,7 @@ namespace Companions
             uint32 ZoneId = 0;
             uint8 Level = 1;
             bool City = false;
+            bool Borrowed = false;      // a player's companion not out with him
         };
 
         void SpawnNear(Player* player, ZoneKind const& kind);

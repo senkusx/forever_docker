@@ -269,12 +269,13 @@ namespace Companions
                 return true;
             if (Cast("bloodthirst", target) || Cast("mortal strike", target) || Cast("overpower", target))
                 return true;
-            if (nearby >= 1 && !_ai.AnyCrowdControlledNear(Me()->GetPosition(), 10.0f) && Cast("whirlwind"))
+            if (nearby >= 1 && !_ai.AnyCrowdControlledNear(Me()->GetPosition(), 10.0f) && _ai.SafeToAoe(Me()->GetPosition(), 8.0f) && Cast("whirlwind"))
                 return true;
             if (Bleeds(target) && !_ai.IsBossFight() && Dot("rend", target, 40.0f))
                 return true;
             if (_ai.Rage() >= 50 && !NextSwingQueued())
-                return nearby >= 2 && !_ai.AnyCrowdControlledNear(Me()->GetPosition(), 10.0f) ? Cast("cleave", target) : Cast("heroic strike", target);
+                return nearby >= 2 && !_ai.AnyCrowdControlledNear(Me()->GetPosition(), 10.0f) && _ai.SafeToAoe(Me()->GetPosition(), 8.0f)
+                    ? Cast("cleave", target) : Cast("heroic strike", target);
             return false;
         }
     };
@@ -536,7 +537,8 @@ namespace Companions
                 return true;
             if (Bleeds(target) && _ai.ManaPct() > 30.0f && Dot("serpent sting", target, 30.0f))
                 return true;
-            if (_ai.EnemiesNear(target->GetPosition(), 8.0f) >= 3 && !_ai.AnyCrowdControlledNear(target->GetPosition(), 10.0f) && Cast("multi-shot", target))
+            if (_ai.EnemiesNear(target->GetPosition(), 8.0f) >= 3 && !_ai.AnyCrowdControlledNear(target->GetPosition(), 10.0f)
+                && _ai.SafeToAoe(target->GetPosition(), 8.0f) && Cast("multi-shot", target))
                 return true;
             if (target->GetVictim() != Me() && !_ai.IsMoving() && Cast("aimed shot", target))
                 return true;
@@ -581,7 +583,7 @@ namespace Companions
             int32 cp = _ai.ComboPoints(target);
             if (_ai.Bursting() && Cast("adrenaline rush"))
                 return true;
-            if (_ai.EnemiesNear(Me()->GetPosition(), 8.0f) >= 2 && Cast("blade flurry"))
+            if (_ai.EnemiesNear(Me()->GetPosition(), 8.0f) >= 2 && _ai.SafeToAoe(Me()->GetPosition(), 8.0f) && Cast("blade flurry"))
                 return true;
             if (cp >= 1 && target->GetHealthPct() > 25.0f && !Has(Me(), "slice and dice") && Cast("slice and dice"))
                 return true;
@@ -756,12 +758,19 @@ namespace Companions
             return false;
         }
 
-        bool SelfBuffs(bool /*inCombat*/) override
+        bool SelfBuffs(bool inCombat) override
         {
             if (Imbue())
                 return true;
             if (MyRole() != Role::Healer && Buff("lightning shield", Me()))
                 return true;
+            // the totems in a fight, whatever its role (a healer's Combat runs only with mana to spare)
+            if (inCombat && std::chrono::duration_cast<Milliseconds>(GameTime::Now() - _lastTotemCheck).count() > 1500)
+            {
+                _lastTotemCheck = GameTime::Now();
+                if (Totems(Me()->GetVictim()))
+                    return true;
+            }
             return false;
         }
 
@@ -793,17 +802,43 @@ namespace Companions
             return false;
         }
 
+        // one per element for what the group needs now: Tremor against a fear, a cleansing totem against poison or disease,
+        // else the buffs (Strength of Earth and Windfury for melee, Mana Spring for a healer), and fire on the enemies
         bool Totems(Unit* target)
         {
-            if (_ai.ManaPct() < 30.0f)
+            if (_ai.ManaPct() < 25.0f || _ai.View().Enemies.empty())
                 return false;
+            bool feared = false, poisoned = false, diseased = false;
             bool melee = MyRole() == Role::MeleeDps || _ai.View().Tank != nullptr;
-            if (DropTotem(melee ? std::initializer_list<std::string_view>{ "strength of earth totem", "stoneskin totem" }
-                                : std::initializer_list<std::string_view>{ "stoneskin totem", "strength of earth totem" }))
+            for (Player* member : _ai.View().Members)
+            {
+                if (!member->IsAlive() || Me()->GetDistance(member) > 25.0f)
+                    continue;
+                feared = feared || member->HasAuraType(SPELL_AURA_MOD_FEAR);
+                uint32 mask = _ai.DispellableMask(member);
+                poisoned = poisoned || (mask & MASK_POISON);
+                diseased = diseased || (mask & MASK_DISEASE);
+            }
+            // earth
+            if (feared && DropTotem({ "tremor totem" }))
                 return true;
-            if (MyRole() == Role::Healer ? DropTotem({ "mana spring totem", "healing stream totem" }) : DropTotem({ "healing stream totem", "mana spring totem" }))
+            if (!feared && DropTotem(melee ? std::initializer_list<std::string_view>{ "strength of earth totem", "stoneskin totem" }
+                                           : std::initializer_list<std::string_view>{ "stoneskin totem", "strength of earth totem" }))
                 return true;
-            if (DropTotem({ "windfury totem", "grace of air totem" }))
+            // water
+            if (poisoned && DropTotem({ "poison cleansing totem" }))
+                return true;
+            if (!poisoned && diseased && DropTotem({ "disease cleansing totem" }))
+                return true;
+            if (!poisoned && !diseased
+                && (MyRole() == Role::Healer ? DropTotem({ "mana spring totem", "healing stream totem" }) : DropTotem({ "healing stream totem", "mana spring totem" })))
+                return true;
+            // air: for the ones who hit in melee
+            if (melee && DropTotem({ "windfury totem", "grace of air totem" }))
+                return true;
+            // fire: a pack around a melee shaman takes Magma, else Searing on the target
+            if (MyRole() == Role::MeleeDps && _ai.EnemiesNear(Me()->GetPosition(), 8.0f) >= 3
+                && !_ai.AnyCrowdControlledNear(Me()->GetPosition(), 12.0f) && _ai.SafeToAoe(Me()->GetPosition(), 8.0f) && DropTotem({ "magma totem" }))
                 return true;
             if (target && Me()->GetDistance(target) < 20.0f && MyRole() != Role::Healer && DropTotem({ "searing totem" }))
                 return true;
@@ -838,13 +873,6 @@ namespace Companions
 
         bool Combat(Unit* target) override
         {
-            if (std::chrono::duration_cast<Milliseconds>(GameTime::Now() - _lastTotemCheck).count() > 1500)
-            {
-                _lastTotemCheck = GameTime::Now();
-                if (Totems(target))
-                    return true;
-            }
-
             if (MyRole() == Role::Healer)
                 return _ai.ManaPct() > 80.0f && Cast("lightning bolt", target);
 
@@ -863,7 +891,8 @@ namespace Companions
 
             if (Dot("flame shock", target, 30.0f))
                 return true;
-            if (_ai.EnemiesNear(target->GetPosition(), 10.0f) >= 2 && !_ai.AnyCrowdControlledNear(target->GetPosition(), 12.0f) && Cast("chain lightning", target))
+            if (_ai.EnemiesNear(target->GetPosition(), 10.0f) >= 2 && !_ai.AnyCrowdControlledNear(target->GetPosition(), 12.0f)
+                && _ai.SafeToAoe(target->GetPosition(), 12.0f) && Cast("chain lightning", target))
                 return true;
             return Cast("lightning bolt", target);
         }
@@ -930,10 +959,10 @@ namespace Companions
                 return Wand(target);
 
             Position const& me = Me()->GetPosition();
-            if (_ai.EnemiesNear(me, 10.0f) >= 3 && _ai.ManaPct() > 40.0f && !_ai.AnyCrowdControlledNear(me, 12.0f) && Cast("arcane explosion"))
+            if (_ai.EnemiesNear(me, 10.0f) >= 3 && _ai.ManaPct() > 40.0f && !_ai.AnyCrowdControlledNear(me, 12.0f) && _ai.SafeToAoe(me, 10.0f) && Cast("arcane explosion"))
                 return true;
             if (_ai.EnemiesNear(target->GetPosition(), 8.0f) >= 4 && _ai.ManaPct() > 40.0f && !_ai.AnyCrowdControlledNear(target->GetPosition(), 12.0f)
-                && !_ai.IsTargetedByEnemy() && (Cast("blizzard", target) || Cast("flamestrike", target)))
+                && !_ai.IsTargetedByEnemy() && _ai.SafeToAoe(target->GetPosition(), 10.0f) && (Cast("blizzard", target) || Cast("flamestrike", target)))
                 return true;
             if (_ai.Bursting() && (Cast("arcane power") || Cast("combustion") || Cast("presence of mind")))
                 return true;
@@ -1016,7 +1045,7 @@ namespace Companions
             if (Dot("corruption", target) || Dot("siphon life", target) || Dot("immolate", target, 30.0f))
                 return true;
             if (_ai.EnemiesNear(target->GetPosition(), 8.0f) >= 4 && !_ai.AnyCrowdControlledNear(target->GetPosition(), 12.0f) && !_ai.IsTargetedByEnemy()
-                && Cast("rain of fire", target))
+                && _ai.SafeToAoe(target->GetPosition(), 10.0f) && Cast("rain of fire", target))
                 return true;
             if (Cast("shadow bolt", target))
                 return true;
@@ -1165,6 +1194,10 @@ namespace Companions
                 return true;
             if (!Feral() && _ai.HealthPct() < 40.0f && _ai.IsTargetedByEnemy() && Cast("barkskin"))
                 return true;
+            // a cat that took it off the tank: Cower
+            if (InForm(FORM_CAT_FORM) && _ai.View().Tank && _ai.View().Tank != Me())
+                if (Unit* victim = Me()->GetVictim(); victim && victim->GetVictim() == Me() && Cast("cower", victim))
+                    return true;
             if (MyRole() == Role::Healer && _ai.ManaPct() < 20.0f && !Has(Me(), "innervate") && Cast("innervate", Me()))
                 return true;
             return false;
@@ -1217,7 +1250,7 @@ namespace Companions
             if (Dot("moonfire", target) || Dot("insect swarm", target))
                 return true;
             if (_ai.EnemiesNear(target->GetPosition(), 8.0f) >= 4 && !_ai.AnyCrowdControlledNear(target->GetPosition(), 12.0f) && !_ai.IsTargetedByEnemy()
-                && Cast("hurricane", target))
+                && _ai.SafeToAoe(target->GetPosition(), 10.0f) && Cast("hurricane", target))
                 return true;
             if (target->GetVictim() != Me() && Cast("starfire", target))
                 return true;

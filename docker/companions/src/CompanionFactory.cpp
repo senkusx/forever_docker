@@ -204,6 +204,8 @@ namespace Companions
         TC_LOG_INFO("server.worldserver", "Companions: {} trainer spells, {} gear items, {} foods, {} drinks, {} talent classes, {} pets in {} ms",
             _trainerSpells.size(), std::accumulate(_gearByInvType.begin(), _gearByInvType.end(), size_t(0), [](size_t n, auto const& p) { return n + p.second.size(); }),
             _foodSpells.size(), _drinkSpells.size(), _talentTrees.size(), _petEntries.size(), GetMSTimeDiffToNow(start));
+        TC_LOG_INFO("server.worldserver", "Companions: food at level 20/40/60: spells {}/{}/{}, drink {}/{}/{}",
+            GetFoodSpell(20), GetFoodSpell(40), GetFoodSpell(60), GetDrinkSpell(20), GetDrinkSpell(40), GetDrinkSpell(60));
     }
 
     void CompanionFactory::LoadTrainerSpells()
@@ -280,10 +282,22 @@ namespace Companions
                     if (!spell)
                         continue;
                     SpellSpecificType specific = spell->GetSpellSpecific();
-                    if (specific == SPELL_SPECIFIC_FOOD)
-                        _foodSpells.emplace(reqLevel, spell->Id);
-                    else if (specific == SPELL_SPECIFIC_DRINK)
-                        _drinkSpells.emplace(reqLevel, spell->Id);
+                    // how much it restores per tick: the strongest one its level allows is eaten, not the first one found
+                    int32 health = 0, mana = 0;
+                    for (SpellEffectInfo const& spellEffect : spell->GetEffects())
+                    {
+                        if (!spellEffect.IsEffect(SPELL_EFFECT_APPLY_AURA))
+                            continue;
+                        if (spellEffect.ApplyAuraName == SPELL_AURA_MOD_REGEN || spellEffect.ApplyAuraName == SPELL_AURA_OBS_MOD_HEALTH)
+                            health = std::max(health, spellEffect.CalcValueAsInt());
+                        else if ((spellEffect.ApplyAuraName == SPELL_AURA_MOD_POWER_REGEN || spellEffect.ApplyAuraName == SPELL_AURA_OBS_MOD_POWER)
+                            && spellEffect.MiscValue == POWER_MANA)
+                            mana = std::max(mana, spellEffect.CalcValueAsInt());
+                    }
+                    if ((specific == SPELL_SPECIFIC_FOOD || specific == SPELL_SPECIFIC_FOOD_AND_DRINK) && health > 0)
+                        _foodSpells.push_back({ reqLevel, health, spell->Id });
+                    if ((specific == SPELL_SPECIFIC_DRINK || specific == SPELL_SPECIFIC_FOOD_AND_DRINK) && mana > 0)
+                        _drinkSpells.push_back({ reqLevel, mana, spell->Id });
                 }
                 continue;
             }
@@ -2116,17 +2130,21 @@ namespace Companions
         TC_LOG_INFO("server.worldserver", "Companions: {} tamed a {}", bot->GetName(), pet->GetName());
     }
 
-    uint32 CompanionFactory::PickByLevel(std::map<uint32, uint32> const& table, uint8 level)
+    uint32 CompanionFactory::PickRefreshment(std::vector<Refreshment> const& table, uint8 level)
     {
-        uint32 spell = 0;
-        for (auto const& [reqLevel, spellId] : table)
+        Refreshment const* best = nullptr;
+        Refreshment const* lowest = nullptr;
+        for (Refreshment const& entry : table)
         {
-            if (reqLevel > level)
-                break;
-            spell = spellId;
+            if (!lowest || entry.ReqLevel < lowest->ReqLevel)
+                lowest = &entry;
+            if (entry.ReqLevel > level)
+                continue;
+            if (!best || entry.Restores > best->Restores || (entry.Restores == best->Restores && entry.ReqLevel > best->ReqLevel))
+                best = &entry;
         }
-        if (!spell && !table.empty())
-            spell = table.begin()->second;
-        return spell;
+        if (!best)
+            best = lowest;
+        return best ? best->Spell : 0;
     }
 }

@@ -209,7 +209,11 @@ Random characters appear around players in the open world and live there on thei
   others come;
 - **invite one to your group and it joins you as a companion** (yours from then on: `.bot` commands, the web panel,
   level and gear with you), as long as you have room for another companion. Whispered, they answer that they are busy
-  and to send an invite.
+  and to send an invite;
+- in a capital, now and then one of them is a player's companion that is not out with its player
+  (`Ambient.CompanionChance`, 20%): it strolls about town with its own level, gear and name. Its player gets it back by
+  summoning or inviting it (it leaves town and joins him); anyone else who invites it is told whose companion it is.
+  Only companions made by the companions system, never a player's own characters.
 
 `Ambient.Density` sets how many are around each player in the open world (5), `Ambient.CityDensity` in a capital (15),
 `Ambient.MaxTotal` on the whole server (60), `Ambient.Radius` how far around a player they count (150 yards); all of
@@ -320,6 +324,7 @@ who loves ale` (or the panel) gives a bot a character. Banter (comments on level
 | `Companions.Ambient.Radius` | 150 | yards around a player they appear and count in |
 | `Companions.Ambient.GearQuality` | 2 | best item quality they wear |
 | `Companions.Ambient.PoolSize` | 200 | characters kept for them |
+| `Companions.Ambient.CompanionChance` | 20 | % of a capital's ones that are players' companions not out with them |
 
 All of these (but `Enable` and the account) can be changed live in the web panel.
 
@@ -342,6 +347,18 @@ bots see it and what each one does), `invite <owner> <name>` (a /invite), `order
   wears in that slot, and better than any piece for that slot in its bags, judged with the stats that drop rolled, so a
   green "of the Bear" counts with its stats) and puts it on; it passes on everything else, the greed rolls are yours. With master loot it keeps
   what you give it in its bags until you say `equip it`. Gear it looted or was given is kept when it regears.
+- Kicked out of the group (by its player or the group's leader), a companion is dismissed; it does not come back in.
+- Mounts: each companion rides its own race's mount (horses, wolves, rams, sabers, skeletal horses, kodos,
+  mechanostriders, raptors), or its class mount (Felsteed, Warhorse) when it knows it, swift when its player rides a swift
+  one.
+- Threat: with a tank in the group the damage dealers keep under the tank's threat (90% of it in melee, 100% at range:
+  another target, else they hold), keep area spells until the tank holds the pack, and pets keep their taunt (Growl,
+  Torment) off; priests Fade, cats Cower, hunters Feign Death and rogues Feint when an enemy turns on them anyway.
+- Shamans keep their totems up in every role: Tremor against fear, Poison or Disease Cleansing when someone has one,
+  Strength of Earth, Windfury and Mana Spring or Healing Stream for the group, Magma on a pack, Searing on the target.
+- Eating and drinking: the food (drink) that restores the most among those their level allows.
+- Dungeon trash loot is personal to the group's round-robin looter: the core patch keeps that turn with the players
+  close enough (the companions take turns only when no player is around), so players do not find most corpses empty.
 - Missing items: Forever's loot tables name 1,416 vanilla items its client data lacks (the boss loot of Blackrock Depths
   and Molten Core, Onyxia's tier 2 helms, ...), so those rows never dropped. The client still has their icons and
   models; `docker/sql/hotfixes/2026_10_26_90_hotfixes_companions_vanilla_items.sql` adds the rest (name in 9 languages

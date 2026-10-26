@@ -5,6 +5,7 @@
 #include "CompanionMgr.h"
 #include "AccountMgr.h"
 #include "CharacterCache.h"
+#include "Chat.h"
 #include "CompanionAI.h"
 #include "CompanionAmbient.h"
 #include "CompanionPersonality.h"
@@ -16,6 +17,7 @@
 #include "GameTime.h"
 #include "Group.h"
 #include "Spell.h"
+#include "Containers.h"
 #include "Corpse.h"
 #include "GroupMgr.h"
 #include "Log.h"
@@ -282,6 +284,19 @@ namespace Companions
             error = "You cannot summon yourself.";
             return false;
         }
+        // its companion about town (the living world borrowed it): it leaves the city and logs in at its player
+        if (CompanionAI* about = GetAI(botGuid); about && about->IsAmbient())
+        {
+            BotRecord const* owned = GetRecord(botGuid);
+            if (!owned || owned->Owner != owner->GetGUID())
+            {
+                error = "That companion belongs to someone else.";
+                return false;
+            }
+            _resummons[botGuid] = owner->GetGUID();
+            Dismiss(botGuid);
+            return true;
+        }
         if (IsBotGuid(botGuid) || IsLoggingIn(botGuid))
         {
             error = "That companion is already with you.";
@@ -404,7 +419,7 @@ namespace Companions
         return puppets;
     }
 
-    bool CompanionMgr::LoginAmbient(ObjectGuid botGuid, WorldLocation const& where, uint32 zoneId, uint8 level, bool city)
+    bool CompanionMgr::LoginAmbient(ObjectGuid botGuid, WorldLocation const& where, uint32 zoneId, uint8 level, bool city, bool borrowed)
     {
         if (_shuttingDown || IsBotGuid(botGuid) || IsLoggingIn(botGuid) || ObjectAccessor::FindConnectedPlayer(botGuid))
             return false;
@@ -427,7 +442,7 @@ namespace Companions
         }
         _pendingLogins[botGuid] = { session, ObjectGuid::Empty, true };
         Position home = where.GetPosition();
-        _loginCallbacks.AddCallback(CharacterDatabase.DelayQueryHolder(holder)).AfterComplete([this, botGuid, home, level, city](SQLQueryHolderBase const& result)
+        _loginCallbacks.AddCallback(CharacterDatabase.DelayQueryHolder(holder)).AfterComplete([this, botGuid, home, level, city, borrowed](SQLQueryHolderBase const& result)
         {
             auto itr = _pendingLogins.find(botGuid);
             if (itr == _pendingLogins.end())
@@ -440,12 +455,12 @@ namespace Companions
                 return;
             }
             pendingSession->HandlePlayerLogin(static_cast<LoginQueryHolder const&>(result));
-            FinishAmbientLogin(pendingSession, botGuid, home, level, city);
+            FinishAmbientLogin(pendingSession, botGuid, home, level, city, borrowed);
         });
         return true;
     }
 
-    void CompanionMgr::FinishAmbientLogin(WorldSession* session, ObjectGuid botGuid, Position const& home, uint8 level, bool city)
+    void CompanionMgr::FinishAmbientLogin(WorldSession* session, ObjectGuid botGuid, Position const& home, uint8 level, bool city, bool borrowed)
     {
         Player* bot = session->GetPlayer();
         if (!bot)
@@ -466,11 +481,15 @@ namespace Companions
             bot->ResurrectPlayer(1.0f);
             bot->SpawnCorpseBones();
         }
-        sCompanionFactory->Prepare(bot, level, DpsRoleForClass(bot->GetClass()), true);
         bot->SetPassOnGroupLoot(true);
-        // the world's adventurers carry a family name, like Forever's players
-        if (sCharacterCache->GetCharacterSurnameByGuid(botGuid).empty())
-            CompanionFactory::SetSurname(botGuid, CompanionFactory::RandomSurname(bot->GetRace()));
+        // a player's companion keeps its level, gear and name; the world's own adventurers get theirs
+        if (!borrowed)
+        {
+            sCompanionFactory->Prepare(bot, level, DpsRoleForClass(bot->GetClass()), true);
+            // they carry a family name, like Forever's players
+            if (sCharacterCache->GetCharacterSurnameByGuid(botGuid).empty())
+                CompanionFactory::SetSurname(botGuid, CompanionFactory::RandomSurname(bot->GetRace()));
+        }
         TC_LOG_DEBUG("server.worldserver", "Companions: ambient {} (level {}) in zone {}", bot->GetName(), uint32(bot->GetLevel()), bot->GetZoneId());
     }
 
@@ -481,6 +500,24 @@ namespace Companions
         if (!invite)
             return;
         Player* inviter = ObjectAccessor::FindConnectedPlayer(invite->GetLeaderGUID());
+        // somebody's companion about town: it goes with its own player only, as his companion
+        if (BotRecord const* owned = GetRecord(bot->GetGUID()))
+        {
+            bot->UninviteFromGroup();
+            if (inviter && inviter->GetGUID() == owned->Owner)
+            {
+                _resummons[bot->GetGUID()] = inviter->GetGUID();
+                Dismiss(bot->GetGUID());
+            }
+            else if (inviter && !IsBotGuid(inviter->GetGUID()))
+            {
+                std::string ownerName;
+                sCharacterCache->GetCharacterNameByGuid(owned->Owner, ownerName);
+                bot->Whisper("Thanks, but I'm " + (ownerName.empty() ? std::string("someone else") : ownerName) + "'s companion.",
+                    LANG_UNIVERSAL, inviter);
+            }
+            return;
+        }
         std::string why;
         if (inviter && !IsBotGuid(inviter->GetGUID()) && AdoptAmbient(bot, ai, inviter, why))
         {
@@ -712,6 +749,41 @@ namespace Companions
             if (!owner.IsEmpty())
                 ArrangeFormation(owner);
         }
+
+        // borrowed ones their player asked for: now that they left the city, they log in at him
+        for (auto const& [guid, keepActive] : queue)
+        {
+            auto wanted = _resummons.find(guid);
+            if (wanted == _resummons.end())
+                continue;
+            ObjectGuid const ownerGuid = wanted->second;
+            _resummons.erase(wanted);
+            std::string error;
+            if (Player* owner = ObjectAccessor::FindConnectedPlayer(ownerGuid); owner && !Summon(owner, guid, error))
+                ChatHandler(owner->GetSession()).SendSysMessage("Companions: " + error);
+        }
+    }
+
+    bool CompanionMgr::IsLeaving(ObjectGuid botGuid) const
+    {
+        return std::any_of(_logoutQueue.begin(), _logoutQueue.end(), [&](auto const& entry) { return entry.first == botGuid; });
+    }
+
+    ObjectGuid CompanionMgr::PickIdleCompanion(::Team team) const
+    {
+        std::vector<ObjectGuid> idle;
+        for (auto const& [guid, record] : _records)
+        {
+            // never a player's own character (he may log in with it), never one that is out, coming or leaving
+            if (!record.Created || record.Active || IsBotGuid(guid) || IsLoggingIn(guid) || IsLeaving(guid)
+                || ObjectAccessor::FindConnectedPlayer(guid))
+                continue;
+            CharacterCacheEntry const* cache = sCharacterCache->GetCharacterCacheByGuid(guid);
+            if (!cache || cache->IsDeleted || cache->Level < 10 || Player::TeamForRace(cache->Race) != team)
+                continue;
+            idle.push_back(guid);
+        }
+        return idle.empty() ? ObjectGuid::Empty : Trinity::Containers::SelectRandomContainerElement(idle);
     }
 
     void CompanionMgr::JoinOwnerGroup(Player* bot, Player* owner)
@@ -1025,7 +1097,7 @@ namespace Companions
                 bot->UninviteFromGroup();
         }
 
-        if (!bot->GetGroup() || bot->GetGroup() != owner->GetGroup())
+        if (!IsLeaving(bot->GetGUID()) && (!bot->GetGroup() || bot->GetGroup() != owner->GetGroup()))
             JoinOwnerGroup(bot, owner);
 
         // the owner changed map (zoned into a dungeon, took a boat, hearthed): follow him there

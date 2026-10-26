@@ -897,7 +897,7 @@
       'RestoreOnLogin', 'AllowAlts', 'SyncLevel', 'AutoGear', 'GearMaxQuality']],
     ['set_group_ai', ['LLM.Enable', 'LLM.DefaultOn', 'LLM.PartyChat', 'LLM.Callouts', 'LLM.Tactics', 'LLM.TacticsInterval', 'LLM.Banter', 'LLM.MaxAge']],
     ['set_group_raid', ['Raid20.Enable', 'Raid20.Health', 'Raid20.Damage']],
-    ['set_group_ambient', ['Ambient.Enable', 'Ambient.Density', 'Ambient.CityDensity', 'Ambient.MaxTotal', 'Ambient.Radius', 'Ambient.GearQuality', 'Ambient.PoolSize']],
+    ['set_group_ambient', ['Ambient.Enable', 'Ambient.Density', 'Ambient.CityDensity', 'Ambient.MaxTotal', 'Ambient.Radius', 'Ambient.GearQuality', 'Ambient.PoolSize', 'Ambient.CompanionChance']],
   ];
   const settingLabel = (key) => T('set_' + key.replace('.', '_'));
   const ENDPOINT_HINTS = { anthropic: 'https://api.anthropic.com', ollama: 'http://ollama:11434', openai: 'http://192.168.1.20:8000/v1' };

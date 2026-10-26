@@ -771,6 +771,7 @@ namespace Companions
                 { "why",    HandleTestWhy,    rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "kill",   HandleTestKill,   rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "give",   HandleTestGive,   rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
+                { "kick",   HandleTestKick,   rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "equip",  HandleTestEquip,  rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "fire",   HandleTestFire,   rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
             };
@@ -1531,6 +1532,22 @@ namespace Companions
             return true;
         }
 
+        // .bot test kick <bot>: its group kicks it, as its player would (it is dismissed, it does not come back)
+        static bool HandleTestKick(ChatHandler* handler, std::string botName)
+        {
+            Player* bot = ObjectAccessor::FindPlayerByName(botName);
+            CompanionAI* ai = sCompanionMgr->GetAI(bot);
+            Group* group = bot ? bot->GetGroup() : nullptr;
+            if (!ai || !group)
+            {
+                handler->SendSysMessage("Companions test: no such bot in a group");
+                return true;
+            }
+            group->RemoveMember(bot->GetGUID(), GROUP_REMOVEMETHOD_KICK, ai->GetOwnerGUID());
+            handler->PSendSysMessage("Companions test: %s kicked", botName.c_str());
+            return true;
+        }
+
         // .bot test give <bot> <item>: into its bags with random stats rolled like a drop's, with what the loot roll would
         // decide (Need on an upgrade) and the score of what it wears there
         static bool HandleTestGive(ChatHandler* handler, std::string botName, uint32 itemId)
@@ -1747,6 +1764,22 @@ namespace Companions
 
     // ------------------------------------------------------------------ hooks
 
+    // a companion kicked out of the group by a player is dismissed (it does not come back in)
+    class companions_groupscript : public GroupScript
+    {
+    public:
+        companions_groupscript() : GroupScript("companions_groupscript") { }
+
+        void OnRemoveMember(Group* /*group*/, ObjectGuid guid, RemoveMethod method, ObjectGuid kicker, char const* /*reason*/) override
+        {
+            if ((method != GROUP_REMOVEMETHOD_KICK && method != GROUP_REMOVEMETHOD_KICK_LFG) || !sCompanionMgr->IsBotGuid(guid)
+                || sCompanionMgr->IsBotGuid(kicker))
+                return;
+            if (CompanionAI* ai = sCompanionMgr->GetAI(guid); ai && !ai->IsAmbient())
+                sCompanionMgr->Dismiss(guid);   // queued: it logs out on the next update, not inside the group code
+        }
+    };
+
     class companions_playerscript : public PlayerScript
     {
     public:
@@ -1850,6 +1883,7 @@ namespace Companions
 void AddCompanionsScripts()
 {
     new Companions::companions_commandscript();
+    new Companions::companions_groupscript();
     new Companions::companions_playerscript();
     new Companions::companions_worldscript();
     Companions::AddScalingScripts();

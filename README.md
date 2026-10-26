@@ -41,7 +41,7 @@ and the game client (to extract its data).
 
 ```sh
 git clone <this repository> forever && cd forever
-cp .env.example .env               # passwords, PUBLIC_ADDRESS (public IP or DNS name), WOW_DIR
+cp .env.example .env               # passwords, PUBLIC_ADDRESS (public IP or DNS name), WOW_DIR, REALM_TYPE (normal|pvp|rp|rppvp)
 ./scripts/gen-certs.sh             # your own CA + server certificate (never share certs/ca/forever_root_ca.key)
 docker compose build               # compiles TrinityCore, takes a while
 docker compose run --rm extractor  # extracts the game data from your client into ./data

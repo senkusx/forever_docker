@@ -57,6 +57,7 @@ namespace Companions
         float AmbientRadius = 150.0f;       // yards around a player they count in (and appear in)
         uint32 AmbientPoolSize = 200;       // characters kept for them (reused, recycled when too high in level)
         uint32 AmbientGearQuality = 2;      // highest item quality they wear (2 green, 3 blue)
+        uint32 AmbientCompanionChance = 20; // % of the capital's ones that are players' companions not out with them
     };
 
     // one setting the web panel can read and change

@@ -291,6 +291,14 @@ namespace Companions
         request.ZoneId = player->GetZoneId();
         if (!PickSpot(player, kind.City, team, request))
             return;
+        // in a capital, now and then a player's companion that is not out with him strolls about town as it is
+        if (kind.City && urand(0, 99) < GetConfig().AmbientCompanionChance)
+            if (ObjectGuid idle = sCompanionMgr->PickIdleCompanion(team); !idle.IsEmpty())
+            {
+                request.Borrowed = true;
+                Login(idle, request);
+                return;
+            }
         if (_creating.size() >= 2)
             return;     // a few characters made at a time
         ObjectGuid guid = PickCharacter(team, request.Level);
@@ -441,7 +449,7 @@ namespace Companions
 
     void CompanionAmbient::Login(ObjectGuid guid, Request const& request)
     {
-        if (!sCompanionMgr->LoginAmbient(guid, request.Where, request.ZoneId, request.Level, request.City))
+        if (!sCompanionMgr->LoginAmbient(guid, request.Where, request.ZoneId, request.Level, request.City, request.Borrowed))
             return;
         Live live;
         live.MapId = request.Where.GetMapId();

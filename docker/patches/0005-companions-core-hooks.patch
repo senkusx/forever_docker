@@ -87,6 +87,71 @@ index d87f3ab..4fed20e 100644
  
          void RemovedInsignia(Player* looterPlr);
  
+diff --git a/src/server/game/Entities/Unit/Unit.cpp b/src/server/game/Entities/Unit/Unit.cpp
+index 59e0dca..de07d7b 100644
+--- a/src/server/game/Entities/Unit/Unit.cpp
++++ b/src/server/game/Entities/Unit/Unit.cpp
+@@ -11620,7 +11620,9 @@ void Unit::SetMeleeAnimKitId(uint16 animKitId)
+                 else if (!tappers.empty())
+                 {
+                     Group* group = !groups.empty() ? *groups.begin() : nullptr;
+-                    Player* looter = group ? ASSERT_NOTNULL(ObjectAccessor::GetPlayer(*creature, group->GetLooterGuid())) : tappers[0];
++                    Player* looter = group ? ObjectAccessor::GetPlayer(*creature, group->GetLooterGuid()) : nullptr;
++                    if (!looter)    // companions: the looter left the map (a bot dismissed in the fight): no assertion crash
++                        looter = tappers[0];
+ 
+                     Loot* loot = new Loot(creature->GetMap(), creature->GetGUID(), LOOT_CORPSE, dungeonEncounter ? group : nullptr);
+ 
+diff --git a/src/server/game/Groups/Group.cpp b/src/server/game/Groups/Group.cpp
+index e443899..ae4f2d7 100644
+--- a/src/server/game/Groups/Group.cpp
++++ b/src/server/game/Groups/Group.cpp
+@@ -1133,6 +1133,18 @@ void Group::UpdateLooterGuid(WorldObject* pLootedObject, bool ifneed)
+     if (GetLootMethod() == FREE_FOR_ALL)
+         return;
+ 
++    // companions: with a real player close enough, the round robin looter is never a bot (trash loot is the looter's
++    // alone, so the players would find most corpses empty); with none, the bots take turns and nothing is lost
++    bool playerNear = false;
++    for (MemberSlot const& slot : m_memberSlots)
++        if (Player* member = ObjectAccessor::FindPlayer(slot.guid))
++            if (!member->GetSession()->IsBot() && member->IsAtGroupRewardDistance(pLootedObject))
++                playerNear = true;
++    auto eligible = [&](Player const* player)
++    {
++        return player->IsAtGroupRewardDistance(pLootedObject) && (!playerNear || !player->GetSession()->IsBot());
++    };
++
+     ObjectGuid oldLooterGUID = GetLooterGuid();
+     member_citerator guid_itr = _getMemberCSlot(oldLooterGUID);
+     if (guid_itr != m_memberSlots.end())
+@@ -1141,7 +1153,7 @@ void Group::UpdateLooterGuid(WorldObject* pLootedObject, bool ifneed)
+         {
+             // not update if only update if need and ok
+             Player* looter = ObjectAccessor::FindPlayer(guid_itr->guid);
+-            if (looter && looter->IsAtGroupRewardDistance(pLootedObject))
++            if (looter && eligible(looter))
+                 return;
+         }
+         ++guid_itr;
+@@ -1152,7 +1164,7 @@ void Group::UpdateLooterGuid(WorldObject* pLootedObject, bool ifneed)
+     for (member_citerator itr = guid_itr; itr != m_memberSlots.end(); ++itr)
+     {
+         if (Player* player = ObjectAccessor::FindPlayer(itr->guid))
+-            if (player->IsAtGroupRewardDistance(pLootedObject))
++            if (eligible(player))
+             {
+                 pNewLooter = player;
+                 break;
+@@ -1165,7 +1177,7 @@ void Group::UpdateLooterGuid(WorldObject* pLootedObject, bool ifneed)
+         for (member_citerator itr = m_memberSlots.begin(); itr != guid_itr; ++itr)
+         {
+             if (Player* player = ObjectAccessor::FindPlayer(itr->guid))
+-                if (player->IsAtGroupRewardDistance(pLootedObject))
++                if (eligible(player))
+                 {
+                     pNewLooter = player;
+                     break;
 diff --git a/src/server/game/Groups/Group.h b/src/server/game/Groups/Group.h
 index 40e7a38..8ec82eb 100644
 --- a/src/server/game/Groups/Group.h

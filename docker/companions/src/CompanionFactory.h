@@ -91,8 +91,9 @@ namespace Companions
         std::string DescribeTalents(Player* bot) const;
         std::string DescribeGear(Player* bot) const;
 
-        uint32 GetFoodSpell(uint8 level) const { return PickByLevel(_foodSpells, level); }
-        uint32 GetDrinkSpell(uint8 level) const { return PickByLevel(_drinkSpells, level); }
+        // the food (drink) that restores the most among those its level allows
+        uint32 GetFoodSpell(uint8 level) const { return PickRefreshment(_foodSpells, level); }
+        uint32 GetDrinkSpell(uint8 level) const { return PickRefreshment(_drinkSpells, level); }
 
     private:
         CompanionFactory() = default;
@@ -154,7 +155,8 @@ namespace Companions
         void MaxWeaponSkills(Player* bot);
         void EquipBags(Player* bot);
         void GiveAmmo(Player* bot);
-        static uint32 PickByLevel(std::map<uint32, uint32> const& table, uint8 level);
+        struct Refreshment { uint32 ReqLevel = 0; int32 Restores = 0; uint32 Spell = 0; };
+        static uint32 PickRefreshment(std::vector<Refreshment> const& table, uint8 level);
         std::string RandomName() const;
         std::vector<GearItem const*> AmbientCandidates(Player* bot, Role role, std::vector<uint32> const& invTypes,
             std::vector<uint32> const& subClasses, uint32 quality, bool armorType, uint32 exclude) const;
@@ -165,8 +167,8 @@ namespace Companions
         std::unordered_map<uint32, std::vector<GearItem>> _gearByInvType;
         std::vector<uint32> _ammo[2];                   // arrows, bullets (sorted by level)
         std::vector<uint32> _bags;                      // best first
-        std::map<uint32, uint32> _foodSpells;           // required level -> spell
-        std::map<uint32, uint32> _drinkSpells;
+        std::vector<Refreshment> _foodSpells;           // spells of the foods and drinks players can get
+        std::vector<Refreshment> _drinkSpells;
         std::unordered_map<uint8, std::vector<TalentTree>> _talentTrees;    // class -> trees
         std::vector<uint32> _petEntries;                // tameable beasts for new hunters
         AsyncCallbackProcessor<TransactionCallback> _saveCallbacks;
