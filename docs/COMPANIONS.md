@@ -62,7 +62,8 @@ of your characters:
   and its abilities, each set to normal, use more or never use (with what players said about it). Stats, talents and
   abilities need it in the game; gear and bags show either way.
 - **New companion**: class, race (the ones your faction can play, with Forever's Undead and Tauren paladins, Dwarf
-  shamans and Troll druids), gender, custom or random name, role, talent
+  shamans and Troll druids), gender, custom or random first name and family name (the dice give both, of that race and
+  gender; companions made in game with a random name get a family name too), role, talent
   tabs, gear quality, aggression, stance, brain and personality, and the appearance (each option picked or random).
 - **Templates**: save a companion as a template, and build party templates from them with their group settings.
   Applying a party template brings back the companions made from it, creates the missing ones and can dismiss the
@@ -186,11 +187,18 @@ Ruins of Ahn'Qiraj are 20-player raids already. `Raid20.Enable 0` brings the 40-
 
 Random characters appear around players in the open world and live there on their own, so a zone does not feel empty:
 
-- in the open world they hunt the zone's mobs at their level (never one a player is near), walk up to quest givers and
-  wander; in capital cities they stand at the auction house, the bank, the inn, flight masters, trainers and vendors,
-  or sit down a while;
-- their level comes from the mobs around (any level, half of them at the cap, in a city), their gear from their level
-  (greens by default, `Ambient.GearQuality`);
+- each has a job for its time in the world: in the open world a hunter working one kind of mob in one spot (they
+  respawn), or a quester going between a quest giver and the mobs around it (never a mob a player is near); in capital
+  cities a trader at the auction house (and the bank), a crafter calling out its trade (enchanting, tailoring,
+  blacksmithing, alchemy... "Enchanter LF work!"), a shopper with a few errands (a vendor, its class trainer, the bank)
+  who then leaves by flight master, or someone resting at the inn;
+- their level comes from the mobs around (any level, half of them at the cap, in a city); their gear is a fresh outfit
+  each time: greens of their level (item level within a few of theirs), their armor type (plate warriors and paladins
+  from 40, mail hunters and shamans from 40, leather, cloth), stats of their class (random enchantments such as "of the
+  Bear" chosen to fit) and weapons of their class, picked at random from all that fit so no two look alike; at the level
+  cap a blue now and then (`Ambient.GearQuality` caps it);
+- they have Forever's first and family names: first names from the game's own name generator for their race and gender,
+  family names in their people's style (Hawthorne, Barleybrew, Feathermoon, Cogspinner, Thunderhoof...);
 - a zone of one faction gets bots of that faction (a Horde zone gets Horde bots, even around an Alliance player);
   contested zones (Stranglethorn, Arathi, Hillsbrad...) both;
 - they leave when no player has been around for 15 seconds, after dying, or after 8 to 20 minutes out of sight, and
@@ -199,7 +207,7 @@ Random characters appear around players in the open world and live there on thei
   level and gear with you), as long as you have room for another companion. Whispered, they answer that they are busy
   and to send an invite.
 
-`Ambient.Density` sets how many are around each player in the open world (6), `Ambient.CityDensity` in a capital (12),
+`Ambient.Density` sets how many are around each player in the open world (5), `Ambient.CityDensity` in a capital (15),
 `Ambient.MaxTotal` on the whole server (60), `Ambient.Radius` how far around a player they count (150 yards); all of
 them in the web panel, "A living world". The characters are kept in a pool (`Ambient.PoolSize`, 200; table
 `characters.companion_ambient`) and reused, levelled up where needed; when the pool is full one far above the level
@@ -301,7 +309,7 @@ who loves ale` (or the panel) gives a bot a character. Banter (comments on level
 | `Companions.Raid20.Health` | 0.5 | share of their creatures' health (when they spawn) |
 | `Companions.Raid20.Damage` | 0.8 | share of the damage they deal to players and pets |
 | `Companions.Ambient.Enable` | 1 | ambient bots around players in the open world |
-| `Companions.Ambient.Density` / `CityDensity` | 6 / 12 | around each player, in the open world / in a capital |
+| `Companions.Ambient.Density` / `CityDensity` | 5 / 15 | around each player, in the open world / in a capital |
 | `Companions.Ambient.MaxTotal` | 60 | ambient bots on the whole server |
 | `Companions.Ambient.Radius` | 150 | yards around a player they appear and count in |
 | `Companions.Ambient.GearQuality` | 2 | best item quality they wear |

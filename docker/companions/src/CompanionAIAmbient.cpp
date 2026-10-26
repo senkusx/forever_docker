@@ -17,6 +17,7 @@
 #include "SpellAuras.h"
 #include "SpellInfo.h"
 #include <cmath>
+#include <unordered_map>
 
 namespace Companions
 {
@@ -42,6 +43,34 @@ namespace Companions
             Trinity::CreatureListSearcher<Trinity::AllWorldObjectsInRange> searcher(bot, creatures, check);
             Cell::VisitGridObjects(bot, searcher, range);
             return creatures;
+        }
+
+        // what a crafter calls out in town (its level decides what it can make)
+        std::string CrafterLine(std::string const& trade, uint8 level)
+        {
+            bool high = level >= 50;
+            std::vector<char const*> lines;
+            if (trade == "enchanting")
+                lines = high ? std::vector<char const*>{ "Enchanter LF work! Crusader, Fiery, +stats on chest and bracers. Your mats, tips welcome.",
+                                                         "Enchanting services here, bring your mats and I'll make that weapon shine." }
+                             : std::vector<char const*>{ "Enchanter LF work, cheap bracer and chest enchants, your mats.", "Need an enchant? Bring mats, tips welcome." };
+            else if (trade == "tailoring")
+                lines = high ? std::vector<char const*>{ "Tailor here, Runecloth Bags and robes made to order. PST.", "WTS Mooncloth crafts, bring your cloth!" }
+                             : std::vector<char const*>{ "Tailor LF work, bags and robes, your cloth.", "Making linen and wool bags, cheap!" };
+            else if (trade == "blacksmithing")
+                lines = { "Blacksmith LF work: weapons, armor, sharpening stones. Bring the bars!", "Smithing on request, your ore, my anvil." };
+            else if (trade == "leatherworking")
+                lines = { "Leatherworker here: armor kits and leather gear, your mats.", "Need armor kits? Leatherworker LF work." };
+            else if (trade == "alchemy")
+                lines = high ? std::vector<char const*>{ "WTS Major Healing and Mana potions, flasks on request.", "Alchemist here, transmutes and elixirs, PST." }
+                             : std::vector<char const*>{ "Selling healing potions, cheap!", "Alchemist LF work, bring herbs." };
+            else if (trade == "engineering")
+                lines = { "Engineer here, scopes, bombs and goggles. PST!", "Need a scope on that gun? Engineer LF work." };
+            else if (trade == "cooking")
+                lines = { "Cook LF work! Bring the meat, I bring the spices.", "Selling food that actually tastes good. PST." };
+            else
+                lines = { "Selling bandages, cheap!", "First aid here, bandages for your next dungeon run." };
+            return lines[urand(0, lines.size() - 1)];
         }
 
         // a real player close to it: its mob, its quest, not ours to take
@@ -83,7 +112,11 @@ namespace Companions
     std::string CompanionAI::AmbientLine() const
     {
         static char const* const names[] = { "deciding", "grinding", "visiting", "wandering", "sitting" };
-        std::string out = std::string(_ambientCity ? "city, " : "world, ") + names[uint8(_activity)];
+        static char const* const jobs[] = { "no job", "hunter", "quester", "trader", "crafter", "shopper", "idler" };
+        std::string out = std::string(_ambientCity ? "city, " : "world, ") + jobs[uint8(_job)] + (_jobTrade.empty() ? "" : " (" + _jobTrade + ")")
+            + ", " + names[uint8(_activity)];
+        if (_jobEntry)
+            out += ", hunts " + std::to_string(_jobEntry) + " (" + std::to_string(_jobKills) + (_jobGoal ? "/" + std::to_string(_jobGoal) : "") + ")";
         if (!_activityTarget.IsEmpty())
             if (Unit* unit = ObjectAccessor::GetUnit(*_bot, _activityTarget))
                 out += " " + unit->GetName();
@@ -108,6 +141,12 @@ namespace Companions
             return;
 
         TimePoint const now = GameTime::Now();
+        // a crafter calls out its trade now and then while it stands there
+        if (_job == Job::Crafter && _activity != Activity::None && now >= _jobAdvertAt)
+        {
+            _jobAdvertAt = now + Seconds(urand(120, 260));
+            _bot->Say(CrafterLine(_jobTrade, _bot->GetLevel()), LANG_UNIVERSAL);
+        }
         switch (_activity)
         {
             case Activity::Visit:
@@ -136,6 +175,8 @@ namespace Companions
                 break;
             case Activity::Grind:
                 // the kill is over (combat ended) or the target was taken: next thing
+                if (Unit* prey = _activityTarget.IsEmpty() ? nullptr : ObjectAccessor::GetUnit(*_bot, _activityTarget); prey && !prey->IsAlive())
+                    ++_jobKills;
                 break;
             case Activity::None:
                 if (now < _activityUntil)
@@ -145,26 +186,263 @@ namespace Companions
 
         _activity = Activity::None;
         _activityTarget.Clear();
+        if (_job == Job::None)
+            ChooseJob();
+        bool acted = false;
+        switch (_job)
+        {
+            case Job::Hunter:  acted = JobHunt(); break;
+            case Job::Quester: acted = JobQuest(); break;
+            default:           acted = JobCity(); break;
+        }
+        // nothing to do this moment: a short pause, then again
+        if (!acted)
+        {
+            _activity = Activity::None;
+            _activityUntil = now + Seconds(urand(4, 10));
+        }
+    }
+
+    void CompanionAI::ChooseJob()
+    {
         uint32 roll = urand(0, 99);
         if (_ambientCity)
         {
-            if (roll < 65 && AmbientVisit())
-                return;
-            if (roll < 80)
+            _job = roll < 25 ? Job::Trader : roll < 45 ? Job::Crafter : roll < 85 ? Job::Shopper : Job::Idler;
+            if (_job == Job::Crafter)
             {
-                _activity = Activity::Sit;
-                _activityUntil = now + Seconds(urand(15, 60));
-                _bot->SetStandState(UNIT_STAND_STATE_SIT);
-                return;
+                static char const* const trades[] = { "enchanting", "tailoring", "blacksmithing", "leatherworking", "alchemy", "engineering",
+                    "cooking", "first aid" };
+                _jobTrade = trades[urand(0, std::size(trades) - 1)];
+                _jobAdvertAt = GameTime::Now() + Seconds(urand(10, 60));
             }
-            AmbientWander(25.0f);
+            if (_job == Job::Shopper)
+            {
+                // two or three errands, then off by flight master
+                static uint32 const stops[] = { UNIT_NPC_FLAG_VENDOR, UNIT_NPC_FLAG_TRAINER, UNIT_NPC_FLAG_BANKER, UNIT_NPC_FLAG_AUCTIONEER,
+                    UNIT_NPC_FLAG_INNKEEPER, UNIT_NPC_FLAG_VENDOR };
+                uint32 count = urand(2, 3);
+                for (uint32 i = 0; i < count; ++i)
+                    _jobErrands.push_back(stops[urand(0, std::size(stops) - 1)]);
+                _jobErrands.push_back(UNIT_NPC_FLAG_FLIGHTMASTER);
+            }
             return;
         }
-        if (roll < 70 && AmbientGrind())
-            return;
-        if (roll < 85 && AmbientVisit())
-            return;
-        AmbientWander(40.0f);
+        _job = roll < 55 ? Job::Hunter : Job::Quester;
+    }
+
+    // the kind of mob around it that is most common at its level: its hunting ground for this life
+    bool CompanionAI::ChooseHuntingGround(Position const& around, float range)
+    {
+        uint8 const level = _bot->GetLevel();
+        std::unordered_map<uint32, std::vector<Creature*>> byEntry;
+        for (Creature* creature : CreaturesAround(_bot, range))
+        {
+            if (!creature->IsAlive() || creature->IsPet() || creature->IsTotem() || creature->IsTrigger() || creature->IsCritter()
+                || creature->IsCivilian() || creature->IsElite() || creature->isWorldBoss() || creature->GetExactDist2d(&around) > range)
+                continue;
+            if (creature->GetLevel() + 4 < level || creature->GetLevel() > level + 2 || !_bot->IsValidAttackTarget(creature))
+                continue;
+            byEntry[creature->GetEntry()].push_back(creature);
+        }
+        std::vector<Creature*> const* best = nullptr;
+        for (auto const& [entry, list] : byEntry)
+            if (!best || list.size() > best->size() || (list.size() == best->size() && urand(0, 1)))
+                best = &list;
+        if (!best)
+            return false;
+        float x = 0.0f, y = 0.0f;
+        for (Creature* creature : *best)
+        {
+            x += creature->GetPositionX();
+            y += creature->GetPositionY();
+        }
+        _jobEntry = best->front()->GetEntry();
+        _jobCenter.Relocate(x / float(best->size()), y / float(best->size()), best->front()->GetPositionZ());
+        return true;
+    }
+
+    // one kind of mob in one place, again and again (they respawn): what a player grinding a spot does
+    bool CompanionAI::JobHunt()
+    {
+        if (!_jobEntry && !ChooseHuntingGround(_ambientHome, 70.0f))
+        {
+            // nothing of its level around: it takes a quest instead, or walks a little
+            if (_job == Job::Hunter && FindNpc(UNIT_NPC_FLAG_QUESTGIVER, 150.0f))
+            {
+                _job = Job::Quester;
+                return JobQuest();
+            }
+            return AmbientWander(40.0f);
+        }
+        Creature* best = nullptr;
+        for (Creature* creature : CreaturesAround(_bot, 70.0f))
+        {
+            if (creature->GetEntry() != _jobEntry || !creature->IsAlive() || creature->IsInCombat() || creature->GetExactDist2d(&_jobCenter) > 60.0f)
+                continue;
+            if (!_bot->IsValidAttackTarget(creature) || NearRealPlayer(creature, 35.0f) || !_bot->IsWithinLOSInMap(creature))
+                continue;
+            if (!best || _bot->GetDistance(creature) < _bot->GetDistance(best))
+                best = creature;
+        }
+        if (best)
+        {
+            _activity = Activity::Grind;
+            _activityTarget = best->GetGUID();
+            if (_bot->GetStandState() != UNIT_STAND_STATE_STAND)
+                _bot->SetStandState(UNIT_STAND_STATE_STAND);
+            OrderAttack(best->GetGUID(), false);
+            return true;
+        }
+        // all down for now: it waits on its spot for them to come back
+        _ambientHome = _jobCenter;
+        return AmbientWander(18.0f);
+    }
+
+    // a quest: talk to the giver, hunt the mobs around, come back, again
+    bool CompanionAI::JobQuest()
+    {
+        Creature* giver = _jobNpc.IsEmpty() ? nullptr : ObjectAccessor::GetCreature(*_bot, _jobNpc);
+        if (!giver)
+        {
+            giver = FindNpc(UNIT_NPC_FLAG_QUESTGIVER, 150.0f);
+            if (!giver)
+            {
+                _job = Job::Hunter;
+                return JobHunt();
+            }
+            _jobNpc = giver->GetGUID();
+            _jobStage = 0;
+        }
+        switch (_jobStage)
+        {
+            case 0:     // to the quest giver
+                _jobStage = 1;
+                return GoTo(giver, urand(6000, 15000));
+            case 1:     // a quest taken: the mobs around for it
+                _jobEntry = 0;
+                if (!ChooseHuntingGround(giver->GetPosition(), 110.0f))
+                {
+                    _jobStage = 0;
+                    _jobNpc.Clear();    // nothing for it here: another giver
+                    return AmbientWander(40.0f);
+                }
+                _jobKills = 0;
+                _jobGoal = urand(4, 9);
+                _jobStage = 2;
+                [[fallthrough]];
+            default:    // hunting until the quest is done, then back
+                if (_jobKills >= _jobGoal)
+                {
+                    _jobStage = 0;
+                    return JobQuest();
+                }
+                return JobHunt();
+        }
+    }
+
+    // cities: the auction house trader, the crafter calling out its trade, the shopper with errands, the one at the inn
+    bool CompanionAI::JobCity()
+    {
+        switch (_job)
+        {
+            case Job::Trader:
+            {
+                bool bank = urand(0, 99) < 25;
+                Creature* npc = FindNpc(bank ? UNIT_NPC_FLAG_BANKER : UNIT_NPC_FLAG_AUCTIONEER, 150.0f);
+                if (!npc && bank)
+                    npc = FindNpc(UNIT_NPC_FLAG_AUCTIONEER, 150.0f);
+                return npc ? GoTo(npc, bank ? urand(20000, 40000) : urand(60000, 150000)) : AmbientWander(25.0f);
+            }
+            case Job::Crafter:
+            {
+                // next to its trainer if the city has one, else where the crowd is
+                std::string trade = _jobTrade;
+                Creature* npc = FindNpc(UNIT_NPC_FLAG_TRAINER, 150.0f, [&trade](Creature* c)
+                {
+                    std::string sub = c->GetCreatureTemplate()->SubName;
+                    for (char& ch : sub)
+                        ch = char(std::tolower(static_cast<unsigned char>(ch)));
+                    return sub.find(trade) != std::string::npos;
+                });
+                if (!npc)
+                    npc = FindNpc(urand(0, 1) ? UNIT_NPC_FLAG_AUCTIONEER : UNIT_NPC_FLAG_BANKER, 150.0f);
+                return npc ? GoTo(npc, urand(120000, 240000)) : AmbientWander(20.0f);
+            }
+            case Job::Shopper:
+            {
+                if (_jobStage >= _jobErrands.size())
+                {
+                    _ambientFinished = true;    // errands done: it flies off (leaves the world)
+                    return false;
+                }
+                uint32 flags = _jobErrands[_jobStage++];
+                uint8 classId = _bot->GetClass();
+                Creature* npc = FindNpc(flags, 160.0f, [flags, classId](Creature* c)
+                {
+                    // a trainer of its own class
+                    return flags != UNIT_NPC_FLAG_TRAINER || c->GetCreatureTemplate()->trainer_class == classId;
+                });
+                return npc ? GoTo(npc, flags == UNIT_NPC_FLAG_FLIGHTMASTER ? urand(4000, 8000) : urand(15000, 45000)) : true;
+            }
+            default:    // the inn: a seat near the innkeeper
+            {
+                if (_jobStage == 0)
+                {
+                    _jobStage = 1;
+                    if (Creature* inn = FindNpc(UNIT_NPC_FLAG_INNKEEPER, 150.0f))
+                        return GoTo(inn, urand(3000, 8000));
+                }
+                _jobStage = urand(0, 99) < 15 ? 0 : 1;
+                _activity = Activity::Sit;
+                _activityUntil = GameTime::Now() + Seconds(urand(60, 200));
+                _bot->SetStandState(UNIT_STAND_STATE_SIT);
+                return true;
+            }
+        }
+    }
+
+    Creature* CompanionAI::FindNpc(uint32 npcFlags, float range, std::function<bool(Creature*)> const& filter) const
+    {
+        std::vector<Creature*> found;
+        for (Creature* creature : CreaturesAround(_bot, range))
+            if (creature->IsAlive() && creature->HasNpcFlag(NPCFlags(npcFlags)) && !creature->IsHostileTo(_bot)
+                && std::fabs(creature->GetPositionZ() - _bot->GetPositionZ()) < 25.0f && (!filter || filter(creature)))
+                found.push_back(creature);
+        if (found.empty())
+            return nullptr;
+        // one of the closest: not always the same one
+        std::sort(found.begin(), found.end(), [this](Creature* a, Creature* b) { return _bot->GetDistance(a) < _bot->GetDistance(b); });
+        return found[urand(0, std::min<size_t>(found.size(), 3) - 1)];
+    }
+
+    // to a spot in front of an NPC, a little to the side (a crowd does not stand in one point), and stay a while
+    bool CompanionAI::GoTo(Creature* npc, uint32 dwellMs)
+    {
+        float angle = npc->GetOrientation() + frand(-0.9f, 0.9f);
+        float dist = npc->GetCombatReach() + frand(1.5f, 4.0f);
+        float x = npc->GetPositionX() + std::cos(angle) * dist;
+        float y = npc->GetPositionY() + std::sin(angle) * dist;
+        float z = npc->GetPositionZ();
+        if (!Trinity::IsValidMapCoord(x, y))
+            return false;
+        _bot->UpdateAllowedPositionZ(x, y, z);
+        if (std::fabs(z - npc->GetPositionZ()) > 3.0f)
+        {
+            x = npc->GetPositionX();
+            y = npc->GetPositionY();
+            z = npc->GetPositionZ();
+        }
+        _activity = Activity::Visit;
+        _activityTarget = npc->GetGUID();
+        _activitySpot.Relocate(x, y, z);
+        _activityArrived = false;
+        _activityDwell = dwellMs;
+        if (_bot->GetStandState() != UNIT_STAND_STATE_STAND)
+            _bot->SetStandState(UNIT_STAND_STATE_STAND);
+        _bot->GetMotionMaster()->MovePoint(0, _activitySpot);
+        _movement = MoveMode::Point;
+        return true;
     }
 
     // a mob of its level nobody else is busy with

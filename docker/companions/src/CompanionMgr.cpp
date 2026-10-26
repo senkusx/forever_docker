@@ -459,6 +459,9 @@ namespace Companions
         }
         sCompanionFactory->Prepare(bot, level, DpsRoleForClass(bot->GetClass()), true);
         bot->SetPassOnGroupLoot(true);
+        // the world's adventurers carry a family name, like Forever's players
+        if (sCharacterCache->GetCharacterSurnameByGuid(botGuid).empty())
+            CompanionFactory::SetSurname(botGuid, CompanionFactory::RandomSurname(bot->GetRace()));
         TC_LOG_DEBUG("server.worldserver", "Companions: ambient {} (level {}) in zone {}", bot->GetName(), uint32(bot->GetLevel()), bot->GetZoneId());
     }
 

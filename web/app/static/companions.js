@@ -370,6 +370,7 @@
     const status = bot.loading ? T('state_loading') : live ? T('state_' + live.state) : T('state_offline');
     const value = (key) => { const draft = state.drafts[bot.guid]; return draft && key in draft ? draft[key] : botValue(bot, key); };
     const rename = h('input', { type: 'text', value: bot.name, maxlength: 12, disabled: !!live || !bot.created, title: bot.created ? T('rename_hint') : T('rename_own') });
+    const resurname = h('input', { type: 'text', value: bot.surname || '', maxlength: 48, placeholder: T('surname_placeholder'), disabled: !bot.created });
 
     const applyButton = h('button', { type: 'button', class: 'cp-btn primary cp-apply', onclick: (e) => applyBot(bot, e.target) }, T('apply'));
     const discardButton = h('button', { type: 'button', class: 'cp-btn', onclick: () => { delete state.drafts[bot.guid]; renderParty(); } }, T('discard'));
@@ -387,7 +388,7 @@
     card.append(...[
       h('header', null,
         h('div', null,
-          h('h3', null, bot.name, bot.created ? null : h('small', { class: 'cp-tag' }, T('your_character'))),
+          h('h3', null, bot.surname ? `${bot.name} ${bot.surname}` : bot.name, bot.created ? null : h('small', { class: 'cp-tag' }, T('your_character'))),
           h('div', { class: 'muted' }, `${live ? live.level : bot.level} ${raceName(bot.race)} ${className(bot.class)} · ${roleName(bot.role)}`)),
         h('span', { class: 'cp-state ' + (live ? live.state : 'offline') }, status)),
       live ? h('div', { class: 'cp-vitals' },
@@ -410,7 +411,9 @@
       h('div', { class: 'cp-row cp-apply-row' }, applyButton, discardButton, note),
       appliedLine(state.applied[bot.guid]),
       bot.created ? h('div', { class: 'cp-row' }, rename,
-        h('button', { type: 'button', class: 'cp-btn', disabled: !!live, onclick: () => editBot(bot, { name: rename.value.trim() }, T('renamed')) }, T('rename'))) : null,
+        h('button', { type: 'button', class: 'cp-btn', disabled: !!live, onclick: () => editBot(bot, { name: rename.value.trim() }, T('renamed')) }, T('rename')),
+        resurname,
+        h('button', { type: 'button', class: 'cp-btn', onclick: () => editBot(bot, { surname: resurname.value.trim() }, T('renamed')) }, T('set_surname'))) : null,
       h('footer', { class: 'cp-row' },
         live ? h('button', { type: 'button', class: 'cp-btn', onclick: () => botAction(bot, 'dismiss') }, T('dismiss'))
           : h('button', { type: 'button', class: 'cp-btn primary', disabled: !ownerIn || bot.loading, title: ownerIn ? null : T('owner_must_play'), onclick: () => botAction(bot, 'summon') }, T('summon')),
@@ -557,7 +560,7 @@
 
   function defaultForm() {
     return { class: 1, race: 0, gender: 2, role: 'auto', spec: '', quality: 0, llm: true, provider: 0, aggression: 0, stance: 0,
-      personality: '', name: '', looks: {}, random_looks: true, template: 0 };
+      personality: '', name: '', surname: '', looks: {}, random_looks: true, template: 0 };
   }
 
   function allowedRaces(klass) {
@@ -579,6 +582,8 @@
     if (f.race && !races.includes(Number(f.race))) f.race = 0;
 
     const nameInput = h('input', { type: 'text', value: f.name, maxlength: 12, placeholder: T('name_random'), oninput: (e) => { f.name = e.target.value.trim(); } });
+    const surnameInput = h('input', { type: 'text', value: f.surname || '', maxlength: 48, placeholder: T('surname_placeholder'),
+      oninput: (e) => { f.surname = e.target.value; } });
     const looksBox = h('div', { class: 'cp-looks' });
 
     const classButtons = h('div', { class: 'cp-classes' }, Object.keys(state.me.classes).map(Number).map((klass) =>
@@ -594,9 +599,10 @@
         h('label', null, T('gender'), select([['2', T('random')], ['0', T('male')], ['1', T('female')]], String(f.gender), (v) => { f.gender = Number(v); renderLooks(); })),
         h('label', null, T('name'), h('div', { class: 'cp-inline' }, nameInput,
           h('button', { type: 'button', class: 'cp-btn', title: T('random_name'), onclick: async () => {
-            const r = await run(() => api('GET', '/api/companions/randomname'));
-            if (r && r.name) { f.name = r.name; nameInput.value = r.name; }
+            const r = await run(() => api('GET', `/api/companions/randomname?race=${f.race || 0}&gender=${f.gender}`));
+            if (r && r.name) { f.name = r.name; nameInput.value = r.name; f.surname = r.surname || ''; surnameInput.value = f.surname; }
           } }, '🎲'))),
+        h('label', null, T('surname'), surnameInput),
         h('label', null, T('role'), select(roleOptions(), f.role, (v) => { f.role = v; })),
         h('label', null, T('spec'), select(specOptions(f.class), f.spec, (v) => { f.spec = v; })),
         h('label', null, T('gear_quality'), select(qualityOptions(), String(f.quality), (v) => { f.quality = Number(v); })),
@@ -646,7 +652,7 @@
         if (!looks[option.id]) looks[option.id] = option.choices[Math.floor(Math.random() * option.choices.length)].id;
     }
     return { class: f.class, race: f.race, gender: f.gender, role: f.role, spec: f.spec, quality: f.quality, llm: f.llm, provider: f.provider || 0,
-      aggression: f.aggression, stance: f.stance, personality: f.personality, name: f.name, looks, random_looks: f.random_looks };
+      aggression: f.aggression, stance: f.stance, personality: f.personality, name: f.name, surname: (f.surname || '').trim(), looks, random_looks: f.random_looks };
   }
 
   async function createBot() {

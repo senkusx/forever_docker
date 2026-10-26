@@ -5,6 +5,7 @@
 #include "CompanionCommands.h"
 #include "CompanionAdmin.h"
 #include "CharacterCache.h"
+#include "Item.h"
 #include "Chat.h"
 #include "ChatCommand.h"
 #include "CompanionAI.h"
@@ -809,8 +810,13 @@ namespace Companions
         {
             std::string error;
             ObjectGuid ownerGuid = owner->GetGUID();
-            ObjectGuid guid = sCompanionFactory->CreateCharacter(owner, classId, 0, 2, name, error, [ownerGuid, role, classId](ObjectGuid botGuid, bool saved)
+            bool const randomName = name.empty();
+            ObjectGuid guid = sCompanionFactory->CreateCharacter(owner, classId, 0, 2, name, error, [ownerGuid, role, classId, randomName](ObjectGuid botGuid, bool saved)
             {
+                // a random name comes with a family name of its people
+                if (saved && randomName)
+                    if (CharacterCacheEntry const* cache = sCharacterCache->GetCharacterCacheByGuid(botGuid))
+                        CompanionFactory::SetSurname(botGuid, CompanionFactory::RandomSurname(cache->Race));
                 Player* currentOwner = ObjectAccessor::FindPlayer(ownerGuid);
                 if (!saved || !currentOwner)
                     return;
@@ -1399,7 +1405,7 @@ namespace Companions
         }
 
         // the ambient bots around the stand-in: what the zone is to them, and what each one does
-        static bool HandleTestAmbient(ChatHandler* handler, std::string owner)
+        static bool HandleTestAmbient(ChatHandler* handler, std::string owner, Optional<std::string> gear)
         {
             Player* puppet = Puppet(handler, owner);
             if (!puppet)
@@ -1408,9 +1414,18 @@ namespace Companions
             for (MapReference const& ref : puppet->GetMap()->GetPlayers())
                 if (Player* bot = ref.GetSource())
                     if (CompanionAI* ai = sCompanionMgr->GetAI(bot); ai && ai->IsAmbient() && bot->GetDistance(puppet) < 300.0f)
-                        handler->PSendSysMessage("  %s, level %u %s, class %u | %.0f yards | %s%s", bot->GetName().c_str(), uint32(bot->GetLevel()),
+                    {
+                        handler->PSendSysMessage("  %s %s, level %u %s, class %u | %.0f yards | %s%s", bot->GetName().c_str(),
+                            sCharacterCache->GetCharacterSurnameByGuid(bot->GetGUID()).c_str(), uint32(bot->GetLevel()),
                             bot->GetTeam() == ALLIANCE ? "Alliance" : "Horde", uint32(bot->GetClass()), bot->GetDistance(puppet),
                             ai->AmbientLine().c_str(), bot->IsInCombat() ? " | fighting" : "");
+                        if (gear)
+                            for (uint8 slot = EQUIPMENT_SLOT_START; slot < EQUIPMENT_SLOT_END; ++slot)
+                                if (Item* item = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
+                                    handler->PSendSysMessage("      %u: %s [q%u, req %d, ilvl %u]%s", uint32(slot), item->GetTemplate()->GetName(LOCALE_enUS),
+                                        uint32(item->GetTemplate()->GetQuality()), item->GetTemplate()->GetBaseRequiredLevel(),
+                                        item->GetTemplate()->GetBaseItemLevel(), item->GetItemRandomBonusListId() ? " +random" : "");
+                    }
             return true;
         }
 

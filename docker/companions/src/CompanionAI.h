@@ -13,6 +13,7 @@
 #include "Position.h"
 #include "SharedDefines.h"
 #include <deque>
+#include <functional>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -222,6 +223,7 @@ namespace Companions
         void SetAmbient(Position const& home, bool city);
         bool IsAmbient() const { return _ambient; }
         bool IsAmbientCity() const { return _ambientCity; }
+        bool AmbientFinished() const { return _ambientFinished; }  // its errand is done: it may leave the world
         void BecomeCompanion(ObjectGuid owner);
         std::string AmbientLine() const;    // test harness: what it is doing
 
@@ -302,6 +304,14 @@ namespace Companions
         bool AmbientGrind();
         bool AmbientVisit();
         bool AmbientWander(float range);
+        // its job for this life (the world: hunting one kind of mob, questing; cities: trading, crafting, errands, the inn)
+        void ChooseJob();
+        bool JobHunt();
+        bool JobQuest();
+        bool JobCity();
+        bool ChooseHuntingGround(Position const& around, float range);
+        bool GoTo(Creature* npc, uint32 dwellMs);
+        Creature* FindNpc(uint32 npcFlags, float range, std::function<bool(Creature*)> const& filter = nullptr) const;
 
         Player* _bot;
         ObjectGuid _owner;
@@ -389,6 +399,18 @@ namespace Companions
         Position _activitySpot;
         ObjectGuid _activityTarget;
         uint32 _activityDwell = 0;      // ms to stay once there
+        enum class Job : uint8 { None, Hunter, Quester, Trader, Crafter, Shopper, Idler };
+        Job _job = Job::None;
+        uint32 _jobEntry = 0;           // the mob it hunts
+        Position _jobCenter;            // where it hunts
+        ObjectGuid _jobNpc;             // its quest giver, its auctioneer...
+        uint32 _jobKills = 0;
+        uint32 _jobGoal = 0;
+        uint8 _jobStage = 0;
+        std::string _jobTrade;          // a crafter's profession
+        TimePoint _jobAdvertAt = { };
+        std::vector<uint32> _jobErrands;    // a shopper's list (npc flags of each stop)
+        bool _ambientFinished = false;
         // preferences and behaviour settings
         std::vector<SpellPref> _prefs;
         std::unordered_map<std::string, TimePoint> _prefTried;

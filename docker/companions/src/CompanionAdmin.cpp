@@ -126,10 +126,16 @@ namespace Companions
         return true;
     }
 
-    // .bot admin create <owner> <class> <race> <gender> <role> <quality> <llm> <aggression> <spec|-> <template> <looks|-> <name|->
+    // .bot admin create <owner> <class> <race> <gender> <role> <quality> <llm> <aggression> <spec|-> <template> <looks|-> <name|-> [surname]
     static bool HandleCreate(ChatHandler* handler, uint64 owner, uint8 classId, uint8 race, uint8 gender, std::string roleText, uint8 quality,
-        uint8 llm, uint8 aggression, std::string spec, uint32 templateId, std::string looksText, std::string name)
+        uint8 llm, uint8 aggression, std::string spec, uint32 templateId, std::string looksText, std::string name, Tail surnameText)
     {
+        std::string surname = Clean(std::string(surnameText));
+        if (!CompanionFactory::ValidSurname(surname))
+        {
+            Error(handler, "bad surname");
+            return true;
+        }
         if (!GetConfig().Enable)
         {
             Error(handler, "companions are disabled");
@@ -172,8 +178,21 @@ namespace Companions
                     uint32(std::strtoul(pair.substr(colon + 1).c_str(), nullptr, 10)));
             }
         }
+        // race and gender now, so a random name is one of that people (and the panel can show it right away)
+        if (!race)
+        {
+            std::vector<uint8> races = sCompanionFactory->RacesFor(Player::TeamForRace(ownerCache->Race), classId);
+            if (!races.empty())
+                race = races[urand(0, races.size() - 1)];
+        }
+        if (gender > GENDER_FEMALE)
+            gender = uint8(urand(GENDER_MALE, GENDER_FEMALE));
         if (name == "-")
-            name = sCompanionFactory->RandomFreeName();   // chosen now so the panel can show it right away
+        {
+            name = sCompanionFactory->RandomFreeName(race, gender);
+            if (surname.empty())
+                surname = CompanionFactory::RandomSurname(race);
+        }
 
         Player* ownerPlayer = ObjectAccessor::FindPlayer(ownerGuid);
         uint32 build = ownerPlayer ? ownerPlayer->GetSession()->GetClientBuild() : 0;
@@ -183,11 +202,13 @@ namespace Companions
 
         std::string error;
         ObjectGuid guid = sCompanionFactory->CreateCharacter(Player::TeamForRace(ownerCache->Race), build, classId, race, gender, name, looks, error,
-            [ownerGuid](ObjectGuid botGuid, bool saved)
+            [ownerGuid, surname](ObjectGuid botGuid, bool saved)
             {
                 // joins right away when the owner is in the game
                 if (!saved)
                     return;
+                if (!surname.empty())
+                    CompanionFactory::SetSurname(botGuid, surname);
                 if (Player* currentOwner = ObjectAccessor::FindPlayer(ownerGuid))
                 {
                     std::string summonError;
@@ -309,6 +330,16 @@ namespace Companions
         }
         else if (key == "personality")
             record->Personality = text.substr(0, 250);
+        else if (key == "surname")
+        {
+            std::string surname = text == "-" ? std::string() : text;
+            if (!CompanionFactory::ValidSurname(surname))
+            {
+                Error(handler, "bad surname");
+                return true;
+            }
+            CompanionFactory::SetSurname(guid, surname);
+        }
         else if (key == "name")
         {
             if (ai || sCompanionMgr->IsLoggingIn(guid))
@@ -482,13 +513,20 @@ namespace Companions
         return true;
     }
 
-    static bool HandleRandomName(ChatHandler* handler)
+    // .bot admin randomname [race] [gender]: COMP|NAME|first|surname
+    static bool HandleRandomName(ChatHandler* handler, Optional<uint8> race, Optional<uint8> gender)
     {
-        std::string name = sCompanionFactory->RandomFreeName();
+        uint8 r = race.value_or(0);
+        if (!r)
+        {
+            static uint8 const classicRaces[] = { RACE_HUMAN, RACE_DWARF, RACE_NIGHTELF, RACE_GNOME, RACE_ORC, RACE_UNDEAD_PLAYER, RACE_TAUREN, RACE_TROLL };
+            r = classicRaces[urand(0, std::size(classicRaces) - 1)];
+        }
+        std::string name = sCompanionFactory->RandomFreeName(r, gender.value_or(2));
         if (name.empty())
             Error(handler, "no free name found");
         else
-            handler->SendSysMessage("COMP|NAME|" + name);
+            handler->SendSysMessage("COMP|NAME|" + name + "|" + CompanionFactory::RandomSurname(r));
         return true;
     }
 

@@ -38,6 +38,14 @@ namespace Companions
         ObjectGuid CreateCharacter(Team team, uint32 build, uint8 classId, uint8 race, uint8 gender, std::string name,
             std::vector<std::pair<uint32, uint32>> const& looks, std::string& error, std::function<void(ObjectGuid guid, bool saved)> afterSave);
         std::string RandomFreeName() const;
+        // a first name of that race and gender (the client's own name generator, race 0 = any) and a family name that fits it
+        std::string RandomFreeName(uint8 race, uint8 gender) const;
+        static std::string RandomSurname(uint8 race);
+        static bool ValidSurname(std::string& surname);     // letters, spaces, ' and -, at most 48; capitalized
+        static void SetSurname(ObjectGuid guid, std::string const& surname);
+        // the world's adventurers (ambient bots): a fresh outfit of greens (blues mixed in at the level cap) of their level,
+        // their armor type and their stats, picked at random from all that fit so no two look alike
+        void DressAmbient(Player* bot, Role role);
         // a customization choice a new character of this race may pick (the unlock checks of character creation)
         static bool IsChoiceAvailable(ChrCustomizationChoiceEntry const* choice, uint8 race);
         // talent tabs of a class: number of talents and the first talent names, for the web panel
@@ -133,6 +141,9 @@ namespace Companions
         void GiveAmmo(Player* bot);
         static uint32 PickByLevel(std::map<uint32, uint32> const& table, uint8 level);
         std::string RandomName() const;
+        std::vector<GearItem const*> AmbientCandidates(Player* bot, Role role, std::vector<uint32> const& invTypes,
+            std::vector<uint32> const& subClasses, uint32 quality, bool armorType, uint32 exclude) const;
+        bool EquipRolled(Player* bot, uint8 slot, GearItem const& gear, Role role);
         static std::vector<std::string_view> PrioritiesFor(uint8 classId, Role role);
 
         std::vector<TrainerSpell> _trainerSpells;

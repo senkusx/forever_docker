@@ -231,6 +231,8 @@ namespace Companions
                 live.AloneMs = 0;
                 leave = leave || (_now - live.Since > live.Lifetime && nearest > 90.0f && !bot->IsInCombat());
             }
+            // errands done (a shopper at the flight master): off it goes
+            leave = leave || (ai->AmbientFinished() && !bot->IsInCombat());
             if (leave)
                 sCompanionMgr->Dismiss(guid);
             ++itr;
@@ -424,6 +426,8 @@ namespace Companions
                 if (!saved)
                     return;
                 _pool.insert(created);
+                if (CharacterCacheEntry const* cache = sCharacterCache->GetCharacterCacheByGuid(created))
+                    CompanionFactory::SetSurname(created, CompanionFactory::RandomSurname(cache->Race));
                 CharacterDatabase.PExecute("INSERT IGNORE INTO companion_ambient (guid, created) VALUES ({}, UNIX_TIMESTAMP())", created.GetCounter());
                 if (GetConfig().AmbientEnable)
                     Login(created, request);

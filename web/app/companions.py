@@ -47,6 +47,8 @@ SPECS = {
 QUALITIES = [2, 3, 4]
 
 NAME_RE = re.compile(r'^[A-Za-z]{2,12}$')
+
+SURNAME_RE = re.compile(r"^[A-Za-z][A-Za-z' -]{0,47}$")
 SPEC_RE = re.compile(r'^[0-2](,[0-2]){0,2}$')
 LOOKS_RE = re.compile(r'^\d{1,9}:\d{1,9}(,\d{1,9}:\d{1,9}){0,40}$')
 SPELL_RE = re.compile(r"^[a-z][a-z' :()-]{1,40}$")
@@ -142,7 +144,7 @@ def build_router(db, soap_command, client_ip, templates, page_context):
 
     def bots_of(owner: int):
         return query('SELECT b.guid, c.name, c.race, c.class, c.gender, c.level, b.role, b.active, b.created, b.llm, b.personality, '
-                     'b.spec, b.gear_quality, b.aggression, b.stance, b.template_id, b.llm_provider, b.loot_mode, b.potions, b.auto_cc '
+                     'b.spec, b.gear_quality, b.aggression, b.stance, b.template_id, b.llm_provider, b.loot_mode, b.potions, b.auto_cc, c.surname '
                      'FROM characters.companion_bots b '
                      'JOIN characters.characters c ON c.guid = b.guid WHERE b.owner_guid = %s AND c.deleteDate IS NULL ORDER BY c.name',
                      (owner,))
@@ -174,6 +176,7 @@ def build_router(db, soap_command, client_ip, templates, page_context):
             'spec': row['spec'], 'quality': row['gear_quality'], 'aggression': row['aggression'], 'stance': row['stance'],
             'template': row['template_id'], 'provider': row['llm_provider'], 'created': bool(row['created']), 'active': bool(row['active']),
             'loot': int(row.get('loot_mode') or 0), 'potions': bool(row.get('potions', 1)), 'autocc': bool(row.get('auto_cc', 1)),
+            'surname': row.get('surname') or '',
             'live': live,
         }
 
@@ -250,6 +253,11 @@ def build_router(db, soap_command, client_ip, templates, page_context):
             if name and not NAME_RE.match(name):
                 raise PanelError('bad_name')
             out['name'] = name.capitalize() if name else ''
+        if has('surname') or not partial:
+            surname = ' '.join(str(data.get('surname') or '').split())
+            if surname and not SURNAME_RE.match(surname):
+                raise PanelError('bad_surname')
+            out['surname'] = surname
         if has('looks') or not partial:
             looks = data.get('looks') or {}
             if isinstance(looks, dict):
@@ -286,7 +294,7 @@ def build_router(db, soap_command, client_ip, templates, page_context):
         role = ROLE_WORDS[settings['role']]
         lines = await admin(f"create {owner} {settings['class']} {settings['race']} {settings['gender']} {role} {settings['quality']} "
                             f"{int(settings['llm'])} {settings['aggression']} {settings['spec'] or '-'} {int(template_id)} "
-                            f"{settings['looks'] or '-'} {settings['name'] or '-'}")
+                            f"{settings['looks'] or '-'} {settings['name'] or '-'} {settings.get('surname') or ''}".rstrip())
         created = next((p for p in lines if p[0] == 'CREATED'), None)
         if not created:
             raise PanelError('create_failed', 503)
@@ -445,8 +453,12 @@ def build_router(db, soap_command, client_ip, templates, page_context):
     @guarded
     async def random_name(request: Request):
         session_of(request)
-        parts = next((p for p in await admin('randomname') if p[0] == 'NAME'), None)
-        return {'name': parts[1] if parts else ''}
+        race = int(request.query_params.get('race') or 0)
+        gender = int(request.query_params.get('gender') or 2)
+        race = race if race in RACES else 0
+        gender = gender if gender in (0, 1) else 2
+        parts = next((p for p in await admin(f'randomname {race} {gender}') if p[0] == 'NAME'), None)
+        return {'name': parts[1] if parts else '', 'surname': parts[2] if parts and len(parts) > 2 else ''}
 
     @router.post('/api/companions/owner/{owner}/bots')
     @guarded
@@ -475,6 +487,8 @@ def build_router(db, soap_command, client_ip, templates, page_context):
                 await admin(f'set {owner} {bot} {key} {int(changes[key])}')
         if 'personality' in changes:
             await admin(f"set {owner} {bot} personality {changes['personality'] or ' '}")
+        if 'surname' in changes:
+            await admin(f"set {owner} {bot} surname {changes['surname'] or '-'}")
         return {'ok': True}
 
     def parse_inspect(lines):

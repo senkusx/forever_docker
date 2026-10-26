@@ -13,6 +13,7 @@
 #include "DatabaseEnv.h"
 #include "DB2Stores.h"
 #include "Item.h"
+#include "ItemBonusMgr.h"
 #include "ItemEnchantmentMgr.h"
 #include "ItemTemplate.h"
 #include "Log.h"
@@ -21,6 +22,7 @@
 #include "ObjectMgr.h"
 #include "Pet.h"
 #include "Player.h"
+#include "Containers.h"
 #include "RealmList.h"
 #include "SpellInfo.h"
 #include "SpellMgr.h"
@@ -32,6 +34,7 @@
 #include <cctype>
 #include <functional>
 #include <numeric>
+#include <span>
 #include <set>
 #include <sstream>
 #include <unordered_set>
@@ -537,6 +540,96 @@ namespace Companions
         return !req->AchievementID && !req->ItemModifiedAppearanceID && !req->QuestID;
     }
 
+    std::string CompanionFactory::RandomFreeName(uint8 race, uint8 gender) const
+    {
+        auto free = [](std::string candidate)
+        {
+            return normalizePlayerName(candidate) && ObjectMgr::CheckPlayerName(candidate, LOCALE_enUS, true) == CHAR_NAME_SUCCESS
+                && !sObjectMgr->IsReservedName(candidate) && !sCharacterCache->GetCharacterCacheByName(candidate);
+        };
+        // the names the client's "random name" button gives that race and gender
+        if (race)
+            for (uint32 attempt = 0; attempt < 30; ++attempt)
+            {
+                std::string candidate = sDB2Manager.GetNameGenEntry(race, gender > GENDER_FEMALE ? uint8(urand(0, 1)) : gender);
+                if (!candidate.empty() && free(candidate))
+                {
+                    normalizePlayerName(candidate);
+                    return candidate;
+                }
+            }
+        return RandomFreeName();
+    }
+
+    // family names in the style of each people (Forever shows "Name Surname")
+    std::string CompanionFactory::RandomSurname(uint8 race)
+    {
+        static std::vector<char const*> const human = { "Ashford", "Blackwood", "Brightwater", "Caldwell", "Crowley", "Dawnbrook", "Fairbanks",
+            "Greystone", "Hawthorne", "Kingsley", "Lightwood", "Marlow", "Northwind", "Oakheart", "Pembrook", "Ravenhill", "Redbrook",
+            "Stonefield", "Stormridge", "Thornbury", "Underhill", "Westfall", "Whitlock", "Wolfe", "Goldcrest", "Ironmonger", "Shaw",
+            "Ellwood", "Harrowmere", "Langston", "Moorcroft", "Silverlake", "Talbot", "Winterbourne", "Brennan", "Cobb" };
+        static std::vector<char const*> const dwarf = { "Ironforge", "Stonebeard", "Bronzehammer", "Anvilmar", "Thunderbrew", "Coppervein",
+            "Deepdelver", "Fireforge", "Granitehand", "Hammerfall", "Ironfoot", "Mountainheart", "Oakenshield", "Rockjaw", "Steelgrip",
+            "Stoutmantle", "Tunneltoe", "Wildhammer", "Frostbeard", "Goldfist", "Blackanvil", "Ironbelly", "Barleybrew", "Shalehammer" };
+        static std::vector<char const*> const nightElf = { "Moonwhisper", "Starbreeze", "Shadowleaf", "Nightwind", "Silverleaf", "Dawnstrider",
+            "Moonshadow", "Starweaver", "Windwhisper", "Feathermoon", "Starfall", "Thistlewood", "Duskbrook", "Leafshade", "Mistwalker",
+            "Ravencrest", "Sagebough", "Glimmerdew", "Nightsong", "Whisperwind", "Elunara", "Swiftarrow", "Bladesong", "Wildbloom" };
+        static std::vector<char const*> const gnome = { "Cogspinner", "Fizzlebolt", "Gearloose", "Sprocketwhistle", "Tinkerton", "Wobblesprocket",
+            "Boltbucket", "Copperpot", "Fastgear", "Gizmowrench", "Sparkfuse", "Nuttlebolt", "Pinwheel", "Spannerspark", "Thistlefuzz",
+            "Twinklespark", "Widgetwhirl", "Clickclack", "Fizzwidget", "Springlock", "Brassbuckle", "Gadgetspring" };
+        static std::vector<char const*> const orc = { "Bloodfist", "Skullsplitter", "Blackrock", "Stonehammer", "Frostwolf", "Warsong",
+            "Ironjaw", "Thunderlord", "Burningblade", "Shatterskull", "Bonechewer", "Grimtotem", "Earthfury", "Steelfang", "Axebreaker",
+            "Rageclaw", "Blackfang", "Gorehowl", "Wolfrider", "Stonebash", "Redmane", "Scarjaw" };
+        static std::vector<char const*> const undead = { "Graves", "Blackheart", "Coldwater", "Duskwither", "Gravemoor", "Hollowell",
+            "Marrowind", "Nightfall", "Rotbrook", "Shadebrook", "Thorne", "Vale", "Wormwood", "Ashgrave", "Bleakmoor", "Crowsbane",
+            "Deadwind", "Grimsby", "Mournvale", "Ravenscar", "Sorrowmere", "Witherby" };
+        static std::vector<char const*> const tauren = { "Thunderhoof", "Mistrunner", "Redhoof", "Earthsong", "Grimtotem", "Highmountain",
+            "Ragetotem", "Runetotem", "Skyhorn", "Stonehorn", "Windfury", "Plainstrider", "Proudmane", "Cloudsong", "Dawnhoof",
+            "Longhorn", "Sunwalker", "Stormhorn", "Thunderhorn", "Wildmane", "Swiftwind", "Greatmane" };
+        static std::vector<char const*> const troll = { "Darkspear", "Zul'gath", "Shadowhunter", "Bloodscalp", "Vilebranch", "Witherbark",
+            "Skullsplitter", "Sandfury", "Bloodtusk", "Jinzal", "Mojoka", "Vol'kar", "Zalazane", "Tikka", "Juju", "Raptorjaw",
+            "Voodoomane", "Spiritwalker", "Razortusk", "Zanzil" };
+        std::vector<char const*> const* list = &human;
+        switch (race)
+        {
+            case RACE_DWARF: list = &dwarf; break;
+            case RACE_NIGHTELF: list = &nightElf; break;
+            case RACE_GNOME: list = &gnome; break;
+            case RACE_ORC: list = &orc; break;
+            case RACE_UNDEAD_PLAYER: list = &undead; break;
+            case RACE_TAUREN: list = &tauren; break;
+            case RACE_TROLL: list = &troll; break;
+            default: list = Player::TeamForRace(race) == HORDE ? &orc : &human; break;
+        }
+        return (*list)[urand(0, list->size() - 1)];
+    }
+
+    bool CompanionFactory::ValidSurname(std::string& surname)
+    {
+        std::string out;
+        for (char c : surname)
+        {
+            if (!std::isalpha(static_cast<unsigned char>(c)) && c != ' ' && c != '\'' && c != '-')
+                return false;
+            // a capital first letter; the rest as written ("van der Hollow" stays)
+            out += out.empty() ? char(std::toupper(static_cast<unsigned char>(c))) : c;
+        }
+        while (!out.empty() && out.back() == ' ')
+            out.pop_back();
+        if (out.size() > 48)
+            return false;
+        surname = out;
+        return true;
+    }
+
+    void CompanionFactory::SetSurname(ObjectGuid guid, std::string const& surname)
+    {
+        std::string escaped = surname;
+        CharacterDatabase.EscapeString(escaped);
+        CharacterDatabase.PExecute("UPDATE characters SET surname = '{}' WHERE guid = {}", escaped, guid.GetCounter());
+        sCharacterCache->UpdateCharacterSurname(guid, surname);
+    }
+
     std::string CompanionFactory::RandomFreeName() const
     {
         for (uint32 attempt = 0; attempt < 50; ++attempt)
@@ -586,7 +679,7 @@ namespace Companions
 
         if (name.empty())
         {
-            name = RandomFreeName();
+            name = RandomFreeName(race, gender);
             if (name.empty())
             {
                 error = "Could not find a free name, give one.";
@@ -745,7 +838,13 @@ namespace Companions
 
         SpendTalents(bot, role);
         if (regear)
-            EquipBestGear(bot, role);
+        {
+            CompanionAI const* ai = sCompanionMgr->GetAI(bot);
+            if (ai && ai->IsAmbient())
+                DressAmbient(bot, role);
+            else
+                EquipBestGear(bot, role);
+        }
         EquipBags(bot);
         RestockConsumables(bot);
         EnsureHunterPet(bot);
@@ -1547,6 +1646,282 @@ namespace Companions
             if (GearItem const* ranged = BestFor(bot, role, rangedTypes, rangedSub))
                 EquipEntry(bot, EQUIPMENT_SLOT_RANGED, ranged->Entry, role);
 
+        GiveAmmo(bot);
+        bot->UpdateAllStats();
+    }
+
+    // ------------------------------------------------------------------ the world's adventurers (ambient bots)
+
+    namespace
+    {
+        // do these stats suit the class and role? (a warrior does not wear spirit, a mage no strength)
+        bool StatsFit(std::vector<std::pair<int32, float>> const& stats, uint8 classId, Role role, float* value = nullptr)
+        {
+            float good = 0.0f, bad = 0.0f;
+            for (auto const& [stat, amount] : stats)
+            {
+                float weight = StatWeight(stat, classId, role);
+                if (weight >= 0.3f)
+                    good += amount * weight;
+                else if (stat == ITEM_MOD_STRENGTH || stat == ITEM_MOD_AGILITY || stat == ITEM_MOD_INTELLECT || stat == ITEM_MOD_SPIRIT
+                    || stat == ITEM_MOD_SPELL_POWER || stat == ITEM_MOD_SPELL_DAMAGE_DONE || stat == ITEM_MOD_SPELL_HEALING_DONE
+                    || stat == ITEM_MOD_ATTACK_POWER || stat == ITEM_MOD_DEFENSE_SKILL_RATING)
+                    bad += amount;
+            }
+            if (value)
+                *value = good;
+            return bad <= 0.0f || good >= bad * 2.0f;
+        }
+
+        // the stats a random enchantment ("of the Bear") gives
+        std::vector<std::pair<int32, float>> BonusStats(ItemRandomBonusListId bonusList)
+        {
+            std::vector<std::pair<int32, float>> stats;
+            for (ItemBonusEntry const* bonus : ItemBonusMgr::GetItemBonuses(bonusList))
+                if (bonus->Type == ITEM_BONUS_STAT)
+                    stats.emplace_back(bonus->Value[0], float(std::max(1, bonus->Value[1])));
+            return stats;
+        }
+    }
+
+    std::vector<CompanionFactory::GearItem const*> CompanionFactory::AmbientCandidates(Player* bot, Role role, std::vector<uint32> const& invTypes,
+        std::vector<uint32> const& subClasses, uint32 quality, bool armorType, uint32 exclude) const
+    {
+        std::vector<GearItem const*> out;
+        uint32 const level = bot->GetLevel();
+        uint8 const classId = bot->GetClass();
+        // of its level: what a player of that level would wear (required level up to 8 below, or the item level near it)
+        uint32 const lowReq = level > 8 ? level - 8 : 0;
+        for (uint32 invType : invTypes)
+        {
+            auto itr = _gearByInvType.find(invType);
+            if (itr == _gearByInvType.end())
+                continue;
+            for (GearItem const& item : itr->second)
+            {
+                if (item.Entry == exclude || item.Quality != quality || item.ReqLevel > level)
+                    continue;
+                if (item.ReqLevel && item.ReqLevel < lowReq)
+                    continue;
+                // the item's own level too: "required level 1" items of item level 24 are not for a level 7, holiday hats of
+                // item level 1 not for anyone past the first levels
+                if (item.ItemLevel > level + 6 || item.ItemLevel + 6 < level || (level >= 6 && item.ItemLevel < 5))
+                    continue;
+                if (!subClasses.empty() && std::find(subClasses.begin(), subClasses.end(), item.SubClass) == subClasses.end())
+                    continue;
+                if (armorType && item.Class == ITEM_CLASS_ARMOR && item.SubClass != BestArmorSubClass(classId, uint8(level)))
+                    continue;
+                if (bot->CanUseItem(item.Proto) != EQUIP_ERR_OK)
+                    continue;
+                // stats of its class; items with a random enchantment get one that fits when they are made
+                if (!item.Stats.empty() && !StatsFit(item.Stats, classId, role))
+                    continue;
+                if (item.Stats.empty() && !item.Proto->RandomBonusListTemplateId && item.Class == ITEM_CLASS_ARMOR && item.Armor <= 0.0f)
+                    continue;
+                out.push_back(&item);
+            }
+        }
+        return out;
+    }
+
+    // made, given an enchantment that suits it, put on
+    bool CompanionFactory::EquipRolled(Player* bot, uint8 slot, GearItem const& gear, Role role)
+    {
+        if (bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
+            bot->DestroyItem(INVENTORY_SLOT_BAG_0, slot, true);
+        uint16 dest = 0;
+        if (bot->CanEquipNewItem(slot, dest, gear.Entry, false) != EQUIP_ERR_OK)
+            return false;
+        ItemRandomBonusListId chosen = 0;
+        if (gear.Proto->RandomBonusListTemplateId)
+        {
+            float best = -1.0f;
+            for (uint32 roll = 0; roll < 16; ++roll)
+            {
+                ItemRandomBonusListId id = GenerateItemRandomBonusListId(gear.Entry);
+                if (!id)
+                    break;
+                float value = 0.0f;
+                if (StatsFit(BonusStats(id), bot->GetClass(), role, &value) && value > best)
+                {
+                    best = value;
+                    chosen = id;
+                }
+            }
+            if (!chosen)
+                return false;   // no enchantment of this one suits it: the caller picks another item
+        }
+        Item* item = Item::CreateItem(gear.Entry, 1, ItemContext::NONE, bot);
+        if (!item)
+            return false;
+        if (chosen)
+            item->SetItemRandomBonusList(chosen);
+        if (!bot->EquipItem(dest, item, true))
+        {
+            delete item;
+            return false;
+        }
+        return true;
+    }
+
+    void CompanionFactory::DressAmbient(Player* bot, Role role)
+    {
+        if (role == Role::Auto)
+            if (CompanionAI* ai = sCompanionMgr->GetAI(bot))
+                role = ai->GetEffectiveRole();
+        uint8 const classId = bot->GetClass();
+        bool const capped = bot->GetLevel() >= sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL);
+
+        // a fresh start: what it wore and carried in its last life goes (the shirt stays)
+        for (uint8 slot = EQUIPMENT_SLOT_START; slot < EQUIPMENT_SLOT_END; ++slot)
+            if (slot != EQUIPMENT_SLOT_BODY && slot != EQUIPMENT_SLOT_TABARD && bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
+                bot->DestroyItem(INVENTORY_SLOT_BAG_0, slot, true);
+        for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
+            if (Item* item = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
+                if (item->GetTemplate()->GetClass() == ITEM_CLASS_WEAPON || item->GetTemplate()->GetClass() == ITEM_CLASS_ARMOR)
+                    bot->DestroyItem(INVENTORY_SLOT_BAG_0, slot, true);
+
+        // one item for a slot: greens of its level and kind (a blue now and then at the level cap; white when no green exists,
+        // at the lowest levels), at random with a lean towards its own level
+        auto pick = [&](std::vector<uint32> const& invTypes, std::vector<uint32> const& subClasses, bool armorType, uint32 exclude) -> GearItem const*
+        {
+            std::vector<uint32> qualities = { ITEM_QUALITY_UNCOMMON };
+            if (capped && urand(0, 99) < 35)
+                qualities.insert(qualities.begin(), ITEM_QUALITY_RARE);
+            if (bot->GetLevel() < 15)
+                qualities.push_back(ITEM_QUALITY_NORMAL);
+            for (uint32 quality : qualities)
+            {
+                std::vector<GearItem const*> candidates = AmbientCandidates(bot, role, invTypes, subClasses, quality, armorType, exclude);
+                if (candidates.empty())
+                    continue;
+                uint32 lowest = std::numeric_limits<uint32>::max();
+                for (GearItem const* c : candidates)
+                    lowest = std::min(lowest, c->ItemLevel);
+                std::vector<double> weights;
+                for (GearItem const* c : candidates)
+                    weights.push_back(1.0 + double(c->ItemLevel - lowest));
+                return *Trinity::Containers::SelectRandomWeightedContainerElement(candidates, std::span<double>(weights));
+            }
+            return nullptr;
+        };
+        auto put = [&](uint8 slot, std::vector<uint32> const& invTypes, std::vector<uint32> const& subClasses, bool armorType, uint32 exclude = 0) -> uint32
+        {
+            for (uint32 attempt = 0; attempt < 6; ++attempt)
+                if (GearItem const* item = pick(invTypes, subClasses, armorType, exclude))
+                    if (EquipRolled(bot, slot, *item, role))
+                        return item->Entry;
+            return 0;
+        };
+
+        put(EQUIPMENT_SLOT_HEAD, { INVTYPE_HEAD }, { }, true);
+        put(EQUIPMENT_SLOT_NECK, { INVTYPE_NECK }, { }, false);
+        put(EQUIPMENT_SLOT_SHOULDERS, { INVTYPE_SHOULDERS }, { }, true);
+        put(EQUIPMENT_SLOT_CHEST, { INVTYPE_CHEST, INVTYPE_ROBE }, { }, true);
+        put(EQUIPMENT_SLOT_WAIST, { INVTYPE_WAIST }, { }, true);
+        put(EQUIPMENT_SLOT_LEGS, { INVTYPE_LEGS }, { }, true);
+        put(EQUIPMENT_SLOT_FEET, { INVTYPE_FEET }, { }, true);
+        put(EQUIPMENT_SLOT_WRISTS, { INVTYPE_WRISTS }, { }, true);
+        put(EQUIPMENT_SLOT_HANDS, { INVTYPE_HANDS }, { }, true);
+        put(EQUIPMENT_SLOT_BACK, { INVTYPE_CLOAK }, { }, false);
+        uint32 ring = put(EQUIPMENT_SLOT_FINGER1, { INVTYPE_FINGER }, { }, false);
+        put(EQUIPMENT_SLOT_FINGER2, { INVTYPE_FINGER }, { }, false, ring);
+
+        // weapons: one of the layouts its class and role use, chosen at random
+        using W = std::vector<uint32>;
+        W const twoHandMelee = { ITEM_SUBCLASS_WEAPON_SWORD2, ITEM_SUBCLASS_WEAPON_AXE2, ITEM_SUBCLASS_WEAPON_MACE2, ITEM_SUBCLASS_WEAPON_POLEARM };
+        W const oneHandMelee = { ITEM_SUBCLASS_WEAPON_SWORD, ITEM_SUBCLASS_WEAPON_AXE, ITEM_SUBCLASS_WEAPON_MACE, ITEM_SUBCLASS_WEAPON_FIST_WEAPON };
+        W const casterOneHand = { ITEM_SUBCLASS_WEAPON_DAGGER, ITEM_SUBCLASS_WEAPON_MACE, ITEM_SUBCLASS_WEAPON_SWORD };
+        W const oneHand = { INVTYPE_WEAPON, INVTYPE_WEAPONMAINHAND };
+        enum class Layout { TwoHand, Staff, OneAndShield, OneAndHeld, Dual };
+        std::vector<Layout> layouts;
+        W mainTypes;
+        switch (classId)
+        {
+            case CLASS_WARRIOR:
+                if (role == Role::Tank)
+                    layouts = { Layout::OneAndShield };
+                else
+                    layouts = bot->CanDualWield() ? std::vector<Layout>{ Layout::TwoHand, Layout::TwoHand, Layout::Dual } : std::vector<Layout>{ Layout::TwoHand };
+                mainTypes = oneHandMelee;
+                break;
+            case CLASS_PALADIN:
+                layouts = role == Role::MeleeDps ? std::vector<Layout>{ Layout::TwoHand } : std::vector<Layout>{ Layout::OneAndShield };
+                mainTypes = { ITEM_SUBCLASS_WEAPON_SWORD, ITEM_SUBCLASS_WEAPON_MACE, ITEM_SUBCLASS_WEAPON_AXE };
+                break;
+            case CLASS_HUNTER:
+                layouts = { Layout::TwoHand, Layout::TwoHand, Layout::Staff };
+                break;
+            case CLASS_ROGUE:
+                layouts = { Layout::Dual };
+                mainTypes = { ITEM_SUBCLASS_WEAPON_DAGGER, ITEM_SUBCLASS_WEAPON_SWORD, ITEM_SUBCLASS_WEAPON_MACE, ITEM_SUBCLASS_WEAPON_FIST_WEAPON };
+                break;
+            case CLASS_SHAMAN:
+                layouts = role == Role::MeleeDps ? std::vector<Layout>{ Layout::TwoHand, Layout::Staff } : std::vector<Layout>{ Layout::OneAndShield, Layout::Staff };
+                mainTypes = { ITEM_SUBCLASS_WEAPON_MACE, ITEM_SUBCLASS_WEAPON_AXE, ITEM_SUBCLASS_WEAPON_DAGGER, ITEM_SUBCLASS_WEAPON_FIST_WEAPON };
+                break;
+            case CLASS_DRUID:
+                layouts = { Layout::Staff, Layout::Staff, Layout::OneAndHeld };
+                mainTypes = { ITEM_SUBCLASS_WEAPON_MACE, ITEM_SUBCLASS_WEAPON_DAGGER };
+                break;
+            default:    // priest, mage, warlock
+                layouts = { Layout::Staff, Layout::OneAndHeld };
+                mainTypes = casterOneHand;
+                break;
+        }
+        Layout layout = layouts[urand(0, layouts.size() - 1)];
+        bool weapon = false;
+        switch (layout)
+        {
+            case Layout::TwoHand:
+            {
+                W types = classId == CLASS_SHAMAN ? W{ ITEM_SUBCLASS_WEAPON_AXE2, ITEM_SUBCLASS_WEAPON_MACE2 }
+                    : classId == CLASS_HUNTER ? W{ ITEM_SUBCLASS_WEAPON_POLEARM, ITEM_SUBCLASS_WEAPON_SWORD2, ITEM_SUBCLASS_WEAPON_AXE2 } : twoHandMelee;
+                weapon = put(EQUIPMENT_SLOT_MAINHAND, { INVTYPE_2HWEAPON }, types, false) != 0;
+                break;
+            }
+            case Layout::Staff:
+                weapon = put(EQUIPMENT_SLOT_MAINHAND, { INVTYPE_2HWEAPON }, { ITEM_SUBCLASS_WEAPON_STAFF }, false) != 0;
+                break;
+            case Layout::OneAndShield:
+                weapon = put(EQUIPMENT_SLOT_MAINHAND, oneHand, mainTypes, false) != 0;
+                put(EQUIPMENT_SLOT_OFFHAND, { INVTYPE_SHIELD }, { }, false);
+                break;
+            case Layout::OneAndHeld:
+                weapon = put(EQUIPMENT_SLOT_MAINHAND, oneHand, mainTypes, false) != 0;
+                put(EQUIPMENT_SLOT_OFFHAND, { INVTYPE_HOLDABLE }, { }, false);
+                break;
+            case Layout::Dual:
+            {
+                uint32 main = put(EQUIPMENT_SLOT_MAINHAND, oneHand, mainTypes, false);
+                weapon = main != 0;
+                put(EQUIPMENT_SLOT_OFFHAND, { INVTYPE_WEAPON, INVTYPE_WEAPONOFFHAND }, mainTypes, false, main);
+                break;
+            }
+        }
+        // nothing of that layout at its level: whatever one-hander or staff fits
+        if (!weapon && !put(EQUIPMENT_SLOT_MAINHAND, oneHand, { }, false))
+            put(EQUIPMENT_SLOT_MAINHAND, { INVTYPE_2HWEAPON }, { }, false);
+
+        switch (classId)
+        {
+            case CLASS_HUNTER:
+                put(EQUIPMENT_SLOT_RANGED, { INVTYPE_RANGED, INVTYPE_RANGEDRIGHT },
+                    { ITEM_SUBCLASS_WEAPON_BOW, ITEM_SUBCLASS_WEAPON_GUN, ITEM_SUBCLASS_WEAPON_CROSSBOW }, false);
+                break;
+            case CLASS_WARRIOR:
+            case CLASS_ROGUE:
+                put(EQUIPMENT_SLOT_RANGED, { INVTYPE_RANGED, INVTYPE_RANGEDRIGHT, INVTYPE_THROWN },
+                    { ITEM_SUBCLASS_WEAPON_BOW, ITEM_SUBCLASS_WEAPON_GUN, ITEM_SUBCLASS_WEAPON_CROSSBOW, ITEM_SUBCLASS_WEAPON_THROWN }, false);
+                break;
+            case CLASS_PRIEST:
+            case CLASS_MAGE:
+            case CLASS_WARLOCK:
+                put(EQUIPMENT_SLOT_RANGED, { INVTYPE_RANGEDRIGHT }, { ITEM_SUBCLASS_WEAPON_WAND }, false);
+                break;
+            default:
+                break;
+        }
         GiveAmmo(bot);
         bot->UpdateAllStats();
     }
