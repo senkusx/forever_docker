@@ -12,6 +12,8 @@ services:
     image: mysql:8.0
     networks: [forever]
     restart: unless-stopped
+    # when memory runs out, the kernel kills something else first (a build, a test server), not the game
+    oom_score_adj: -800
     environment:
       TZ: ${TZ:-UTC}
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD in .env}
@@ -48,6 +50,8 @@ services:
     command: ["worldserver"]
     networks: [forever]
     restart: unless-stopped
+    # when memory runs out, the kernel kills something else first (a build, a test server), not the game
+    oom_score_adj: -800
     depends_on:
       mysql:
         condition: service_healthy
