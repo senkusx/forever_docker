@@ -777,6 +777,7 @@ namespace Companions
                 { "dismiss",     HandleDismiss,     PERM_BOT, Console::No },
                 { "remove",      HandleDismiss,     PERM_BOT, Console::No },
                 { "list",        HandleList,        PERM_BOT, Console::No },
+                { "team",        HandleTeam,        PERM_BOT, Console::No },
                 { "role",        HandleRole,        PERM_BOT, Console::No },
                 { "gear",        HandleGear,        PERM_BOT, Console::No },
                 { "talents",     HandleTalents,     PERM_BOT, Console::No },
@@ -1037,6 +1038,56 @@ namespace Companions
                 else if (guids.size() == 1)
                     handler->PSendSysMessage("Companions: %s", error.c_str());
             }
+            return true;
+        }
+
+        // .bot team: your teams; .bot team <name>: that team comes, your other companions leave
+        static bool HandleTeam(ChatHandler* handler, Optional<Tail> name)
+        {
+            Player* owner = handler->GetPlayer();
+            std::vector<CompanionMgr::Team> teams = sCompanionMgr->GetTeamsOf(owner->GetGUID());
+            if (teams.empty())
+            {
+                handler->SendSysMessage("Companions: no teams yet. Make them in the web panel (Party: Teams).");
+                return true;
+            }
+            std::string wanted = name ? ToLower(std::string(*name)) : "";
+            if (wanted.empty())
+            {
+                for (CompanionMgr::Team const& team : teams)
+                {
+                    std::string members;
+                    for (ObjectGuid const& guid : team.Bots)
+                    {
+                        std::string member;
+                        if (sCharacterCache->GetCharacterNameByGuid(guid, member))
+                            members += (members.empty() ? "" : ", ") + member;
+                    }
+                    handler->PSendSysMessage("Companions: team %s: %s", team.Name.c_str(), members.c_str());
+                }
+                handler->SendSysMessage("Companions: \".bot team <name>\" brings one.");
+                return true;
+            }
+            // the exact name, else the first that starts with it
+            CompanionMgr::Team const* chosen = nullptr;
+            for (CompanionMgr::Team const& team : teams)
+                if (ToLower(team.Name) == wanted)
+                    chosen = &team;
+            if (!chosen)
+                for (CompanionMgr::Team const& team : teams)
+                    if (!chosen && ToLower(team.Name).rfind(wanted, 0) == 0)
+                        chosen = &team;
+            if (!chosen)
+            {
+                handler->SendSysMessage("Companions: no team of that name (\".bot team\" lists them).");
+                return true;
+            }
+            uint32 summoned = 0, dismissed = 0;
+            std::vector<std::string> errors;
+            sCompanionMgr->SummonTeam(owner, *chosen, summoned, dismissed, errors);
+            handler->PSendSysMessage("Companions: team %s: %u coming, %u leaving.", chosen->Name.c_str(), summoned, dismissed);
+            for (std::string const& error : errors)
+                handler->PSendSysMessage("Companions: %s", error.c_str());
             return true;
         }
 

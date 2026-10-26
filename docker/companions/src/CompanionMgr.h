@@ -66,6 +66,11 @@ namespace Companions
         void OnOwnerLevelChanged(Player* owner);
         void QueuePrepare(ObjectGuid botGuid, uint8 level, bool regear, bool respec = false);   // re-level/train/gear on the world thread
         bool DeleteCompanion(ObjectGuid owner, ObjectGuid botGuid, std::string& error);
+        // teams (characters.companion_teams, made in the web panel): the owner's companions summoned together; the ones not in
+        // the team leave first so the team has room
+        struct Team { uint32 Id = 0; std::string Name; std::vector<ObjectGuid> Bots; };
+        std::vector<Team> GetTeamsOf(ObjectGuid owner) const;      // from the database (world thread, a small query)
+        void SummonTeam(Player* owner, Team const& team, uint32& summoned, uint32& dismissed, std::vector<std::string>& errors);
 
         // ---- bot records ----
         void AddRecord(BotRecord const& record);

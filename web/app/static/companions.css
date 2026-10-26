@@ -151,3 +151,13 @@
 .cp-talent-tabs { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
 .cp-talent-tabs ul { margin: 0; padding-left: 18px; font-size: 13.5px; }
 @media (max-width: 600px) { .cp-stats { grid-template-columns: 1fr auto; } }
+
+/* teams: companions summoned together */
+.cp-teams { margin-top: 14px; }
+.cp-team { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-top: 10px; }
+.cp-team.editing { border-color: rgba(241, 196, 91, 0.5); }
+.cp-team-head { display: flex; align-items: baseline; gap: 10px; }
+.cp-team-members { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.cp-chip { font-size: 12px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line-2); color: var(--muted); }
+.cp-chip.live { color: var(--text); border-color: rgba(107, 209, 143, 0.55); }
+.cp-team-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 6px 14px; margin-top: 6px; }

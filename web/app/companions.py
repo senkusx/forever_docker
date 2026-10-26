@@ -109,6 +109,14 @@ def build_router(db, soap_command, client_ip, templates, page_context):
             cur.execute(sql, args)
             return cur.lastrowid
 
+    # the same definition as the worldserver's (CompanionMgr::EnsureTables): whichever starts first creates it
+    TEAMS_TABLE = ('CREATE TABLE IF NOT EXISTS characters.companion_teams ('
+                   '`id` INT UNSIGNED NOT NULL AUTO_INCREMENT, `owner_guid` BIGINT UNSIGNED NOT NULL, `name` VARCHAR(32) NOT NULL, '
+                   "`bots` VARCHAR(512) NOT NULL DEFAULT '', "
+                   '`updated` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, '
+                   'PRIMARY KEY (`id`), UNIQUE KEY `owner_name` (`owner_guid`, `name`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 '
+                   "COMMENT='Companions: teams of companions summoned together'")
+
     def ensure_tables():
         execute(
             'CREATE TABLE IF NOT EXISTS characters.companion_web_templates ('
@@ -117,6 +125,7 @@ def build_router(db, soap_command, client_ip, templates, page_context):
             '`updated` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, '
             "PRIMARY KEY (`id`), KEY `owner` (`bnet_account`, `kind`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 "
             "COMMENT='Companions web panel: bot and party templates'")
+        execute(TEAMS_TABLE)
 
     def account_access(email: str):
         rows = query('SELECT id FROM auth.battlenet_accounts WHERE email = UPPER(%s)', (email,))
@@ -589,6 +598,94 @@ def build_router(db, soap_command, client_ip, templates, page_context):
                 if key in changes:
                     await admin(f"set {owner} {row['guid']} {key} {int(changes[key])}")
         return {'ok': True, 'bots': len(rows)}
+
+    # ------------------------------------------------------------------ teams: companions summoned together, again and again
+
+    TEAM_NAME_RE = re.compile(r"^[^|\x00-\x1f]{1,32}$")
+
+    def teams_of(owner: int):
+        bots = {int(b['guid']): b for b in bots_of(owner)}
+        teams = []
+        for row in query('SELECT id, name, bots FROM characters.companion_teams WHERE owner_guid = %s ORDER BY name', (owner,)):
+            members = [int(g) for g in str(row['bots']).split(',') if g.strip().isdigit() and int(g) in bots]
+            teams.append({'id': int(row['id']), 'name': row['name'], 'bots': members})
+        return teams
+
+    def team_input(owner: int, data: dict, partial=False) -> dict:
+        out = {}
+        if 'name' in data or not partial:
+            name = ' '.join(str(data.get('name') or '').split())
+            if not TEAM_NAME_RE.match(name):
+                raise PanelError('bad_team_name')
+            out['name'] = name
+        if 'bots' in data or not partial:
+            owned = {int(b['guid']) for b in bots_of(owner)}
+            bots = []
+            for guid in data.get('bots') or []:
+                guid = int(guid)
+                if guid not in owned:
+                    raise PanelError('not_your_companion', 403)
+                if guid not in bots:
+                    bots.append(guid)
+            if not bots or len(bots) > 39:
+                raise PanelError('bad_team')
+            out['bots'] = ','.join(str(g) for g in bots)
+        return out
+
+    @router.get('/api/companions/owner/{owner}/teams')
+    @guarded
+    async def list_teams(request: Request, owner: int):
+        session = session_of(request)
+        await asyncio.to_thread(owned_character, session, owner)
+        return {'teams': await asyncio.to_thread(teams_of, owner)}
+
+    @router.post('/api/companions/owner/{owner}/teams')
+    @guarded
+    async def save_team(request: Request, owner: int):
+        """A new team, or the team of that name changed (saving the current party under an existing name)."""
+        session = session_of(request)
+        await asyncio.to_thread(owned_character, session, owner)
+        team = await asyncio.to_thread(team_input, owner, await request.json())
+        await asyncio.to_thread(execute, 'INSERT INTO characters.companion_teams (owner_guid, name, bots) VALUES (%s, %s, %s) '
+                                'ON DUPLICATE KEY UPDATE bots = VALUES(bots)', (owner, team['name'], team['bots']))
+        return {'ok': True}
+
+    @router.patch('/api/companions/owner/{owner}/teams/{team_id}')
+    @guarded
+    async def edit_team(request: Request, owner: int, team_id: int):
+        session = session_of(request)
+        await asyncio.to_thread(owned_character, session, owner)
+        changes = await asyncio.to_thread(team_input, owner, await request.json(), True)
+        if not changes:
+            raise PanelError('bad_request')
+        sets = ', '.join(f'{key} = %s' for key in changes)
+        try:
+            await asyncio.to_thread(execute, f'UPDATE characters.companion_teams SET {sets} WHERE id = %s AND owner_guid = %s',
+                                    (*changes.values(), team_id, owner))
+        except pymysql.err.IntegrityError:
+            raise PanelError('team_exists')
+        return {'ok': True}
+
+    @router.delete('/api/companions/owner/{owner}/teams/{team_id}')
+    @guarded
+    async def delete_team(request: Request, owner: int, team_id: int):
+        session = session_of(request)
+        await asyncio.to_thread(owned_character, session, owner)
+        await asyncio.to_thread(execute, 'DELETE FROM characters.companion_teams WHERE id = %s AND owner_guid = %s', (team_id, owner))
+        return {'ok': True}
+
+    @router.post('/api/companions/owner/{owner}/teams/{team_id}/summon')
+    @guarded
+    async def summon_team(request: Request, owner: int, team_id: int):
+        """The team comes, the companions that are not in it leave (the worldserver does both in one go)."""
+        session = session_of(request)
+        await asyncio.to_thread(owned_character, session, owner)
+        if not any(t['id'] == team_id for t in await asyncio.to_thread(teams_of, owner)):
+            raise PanelError('bad_team', 404)
+        lines = await admin(f'team {owner} {int(team_id)}')
+        result = next((p for p in lines if p[0] == 'TEAM'), None)
+        errors = [p[1] for p in lines if p[0] == 'TEAMERROR' and len(p) > 1]
+        return {'ok': True, 'summoned': int(result[1]) if result else 0, 'dismissed': int(result[2]) if result else 0, 'errors': errors}
 
     @router.post('/api/companions/owner/{owner}/summon-all')
     @guarded

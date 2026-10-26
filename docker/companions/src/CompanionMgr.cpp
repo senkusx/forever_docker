@@ -32,6 +32,7 @@
 #include "World.h"
 #include "WorldSession.h"
 #include <algorithm>
+#include <sstream>
 #include <limits>
 
 namespace Companions
@@ -84,6 +85,14 @@ namespace Companions
         EnsureColumn("companion_bots", "loot_mode", "TINYINT UNSIGNED NOT NULL DEFAULT 0");
         EnsureColumn("companion_bots", "potions", "TINYINT UNSIGNED NOT NULL DEFAULT 1");
         EnsureColumn("companion_bots", "auto_cc", "TINYINT UNSIGNED NOT NULL DEFAULT 1");
+        // teams of companions summoned together (the web panel makes them; the same definition as web/app/companions.py)
+        CharacterDatabase.DirectExecute(
+            "CREATE TABLE IF NOT EXISTS `companion_teams` ("
+            "`id` INT UNSIGNED NOT NULL AUTO_INCREMENT, `owner_guid` BIGINT UNSIGNED NOT NULL, `name` VARCHAR(32) NOT NULL, "
+            "`bots` VARCHAR(512) NOT NULL DEFAULT '', "
+            "`updated` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, "
+            "PRIMARY KEY (`id`), UNIQUE KEY `owner_name` (`owner_guid`, `name`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 "
+            "COMMENT='Companions: teams of companions summoned together'");
         CompanionLLM::EnsureTables();
     }
 
@@ -577,6 +586,66 @@ namespace Companions
         TeleportToOwner(bot, owner);
         ArrangeFormation(ownerGuid);
         TC_LOG_INFO("server.worldserver", "Companions: {} joined {}", bot->GetName(), owner->GetName());
+    }
+
+    std::vector<CompanionMgr::Team> CompanionMgr::GetTeamsOf(ObjectGuid owner) const
+    {
+        std::vector<Team> teams;
+        if (QueryResult result = CharacterDatabase.PQuery("SELECT id, name, bots FROM companion_teams WHERE owner_guid = {} ORDER BY name",
+            owner.GetCounter()))
+        {
+            do
+            {
+                Field* fields = result->Fetch();
+                Team team;
+                team.Id = fields[0].GetUInt32();
+                team.Name = fields[1].GetString();
+                std::istringstream bots(fields[2].GetString());
+                std::string id;
+                while (std::getline(bots, id, ','))
+                    if (!id.empty() && std::isdigit(static_cast<unsigned char>(id[0])))
+                    {
+                        ObjectGuid guid = ObjectGuid::Create<HighGuid::Player>(std::strtoull(id.c_str(), nullptr, 10));
+                        auto record = _records.find(guid);
+                        if (record != _records.end() && record->second.Owner == owner)
+                            team.Bots.push_back(guid);
+                    }
+                teams.push_back(std::move(team));
+            } while (result->NextRow());
+        }
+        return teams;
+    }
+
+    void CompanionMgr::SummonTeam(Player* owner, Team const& team, uint32& summoned, uint32& dismissed, std::vector<std::string>& errors)
+    {
+        // the others first, right now (their places in the group and the companion count are free for the team)
+        for (Player* bot : GetBotsOf(owner->GetGUID()))
+            if (std::find(team.Bots.begin(), team.Bots.end(), bot->GetGUID()) == team.Bots.end())
+            {
+                Dismiss(bot->GetGUID(), false);
+                ++dismissed;
+            }
+        for (auto const& [guid, pending] : _pendingLogins)
+            if (pending.Owner == owner->GetGUID() && std::find(team.Bots.begin(), team.Bots.end(), guid) == team.Bots.end())
+            {
+                Dismiss(guid, false);
+                ++dismissed;
+            }
+        ProcessLogouts();
+        for (ObjectGuid const& guid : team.Bots)
+        {
+            if (IsBotGuid(guid) || IsLoggingIn(guid))
+                continue;   // already with it
+            std::string error;
+            if (Summon(owner, guid, error))
+                ++summoned;
+            else
+            {
+                std::string name;
+                sCharacterCache->GetCharacterNameByGuid(guid, name);
+                errors.push_back(name + ": " + error);
+            }
+        }
     }
 
     void CompanionMgr::Dismiss(ObjectGuid botGuid, bool keepActive)

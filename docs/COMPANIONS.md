@@ -57,6 +57,10 @@ of your characters:
   (for example Fury 17/34/0, Protection 8/5/38, Holy 31/20/0), or the role's one. Rename (while resting), new gear, new talents, delete. Whole-party settings: brain on or off for
   all, aggression, stance and gear quality, plus summon or dismiss all. Also per companion: looting (what it can use,
   everything, nothing), potions when low, crowd control of extra adds on its own.
+- **Teams**: sets of your companions you bring with one click, as often as you like ("Dungeon": tank, healer, three
+  damage dealers; "Raid": nineteen). **Summon team** brings its members and sends your other companions away, so the
+  team has the room. Save the party you have out now as a team, or pick the members; edit or delete them any time. In
+  game: `.bot team` lists them, `.bot team <name>` (or the start of it) brings one.
 - **Details** (on each companion): its gear (take a piece off), its bags (equip, destroy; upgrades marked), its stats
   (health, mana, attributes, armor, attack and spell power, crit, dodge, parry, block, resistances), its talents by tree,
   and its abilities, each set to normal, use more or never use (with what players said about it). Stats, talents and
@@ -144,7 +148,7 @@ Other players in your group can ask your companions for help (`heal me`, `Jaina 
 Raid markers work like with players: **skull** = kill first, **cross** = kill second, **moon** = crowd control,
 do not break it.
 
-Other commands: `.bot role <name|all> <role>`, `.bot gear [name]`, `.bot talents <name> [respec]`,
+Other commands: `.bot team [name]` (your teams, or bring one), `.bot role <name|all> <role>`, `.bot gear [name]`, `.bot talents <name> [respec]`,
 `.bot personality <name> <text>`, `.bot llm on|off [name]`, `.bot delete <name>` (only companions you created;
 your own characters are never deleted), `.bot help`.
 

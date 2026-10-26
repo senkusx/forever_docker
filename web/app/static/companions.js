@@ -21,7 +21,7 @@
 
   const state = { me: null, owner: null, view: null, templates: { bots: [], parties: [] }, tab: 'party', form: null, looks: {}, timer: null,
     page: 'owner', server: null, providerForm: null, newToken: null,
-    drafts: {}, applied: {}, groupDraft: {}, groupApplied: null };
+    drafts: {}, applied: {}, groupDraft: {}, groupApplied: null, teams: [], teamEdit: null };
   const $ = (id) => document.getElementById(id);
 
   // ------------------------------------------------------------------ helpers
@@ -196,6 +196,9 @@
     state.form = null;
     state.drafts = {};
     state.groupDraft = {};
+    state.teams = [];
+    state.teamEdit = null;
+    await loadTeams();
     await refresh();
     clearInterval(state.timer);
     state.timer = setInterval(() => { if (state.page === 'owner' && state.tab === 'party' && !document.hidden) refresh(true); }, 5000);
@@ -362,7 +365,92 @@
 
     const cards = view.bots.length ? view.bots.map((bot) => botCard(bot, online))
       : [h('div', { class: 'card muted' }, T('no_bots'))];
-    panel.replaceChildren(orders, group, h('div', { class: 'cp-bots' }, cards));
+    panel.replaceChildren(orders, teamsCard(), group, h('div', { class: 'cp-bots' }, cards));
+  }
+
+  // ------------------------------------------------------------------ teams: companions summoned together, again and again
+
+  async function loadTeams() {
+    if (!state.owner) return;
+    try {
+      state.teams = (await api('GET', `/api/companions/owner/${state.owner}/teams`)).teams;
+    } catch (err) {
+      state.teams = [];
+    }
+  }
+
+  async function summonTeam(team) {
+    const r = await run(() => api('POST', `/api/companions/owner/${state.owner}/teams/${team.id}/summon`, {}),
+      (res) => T('team_summoned', { name: team.name, n: res.summoned, m: res.dismissed }));
+    if (r && r.errors && r.errors.length) toast(r.errors.join(' · '), true);
+    setTimeout(() => refresh(true), 2500);
+  }
+
+  async function saveTeam() {
+    const e = state.teamEdit;
+    const name = e.name.trim();
+    const bots = [...e.bots];
+    if (!name || !bots.length) { toast(T('team_incomplete'), true); return; }
+    const done = e.id
+      ? await run(() => api('PATCH', `/api/companions/owner/${state.owner}/teams/${e.id}`, { name, bots }), T('team_saved', { name }))
+      : await run(() => api('POST', `/api/companions/owner/${state.owner}/teams`, { name, bots }), T('team_saved', { name }));
+    if (!done) return;
+    state.teamEdit = null;
+    await loadTeams();
+    renderParty();
+  }
+
+  async function saveCurrentAsTeam() {
+    const live = state.view.bots.filter((b) => b.live).map((b) => b.guid);
+    if (!live.length) { toast(T('team_none_out'), true); return; }
+    const name = prompt(T('team_name_prompt'), '');
+    if (!name || !name.trim()) return;
+    const done = await run(() => api('POST', `/api/companions/owner/${state.owner}/teams`, { name: name.trim(), bots: live }), T('team_saved', { name: name.trim() }));
+    if (done) { await loadTeams(); renderParty(); }
+  }
+
+  async function deleteTeam(team) {
+    if (!window.confirm(T('team_delete_confirm', { name: team.name }))) return;
+    const done = await run(() => api('DELETE', `/api/companions/owner/${state.owner}/teams/${team.id}`), T('team_deleted', { name: team.name }));
+    if (done) { await loadTeams(); renderParty(); }
+  }
+
+  function teamEditor() {
+    const e = state.teamEdit;
+    const nameInput = h('input', { type: 'text', maxlength: 32, value: e.name, placeholder: T('team_name'), oninput: (ev) => { e.name = ev.target.value; } });
+    return h('div', { class: 'cp-team editing' },
+      h('label', null, T('team_name'), nameInput),
+      h('div', { class: 'label' }, T('team_pick')),
+      h('div', { class: 'cp-team-pick' }, state.view.bots.map((b) => toggle(`${b.name} · ${className(b.class)} · ${roleName(b.role)}`, e.bots.has(b.guid),
+        (on) => { if (on) e.bots.add(b.guid); else e.bots.delete(b.guid); }))),
+      h('div', { class: 'cp-row' },
+        h('button', { type: 'button', class: 'cp-btn primary', onclick: () => saveTeam() }, T('save')),
+        h('button', { type: 'button', class: 'cp-btn', onclick: () => { state.teamEdit = null; renderParty(); } }, T('cancel'))));
+  }
+
+  function teamsCard() {
+    const view = state.view;
+    const online = ownerOnline();
+    const byGuid = Object.fromEntries(view.bots.map((b) => [b.guid, b]));
+    const rows = state.teams.map((team) => (state.teamEdit && state.teamEdit.id === team.id) ? teamEditor() : h('div', { class: 'cp-team' },
+      h('div', { class: 'cp-team-head' }, h('strong', null, team.name), h('span', { class: 'muted small' }, T('team_members', { n: team.bots.length }))),
+      h('div', { class: 'cp-team-members' }, team.bots.map((g) => byGuid[g]).filter(Boolean).map((b) =>
+        h('span', { class: 'cp-chip' + (b.live ? ' live' : '') }, `${b.name} · ${className(b.class)}`))),
+      h('div', { class: 'cp-row' },
+        h('button', { type: 'button', class: 'cp-btn primary', disabled: !online, title: online ? T('team_summon_hint') : T('owner_must_play'),
+          onclick: () => summonTeam(team) }, T('team_summon')),
+        h('button', { type: 'button', class: 'cp-btn', onclick: () => { state.teamEdit = { id: team.id, name: team.name, bots: new Set(team.bots) }; renderParty(); } }, T('edit')),
+        h('button', { type: 'button', class: 'cp-btn danger', onclick: () => deleteTeam(team) }, T('delete')))));
+    const creating = state.teamEdit && !state.teamEdit.id;
+    return h('div', { class: 'card cp-teams' },
+      h('div', { class: 'label' }, T('teams')),
+      state.teams.length ? null : h('p', { class: 'muted small' }, T('teams_hint')),
+      ...rows,
+      creating ? teamEditor() : null,
+      creating ? null : h('div', { class: 'cp-row' },
+        h('button', { type: 'button', class: 'cp-btn', disabled: !view.bots.length,
+          onclick: () => { state.teamEdit = { id: 0, name: '', bots: new Set(view.bots.filter((b) => b.live).map((b) => b.guid)) }; renderParty(); } }, T('team_new')),
+        h('button', { type: 'button', class: 'cp-btn', disabled: !view.bots.some((b) => b.live), onclick: () => saveCurrentAsTeam() }, T('team_save_current'))));
   }
 
   function botCard(bot, ownerIn) {

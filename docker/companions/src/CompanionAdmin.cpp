@@ -788,6 +788,31 @@ namespace Companions
         return true;
     }
 
+    // .bot admin team <owner> <team id>: the team comes, the others leave; COMP|TEAM|summoned|dismissed, COMP|TEAMERROR|text
+    static bool HandleTeam(ChatHandler* handler, uint64 owner, uint32 teamId)
+    {
+        Player* player = ObjectAccessor::FindPlayer(PlayerGuid(owner));
+        if (!player)
+        {
+            Error(handler, "the character must be in the game");
+            return true;
+        }
+        for (CompanionMgr::Team const& team : sCompanionMgr->GetTeamsOf(player->GetGUID()))
+        {
+            if (team.Id != teamId)
+                continue;
+            uint32 summoned = 0, dismissed = 0;
+            std::vector<std::string> errors;
+            sCompanionMgr->SummonTeam(player, team, summoned, dismissed, errors);
+            handler->SendSysMessage("COMP|TEAM|" + std::to_string(summoned) + "|" + std::to_string(dismissed));
+            for (std::string const& error : errors)
+                handler->SendSysMessage("COMP|TEAMERROR|" + Clean(error));
+            return true;
+        }
+        Error(handler, "no such team");
+        return true;
+    }
+
     // .bot admin mechanics [entry]: COMP|MECH|rules|encounters, then a creature's rules and note
     static bool HandleMechanics(ChatHandler* handler, Optional<uint32> entry)
     {
@@ -866,6 +891,7 @@ namespace Companions
             { "items",      HandleItems,      PERM_ADMIN, Console::Yes },
             { "mechanics",  HandleMechanics,  PERM_ADMIN, Console::Yes },
             { "inspect",    HandleInspect,    PERM_ADMIN, Console::Yes },
+            { "team",       HandleTeam,       PERM_ADMIN, Console::Yes },
             { "item",       HandleItem,       PERM_ADMIN, Console::Yes },
         };
         return table;
