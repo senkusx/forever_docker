@@ -496,6 +496,8 @@ namespace Companions
     std::string CompanionAI::MechanicsLine() const
     {
         std::string out = HoldsForMechanic() ? "holding" : "free";
+        if (!_stunDebug.empty())
+            out += ", stun lock: " + _stunDebug;
         if (_mechanicAngle)
             out += ", chase angle " + std::to_string(int32(*_mechanicAngle * 180.0f / float(M_PI)));
         if (GameTime::Now() < _mechanicMoveUntil && _bot->isMoving())
@@ -614,6 +616,55 @@ namespace Companions
                         return true;
                 }
             }
+        }
+
+        // mana kept low: the Obsidian Destroyers, Eradicators and Nullifiers of Ahn'Qiraj drain it from the raid and blast
+        // everyone at full mana
+        if (classId == CLASS_PRIEST || classId == CLASS_WARLOCK || classId == CLASS_HUNTER)
+            for (Unit* enemy : _view.Enemies)
+            {
+                Creature* creature = enemy->ToCreature();
+                if (!creature || !Mechanics::HasRule(creature->GetEntry(), Kind::DrainMana) || !enemy->GetMaxPower(POWER_MANA)
+                    || enemy->GetPowerPct(POWER_MANA) < 30.0f || _bot->GetDistance(enemy) > 30.0f)
+                    continue;
+                if ((classId == CLASS_PRIEST && Cast("mana burn", enemy)) || (classId == CLASS_WARLOCK && Cast("drain mana", enemy))
+                    || (classId == CLASS_HUNTER && !HasAura(enemy, "viper sting") && Cast("viper sting", enemy)))
+                    return true;
+            }
+
+        // stun locks (Gurubashi Axe Thrower...): whoever has a stun keeps it stunned in turn, one stun at a time (claimed), never
+        // while it is stunned already or immune to stuns (its own Axe Flurry makes it so)
+        for (Unit* enemy : _view.Enemies)
+        {
+            Creature* creature = enemy->ToCreature();
+            if (!creature || !Mechanics::HasRule(creature->GetEntry(), Kind::StunLock) || _bot->GetDistance(enemy) > 30.0f)
+                continue;
+            // the next stun lands as the last one ends (it casts the moment it is free): not before 0.7 s are left
+            int32 stunLeft = 0;
+            for (AuraEffect const* stun : enemy->GetAuraEffectsByType(SPELL_AURA_MOD_STUN))
+                stunLeft = std::max(stunLeft, stun->GetBase()->GetDuration());
+            if (stunLeft > 700 || sCompanionMgr->IsStunClaimed(enemy->GetGUID(), _bot->GetGUID()))
+            {
+                _stunDebug = stunLeft > 700 ? "stunned" : "claimed";
+                continue;
+            }
+            // its deadly channel makes it immune to stuns (Axe Flurry: a state immunity to stun auras) and cannot be
+            // interrupted either: polymorph, fear or a disorient stop it
+            bool const immune = enemy->HasAuraTypeWithMiscvalue(SPELL_AURA_MECHANIC_IMMUNITY, MECHANIC_STUN)
+                || enemy->HasAuraTypeWithMiscvalue(SPELL_AURA_STATE_IMMUNITY, SPELL_AURA_MOD_STUN);
+            bool const casting = enemy->GetCurrentSpell(CURRENT_CHANNELED_SPELL) || enemy->GetCurrentSpell(CURRENT_GENERIC_SPELL);
+            if (!immune && _bot->GetDistance(enemy) <= 20.0f && _class->Stun(enemy))
+            {
+                sCompanionMgr->ClaimStun(enemy->GetGUID(), _bot->GetGUID(), 2000);
+                return true;
+            }
+            if ((immune || casting) && _class->BreakCast(enemy))
+            {
+                sCompanionMgr->ClaimStun(enemy->GetGUID(), _bot->GetGUID(), 1500);
+                _stunDebug = "broke its cast";
+                return true;
+            }
+            _stunDebug = std::string(immune ? "immune" : "open") + (casting ? ", casting" : "") + ": nothing to use (" + _lastCastFailure + ")";
         }
 
         // a group member under the enemy's control: crowd control him, nobody kills him

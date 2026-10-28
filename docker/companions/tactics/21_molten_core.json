@@ -32,7 +32,7 @@
       "aliases": ["garr", "firesworn"],
       "general": "Eight Firesworn: each one dying explodes and makes Garr stronger. Banish some, off-tank the rest, kill them one at a time away from the raid, then Garr.",
       "tank": "Main tank on Garr; off-tanks hold one Firesworn each.",
-      "healer": "Anti-magic pulses strip buffs; heal the off-tanks.",
+      "healer": "Garr's Antimagic Pulse strips everyone's buffs: buff the tanks again and heal the off-tanks.",
       "dps": "Kill the Firesworn one by one where the tank calls, step back when one is low."
     },
     {
@@ -82,6 +82,70 @@
       "tank": "Two tanks: one takes over after a knockback. Keep someone in melee always.",
       "healer": "Fire resistance; heal the tanks through Elemental Fire.",
       "dps": "Melee behind him, ranged spread. Kill the Sons of Flame when he submerges."
+    }
+  ],
+  "trash": [
+    {
+      "name": "Core Hound",
+      "aliases": ["core hound", "core hounds"],
+      "general": "A pack of five: a dead hound gets up again unless all five die within 10 seconds of each other. Bring them down evenly with area damage.",
+      "tank": "Hold all five together.",
+      "healer": "Heal the tanks: the pack hits hard.",
+      "dps": "Spread the damage evenly, then finish them together."
+    },
+    {
+      "name": "Ancient Core Hound",
+      "aliases": ["ancient core hound", "ancient hound"],
+      "general": "Lava Breath burns everyone in front of it; its bite leaves a random debuff.",
+      "tank": "Face it away from the group.",
+      "healer": "Dispel what you can.",
+      "dps": "Stay at its side or behind it."
+    },
+    {
+      "name": "Firelord",
+      "aliases": ["firelords"],
+      "general": "Summons Lava Spawns that split in two if they live long; Soul Burn silences.",
+      "tank": "Pick up the Lava Spawns.",
+      "healer": "Dispel Soul Burn.",
+      "dps": "Kill the Lava Spawns as they appear, then the Firelord."
+    },
+    {
+      "name": "Molten Giant",
+      "aliases": ["molten giant", "molten giants"],
+      "general": "Smash hits everyone near it, Knock Away throws its tank back.",
+      "tank": "Taunt it back after a knockback.",
+      "healer": "Stay back.",
+      "dps": "Ranged are safe; melee watch their threat."
+    },
+    {
+      "name": "Molten Destroyer",
+      "aliases": ["molten destroyer", "molten destroyers"],
+      "general": "Massive Tremor hits everyone within 13 yards and stops their casts; Knockdown stuns.",
+      "tank": "Hold it away from the casters.",
+      "healer": "Heal from range.",
+      "dps": "Casters stay more than 13 yards away."
+    },
+    {
+      "name": "Lava Surger",
+      "aliases": ["surger", "surgers"],
+      "general": "Surges into players at range: damage and a knockback where it lands.",
+      "tank": "Grab it again after each surge.",
+      "healer": "Spread out a little.",
+      "dps": "Kill it quickly."
+    },
+    {
+      "name": "Flameguard",
+      "aliases": ["flameguards"],
+      "general": "Cone of Fire in front of it, Fire Shield burns whoever hits it in melee, Melt Armor.",
+      "tank": "Face it away from the group.",
+      "dps": "Stay behind it."
+    },
+    {
+      "name": "Lava Elemental",
+      "aliases": ["lava elementals"],
+      "general": "Pyroclast Barrage stuns and burns everyone in front of it.",
+      "tank": "Face it away from the group.",
+      "dps": "Stay behind it."
     }
   ]
 }

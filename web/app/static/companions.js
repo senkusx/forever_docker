@@ -895,7 +895,7 @@
     ['set_group_movement', ['FollowMinDistance', 'FollowMaxDistance', 'TeleportDistance', 'MountLevel']],
     ['set_group_behaviour', ['Callouts', 'AnnounceInParty', 'AutoRevive', 'AutoReviveDelay', 'FreeReagents', 'FreeFood',
       'RestoreOnLogin', 'AllowAlts', 'SyncLevel', 'AutoGear', 'GearMaxQuality']],
-    ['set_group_ai', ['LLM.Enable', 'LLM.DefaultOn', 'LLM.PartyChat', 'LLM.Callouts', 'LLM.Tactics', 'LLM.TacticsInterval', 'LLM.Banter', 'LLM.MaxAge']],
+    ['set_group_ai', ['LLM.Enable', 'LLM.DefaultOn', 'LLM.PartyChat', 'LLM.Callouts', 'LLM.Tactics', 'LLM.TacticsInterval', 'LLM.Banter', 'LLM.Reactions', 'LLM.MaxAge']],
     ['set_group_raid', ['Raid20.Enable', 'Raid20.Health', 'Raid20.Damage']],
     ['set_group_ambient', ['Ambient.Enable', 'Ambient.Density', 'Ambient.CityDensity', 'Ambient.MaxTotal', 'Ambient.Radius', 'Ambient.GearQuality', 'Ambient.PoolSize', 'Ambient.CompanionChance']],
   ];

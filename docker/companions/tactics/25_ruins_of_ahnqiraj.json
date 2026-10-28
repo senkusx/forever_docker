@@ -51,5 +51,28 @@
       "healer": "Decurse; dodge the tornadoes.",
       "dps": "Use the school the crystal opens; stay away from the tornadoes."
     }
+  ],
+  "trash": [
+    {
+      "name": "Obsidian Destroyer",
+      "aliases": ["obsidian destroyer", "obsidian destroyers"],
+      "general": "Drains mana from players; at full mana it Purges: 3500 damage and a stun to everyone within 40 yards. Keep its mana low.",
+      "healer": "Priests Mana Burn it when the group is healthy.",
+      "dps": "Warlocks Drain Mana, hunters Viper Sting it; kill it fast."
+    },
+    {
+      "name": "Anubisath Guardian",
+      "aliases": ["anubisath guardian", "anubisath guardians"],
+      "general": "Each has random powers: Plague (run away), Shadow Storm, Thunderclap, Meteor or summoned warriors; it explodes at 10%.",
+      "tank": "Tank it away from the group.",
+      "dps": "Run away with Plague; leave it when it explodes."
+    },
+    {
+      "name": "Flesh Hunter",
+      "aliases": ["flesh hunter", "flesh hunters"],
+      "general": "Consume swallows a player for a while; Poison Bolt.",
+      "healer": "Heal the swallowed player when it spits them out; cure poison.",
+      "dps": "Kill it to free the player."
+    }
   ]
 }

@@ -10,6 +10,7 @@
 
 #include "Define.h"
 #include "ObjectGuid.h"
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -28,6 +29,10 @@ namespace Companions::CompanionLLM
     bool OnChatToBot(Player* bot, Player* speaker, std::string const& channel, std::string const& message);
     // a party line that is not an order: one event for all the brain-linked bots of this owner in the group
     bool OnGroupChat(Player* owner, Player* speaker, std::vector<Player*> const& bots, std::string const& message, Player* addressed);
+    // a question about a boss's tactics: the companions answer it in their own words (tactics: Tactics::BrainLine); returns false
+    // when the brain is off or missed the last one (the caller says the plain answer), else fallback runs if no answer comes
+    bool OnTacticsQuestion(Player* speaker, std::vector<Player*> const& bots, std::string const& message, Player* addressed,
+        std::string const& tactics, std::function<void()> fallback);
     // a /say or /yell the bots around heard (channel "say" or "yell"): they may answer out loud, never with orders
     bool OnOpenChat(Player* speaker, std::vector<Player*> const& bots, std::string const& channel, std::string const& message, Player* addressed);
     // something the bot noticed (out of mana, adds...): worded by the brain, or the canned line when it has none

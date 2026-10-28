@@ -79,14 +79,15 @@ namespace Companions::Tactics
             while (text.size() > 250)
             {
                 size_t cut = text.rfind(' ', 245);
-                if (cut == std::string::npos || cut < 100)
-                    cut = 245;
-                lines.push_back({ bot, text.substr(0, cut), delay });
-                text = text.substr(cut + 1);
+                bool const space = cut != std::string::npos && cut >= 100;
+                if (!space)
+                    cut = Utf8Prefix(text, 245).size();
+                lines.push_back({ bot->GetGUID(), bot->GetName(), text.substr(0, cut), delay });
+                text = text.substr(space ? cut + 1 : cut);
                 delay += 1500;
             }
             if (!text.empty())
-                lines.push_back({ bot, text, delay });
+                lines.push_back({ bot->GetGUID(), bot->GetName(), text, delay });
         }
 
         Role RoleOf(Player* bot)
@@ -99,7 +100,7 @@ namespace Companions::Tactics
     void Load()
     {
         _bosses.clear();
-        QueryResult result = WorldDatabase.Query("SELECT map, sort, instance, instance_aliases, wing, boss, aliases, general, tank, healer, dps "
+        QueryResult result = WorldDatabase.Query("SELECT map, sort, instance, instance_aliases, wing, boss, aliases, general, tank, healer, dps, trash "
             "FROM companion_boss_tactics ORDER BY map, sort");
         if (!result)
         {
@@ -123,14 +124,19 @@ namespace Companions::Tactics
             boss.Tank = fields[8].GetString();
             boss.Healer = fields[9].GetString();
             boss.Dps = fields[10].GetString();
+            boss.Trash = fields[11].GetUInt8() != 0;
             _bosses.push_back(std::move(boss));
         } while (result->NextRow());
 
         std::vector<uint32> maps;
+        size_t trash = 0;
         for (Boss const& boss : _bosses)
+        {
             if (std::find(maps.begin(), maps.end(), boss.Map) == maps.end())
                 maps.push_back(boss.Map);
-        TC_LOG_INFO("server.worldserver", "Companions: {} boss tactics in {} instances", _bosses.size(), maps.size());
+            trash += boss.Trash ? 1 : 0;
+        }
+        TC_LOG_INFO("server.worldserver", "Companions: {} boss tactics and {} of trash in {} instances", _bosses.size() - trash, trash, maps.size());
     }
 
     size_t Count() { return _bosses.size(); }
@@ -139,7 +145,7 @@ namespace Companions::Tactics
     {
         std::vector<Boss const*> out;
         for (Boss const& boss : _bosses)
-            if (boss.Map == mapId)
+            if (boss.Map == mapId && !boss.Trash)
                 out.push_back(&boss);
         return out;
     }
@@ -192,6 +198,31 @@ namespace Companions::Tactics
             "what about" });
     }
 
+    Boss const* Resolve(Player* asker, std::vector<Player*> const& bots, std::string const& text)
+    {
+        Boss const* boss = Named(text, asker->GetMapId());
+        if (!boss)
+            boss = Of(asker->GetSelectedUnit());
+        for (Player* bot : bots)
+            if (CompanionAI* ai = sCompanionMgr->GetAI(bot); ai && !boss)
+                for (Unit* enemy : ai->View().Enemies)
+                    if (!boss)
+                        boss = Of(enemy);
+        return boss;
+    }
+
+    std::string BrainLine(Boss const& boss)
+    {
+        std::string line = "tactics, " + boss.Name + " (" + boss.Instance + "): " + boss.General;
+        if (!boss.Tank.empty())
+            line += " Tank: " + boss.Tank;
+        if (!boss.Healer.empty())
+            line += " Healers: " + boss.Healer;
+        if (!boss.Dps.empty())
+            line += " DPS: " + boss.Dps;
+        return line + "\n";
+    }
+
     std::vector<Line> Answer(Player* asker, std::vector<Player*> const& bots, Player* named, std::string const& text)
     {
         std::vector<Line> lines;
@@ -200,16 +231,7 @@ namespace Companions::Tactics
         std::string const lower = Normalize(text);
         uint32 const map = asker->GetMapId();
 
-        // the boss named, else the one the asker targets, else one the companions fight
-        Boss const* boss = Named(lower, map);
-        if (!boss)
-            boss = Of(asker->GetSelectedUnit());
-        if (!boss)
-            for (Player* bot : bots)
-                if (CompanionAI* ai = sCompanionMgr->GetAI(bot); ai && !boss)
-                    for (Unit* enemy : ai->View().Enemies)
-                        if (!boss)
-                            boss = Of(enemy);
+        Boss const* boss = Resolve(asker, bots, lower);
 
         // the tank explains, unless someone was asked
         Player* first = named;
@@ -306,16 +328,7 @@ namespace Companions::Tactics
                 if (Boss const* boss = Of(enemy); boss && std::find(told.begin(), told.end(), boss) == told.end())
                     told.push_back(boss);
         for (Boss const* boss : told)
-        {
-            ss << "tactics, " << boss->Name << " (" << boss->Instance << "): " << boss->General;
-            if (!boss->Tank.empty())
-                ss << " Tank: " << boss->Tank;
-            if (!boss->Healer.empty())
-                ss << " Healers: " << boss->Healer;
-            if (!boss->Dps.empty())
-                ss << " DPS: " << boss->Dps;
-            ss << "\n";
-        }
+            ss << BrainLine(*boss);
         return ss.str();
     }
 }

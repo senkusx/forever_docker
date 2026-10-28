@@ -4,6 +4,8 @@
 
 #include "CompanionLLM.h"
 #include "CompanionTactics.h"
+#include <algorithm>
+#include <functional>
 #include "AsyncCallbackProcessor.h"
 #include "CellImpl.h"
 #include "CompanionAI.h"
@@ -24,6 +26,7 @@
 #include "ObjectAccessor.h"
 #include "Player.h"
 #include "QueryCallback.h"
+#include "Random.h"
 #include "StringFormat.h"
 #include "SpellInfo.h"
 #include "Spell.h"
@@ -86,6 +89,17 @@ namespace Companions::CompanionLLM
         // answers waiting for their turn (bots do not all speak in the same millisecond)
         struct Scheduled { uint32 Due; ObjectGuid Bot; std::string Channel; std::string Target; std::string Say; std::string Commands; };
         std::vector<Scheduled> _scheduled;
+
+        // a companion's party line may get an answer from another companion (LLM.Reactions): at most two in a row after a
+        // player spoke, one after an event or a question, never in a fight, so they talk to each other without going on
+        std::unordered_map<ObjectGuid, uint32> _reactionBudget;    // group -> answers between companions left
+        std::unordered_map<ObjectGuid, uint32> _lastReactionMs;    // group -> the last one
+        std::unordered_map<ObjectGuid, uint32> _lastSaidMs;        // bot -> its last party line from the brain
+
+        // what the companions say plainly when the brain did not answer a question in time (boss tactics)
+        struct Fallback { ObjectGuid Group; ObjectGuid Bot; uint32 Due; std::function<void()> Say; };
+        std::vector<Fallback> _fallbacks;
+        uint32 _brainSlowUntil = 0;     // the brain missed one: plain answers at once for a while
 
         char const* ClassName(uint8 classId)
         {
@@ -165,7 +179,8 @@ namespace Companions::CompanionLLM
         }
 
         void Insert(Player* owner, Player* mainBot, std::string const& kind, std::string const& channel, std::string const& speaker,
-            std::string const& message, std::vector<Player*> const& voiced, uint32 provider, Player* addressed = nullptr)
+            std::string const& message, std::vector<Player*> const& voiced, uint32 provider, Player* addressed = nullptr,
+            std::string const& extraContext = "")
         {
             std::ostringstream bots;
             for (Player* bot : voiced)
@@ -178,11 +193,47 @@ namespace Companions::CompanionLLM
             std::string context = BuildContext(mainBot, voiced) + Tactics::BrainContext(mainBot, message);
             if (addressed)
                 context += "spoken to: " + addressed->GetName() + "\n";
+            context += extraContext;
             CharacterDatabase.PExecute("INSERT INTO companion_llm_events (bot_guid, owner_guid, kind, channel, speaker, message, context, bots, provider_id) "
                 "VALUES ({}, {}, '{}', '{}', '{}', '{}', '{}', '{}', {})",
                 mainBot->GetGUID().GetCounter(), (owner ? owner->GetGUID() : (record ? record->Owner : ObjectGuid::Empty)).GetCounter(),
-                Escape(kind), Escape(channel), Escape(speaker), Escape(message.substr(0, 500)), Escape(context),
+                Escape(kind), Escape(channel), Escape(speaker), Escape(Utf8Prefix(message, 500)), Escape(context),
                 Escape(bots.str()), provider);
+        }
+
+        void ConsiderReaction(Player* speaker, Group* group, std::string const& text)
+        {
+            uint32 const chance = GetConfig().LLMReactions;
+            auto budget = _reactionBudget.find(group->GetGUID());
+            if (!chance || budget == _reactionBudget.end() || !budget->second || speaker->IsInCombat() || urand(1, 100) > chance)
+                return;
+            uint32& last = _lastReactionMs[group->GetGUID()];
+            if (last && _msTime - last < 3000)
+                return;
+            // not one that just spoke or is about to (it answered the same line): it would only echo
+            auto busy = [&](Player const* member)
+            {
+                auto said = _lastSaidMs.find(member->GetGUID());
+                if (said != _lastSaidMs.end() && _msTime - said->second < 6000)
+                    return true;
+                return std::any_of(_scheduled.begin(), _scheduled.end(), [&](Scheduled const& pending)
+                    { return pending.Bot == member->GetGUID() && !pending.Say.empty(); });
+            };
+            std::vector<Player*> listeners;
+            for (GroupReference const& ref : group->GetMembers())
+                if (Player* member = ref.GetSource())
+                    if (member != speaker && listeners.size() < 3 && member->IsInWorld() && member->IsAlive() && member->GetSession()->IsBot()
+                        && IsEnabledFor(member) && member->IsWithinDistInMap(speaker, 100.0f) && !busy(member))
+                        listeners.push_back(member);
+            if (listeners.empty())
+                return;
+            --budget->second;
+            last = _msTime;
+            std::swap(listeners.front(), listeners[urand(0, uint32(listeners.size()) - 1)]);
+            Player* main = listeners.front();
+            CompanionAI* ai = sCompanionMgr->GetAI(main);
+            Insert(ai ? ObjectAccessor::FindPlayer(ai->GetOwnerGUID()) : nullptr, main, "group", "party", speaker->GetName(), text, listeners,
+                ProviderOf(main), nullptr, "reacting to a companion: " + speaker->GetName() + "\n");
         }
 
         void Perform(Scheduled const& action)
@@ -195,7 +246,7 @@ namespace Companions::CompanionLLM
             bool const aloud = action.Channel == "say" || action.Channel == "yell";
             if (!action.Say.empty())
             {
-                std::string say = action.Say.substr(0, 250);
+                std::string say = Utf8Prefix(action.Say, 250);
                 Player* receiver = action.Target.empty() ? nullptr : ObjectAccessor::FindPlayerByName(action.Target);
                 Language const tongue = bot->GetTeam() == ALLIANCE ? LANG_COMMON : LANG_ORCISH;
                 if (action.Channel == "whisper" && receiver)
@@ -210,6 +261,15 @@ namespace Companions::CompanionLLM
             // orders come through party chat and whispers only
             if (aloud)
                 return;
+
+            if (!action.Say.empty() && action.Channel != "whisper")
+                if (Group* group = bot->GetGroup())
+                {
+                    _lastSaidMs[bot->GetGUID()] = _msTime;
+                    // an answer came: the plain one waiting for this group is not needed
+                    std::erase_if(_fallbacks, [&](Fallback const& fallback) { return fallback.Group == group->GetGUID(); });
+                    ConsiderReaction(bot, group, Utf8Prefix(action.Say, 250));
+                }
 
             // orders: one per line, the same words a player types in party chat
             Player* owner = ObjectAccessor::FindPlayer(ai->GetOwnerGUID());
@@ -332,6 +392,8 @@ namespace Companions::CompanionLLM
         // what was said while the server was down is stale
         CharacterDatabase.DirectExecute("UPDATE companion_llm_events SET status = 3 WHERE status < 2");
         CharacterDatabase.DirectExecute("UPDATE companion_llm_actions SET consumed = 1 WHERE consumed = 0");
+        CharacterDatabase.Execute("DELETE FROM companion_llm_events WHERE status >= 2 AND created < NOW() - INTERVAL 3 DAY");
+        CharacterDatabase.Execute("DELETE FROM companion_llm_actions WHERE consumed = 1 AND created < NOW() - INTERVAL 3 DAY");
     }
 
     bool IsEnabledFor(Player const* bot)
@@ -359,6 +421,29 @@ namespace Companions::CompanionLLM
                 ++itr;
         }
 
+        // questions the brain did not answer in time: the plain answer now, and at once for the next five minutes
+        if (!_fallbacks.empty())
+        {
+            std::vector<std::function<void()>> due;
+            for (auto itr = _fallbacks.begin(); itr != _fallbacks.end();)
+            {
+                if (itr->Due > _msTime)
+                {
+                    ++itr;
+                    continue;
+                }
+                // the question is closed: a late answer from the brain would tell it all a second time
+                CharacterDatabase.PExecute("UPDATE companion_llm_events SET status = 3 WHERE status < 2 AND bot_guid = {} AND kind = 'group' "
+                    "AND context LIKE '%question about boss tactics%' AND created > NOW() - INTERVAL 2 MINUTE", itr->Bot.GetCounter());
+                due.push_back(std::move(itr->Say));
+                itr = _fallbacks.erase(itr);
+            }
+            if (!due.empty())
+                _brainSlowUntil = _msTime + 300000;
+            for (std::function<void()> const& say : due)
+                say();
+        }
+
         if (!GetConfig().LLMEnable)
             return;
         _callbacks.ProcessReadyCallbacks();
@@ -380,6 +465,15 @@ namespace Companions::CompanionLLM
                 GetConfig().LLMMaxAge);
             // a worker that took a line and vanished: someone else may answer it
             CharacterDatabase.Execute("UPDATE companion_llm_events SET status = 0, claimed_by = '' WHERE status = 1 AND claimed_at < NOW() - INTERVAL 90 SECOND");
+            // the brain's old lines (each holds a few kB of situation): kept three days
+            static uint32 purgeTimer = 0;
+            purgeTimer += 10000;
+            if (purgeTimer >= 3600000)
+            {
+                purgeTimer = 0;
+                CharacterDatabase.Execute("DELETE FROM companion_llm_events WHERE status >= 2 AND created < NOW() - INTERVAL 3 DAY");
+                CharacterDatabase.Execute("DELETE FROM companion_llm_actions WHERE consumed = 1 AND created < NOW() - INTERVAL 3 DAY");
+            }
         }
     }
 
@@ -409,11 +503,37 @@ namespace Companions::CompanionLLM
             return false;
         if (Flooding(speaker->GetGUID(), 1200))
             return true;
+        if (Group* group = speaker->GetGroup())
+            _reactionBudget[group->GetGUID()] = 2;
         // the addressed bot leads (and its provider answers); else the first one
         Player* main = voiced.front();
         if (addressed && std::find(voiced.begin(), voiced.end(), addressed) != voiced.end())
             main = addressed;
         Insert(owner, main, "group", "party", speaker->GetName(), message, voiced, ProviderOf(main), addressed);
+        return true;
+    }
+
+    bool OnTacticsQuestion(Player* speaker, std::vector<Player*> const& bots, std::string const& message, Player* addressed,
+        std::string const& tactics, std::function<void()> fallback)
+    {
+        Config const& config = GetConfig();
+        Group* group = speaker->GetGroup();
+        if (!config.LLMEnable || !config.LLMPartyChat || !group || _msTime < _brainSlowUntil)
+            return false;
+        std::vector<Player*> voiced;
+        if (addressed && IsEnabledFor(addressed))
+            voiced.push_back(addressed);
+        for (Player* bot : bots)
+            if (bot != addressed && voiced.size() < 5 && IsEnabledFor(bot))
+                voiced.push_back(bot);
+        if (voiced.empty())
+            return false;
+        Player* main = voiced.front();
+        CompanionAI* ai = sCompanionMgr->GetAI(main);
+        Insert(ai ? ObjectAccessor::FindPlayer(ai->GetOwnerGUID()) : nullptr, main, "group", "party", speaker->GetName(), message, voiced,
+            ProviderOf(main), addressed, "question about boss tactics\n" + tactics);
+        _fallbacks.push_back({ group->GetGUID(), main->GetGUID(), _msTime + 12000, std::move(fallback) });
+        _reactionBudget[group->GetGUID()] = 1;
         return true;
     }
 
@@ -474,6 +594,8 @@ namespace Companions::CompanionLLM
             return;
         if (Flooding(bot->GetGUID(), 30000))
             return;
+        if (Group* group = bot->GetGroup())
+            _reactionBudget[group->GetGUID()] = std::max<uint32>(_reactionBudget[group->GetGUID()], 1);
         Insert(nullptr, bot, "event", "party", kind, detail, { bot }, ProviderOf(bot));
     }
 
@@ -559,7 +681,7 @@ namespace Companions::CompanionLLM
         if (!group || !GetConfig().LLMEnable)
             return;
         std::deque<ChatLine>& lines = _history[group->GetGUID()];
-        lines.push_back({ _msTime, speaker, text.substr(0, 200) });
+        lines.push_back({ _msTime, speaker, Utf8Prefix(text, 200) });
         while (lines.size() > 14)
             lines.pop_front();
     }

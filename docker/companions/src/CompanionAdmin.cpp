@@ -334,7 +334,7 @@ namespace Companions
                 ai->SetStance(record->StanceMode);
         }
         else if (key == "personality")
-            record->Personality = text.substr(0, 250);
+            record->Personality = Utf8Prefix(text, 250);
         else if (key == "surname")
         {
             std::string surname = text == "-" ? std::string() : text;

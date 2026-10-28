@@ -164,8 +164,9 @@ your own characters are never deleted), `.bot help`.
 ## Boss fights
 
 The companions know the scripted encounters of the classic dungeons and raids (Molten Core, Onyxia, Blackwing Lair,
-Zul'Gurub, both Ahn'Qiraj, Naxxramas and the dungeon bosses), with the spell and creature ids of this server's scripts
-(`docker/companions/src/CompanionMechanics.cpp`, 150 rules and 75 boss notes). In a fight they:
+Zul'Gurub, both Ahn'Qiraj, Naxxramas and the dungeon bosses) and the raid trash that wipes raids, with the spell and
+creature ids of this server's scripts (`docker/companions/src/CompanionMechanics.cpp`, 250 rules and 75 boss notes). In
+a fight they:
 
 - step out of what a boss casts around itself (Inferno, Whirlwind, Locust Swarm, Arcane Explosion...) and out of the band
   of a line attack (Onyxia's Deep Breath, Impale, Dark Glare);
@@ -184,7 +185,26 @@ Zul'Gurub, both Ahn'Qiraj, Naxxramas and the dungeon bosses), with the spell and
 - answer fears (priests keep Fear Ward on the tank, shamans drop Tremor Totem, warriors Berserker Rage), Tranquilizing Shot
   frenzies, purge Deaden Magic and Renew, crowd control mind controlled friends (never kill them), stand still under
   Mandokir's Threatening Gaze, stop healing under Nefarian's priest call, take their Thaddius charge to its side and hide
-  behind an ice block from Sapphiron's Frost Breath.
+  behind an ice block from Sapphiron's Frost Breath;
+- keep stunned, in turn, what must not cast: the Gurubashi Axe Thrower before its Axe Flurry, one stun at a time, the
+  next as the last one ends (Kidney Shot, Hammer of Justice, Bash, Concussion Blow, War Stomp...); while it spins it
+  cannot be stunned, and a polymorph, fear or Gouge stops it. With two of them one is crowd controlled at once while the
+  other dies, and the healers stay more than 30 yards away;
+- keep the mana of the Obsidian Destroyers, Eradicators and Nullifiers of Ahn'Qiraj low (priests Mana Burn, warlocks
+  Drain Mana, hunters Viper Sting): at full mana they blast everyone around;
+- finish the crowd controlled once nothing else fights: the tank breaks one out, the others join when it holds it.
+
+**Raid trash** has rules of its own (95): the cones of Ancient Core Hounds, Lava Elementals, Flameguards, Razzashi Adders
+and the cleavers of Blackwing Lair and Naxxramas are faced away; Hakkari Priests, Shadowcasters and Witch Doctors,
+Blackwing Taskmasters, Warlocks and Spellbinders, Death Talon Captains and Qiraji Mindslayers die first, and their heals
+and volleys are interrupted (Death Talon Wyrmkin, Naxxramas Acolytes, Mad Scientists, Stoneskin Gargoyles); fears of
+Berserkers, Soulflayers, Qiraji Champions, Anubisath Warders and Deathknights are answered; everyone leaves the Gurubashi
+Bat Rider's Unstable Concoction, the Qiraji and Deathknight whirlwinds and the Embalming Slimes' cloud, and keeps away from
+the Voodoo Spirit of a dead Witch Doctor; Frenzies are Tranquilized; the Firelords' Lava Spawns, the Living
+Monstrosities' totems and the warlocks' Demon Portals die first.
+
+**Summoning rituals**: when you start a ritual that needs several players (the Blackrock Altar before Pyroguard
+Emberseer wants three), the companions next to you join it.
 
 Casts nobody wrote a rule for are read from the spell itself: an area around the caster with a cast time is left by all
 but the tank, a boss seen casting a cone is not faced again, heals and crowd control are interrupted first. The brain
@@ -291,6 +311,16 @@ server (`OLLAMA_HOST=127.0.0.1:11434`) and let the game server open an SSH tunne
 `{"orders": "all"}`; a 4 GB card `qwen2.5:3b`. A GTX 10xx (Pascal) needs the NVIDIA 580 driver branch (the last one
 for these cards).
 
+**Talking among themselves**: a companion's line in party chat may get an answer from another one (`LLM.Reactions`,
+35% by default), two or three exchanges in a row at most, then they wait for a player: banter, never a conversation that
+runs on by itself. Lines said with /say or /yell near them get answers out loud.
+
+**Boss questions** ("what's the strat for Baron?", "how do we do the axe throwers?", `tactics` with the boss targeted):
+with the brain each companion answers its part from the tactics table in its own personality; without it, or when the
+brain takes more than 12 seconds, the plain lines come at once, and for the next five minutes questions skip the brain.
+In fights the same rule holds: tactical orders that come back more than 6 seconds after the review are dropped, and the
+server AI's own choices stand.
+
 `COMPANIONS_LLM_MAX_PER_MINUTE` (default 60) caps the requests of each brain. `.bot personality Jaina grumpy dwarf
 who loves ale` (or the panel) gives a bot a character. Banter (comments on level ups) is off by default.
 
@@ -323,6 +353,7 @@ who loves ale` (or the panel) gives a bot a character. Banter (comments on level
 | `Companions.LLM.Tactics` | 1 | the brain leads fights (kill order, crowd control, interrupts) |
 | `Companions.LLM.TacticsInterval` | 15 | seconds between two tactical reviews of a fight |
 | `Companions.LLM.Banter` | 0 | comments on level ups |
+| `Companions.LLM.Reactions` | 35 | % chance that another companion answers a companion's party line (a few in a row at most) |
 | `Companions.LLM.MaxAge` | 45 | seconds after which an unanswered line is dropped |
 | `Companions.Raid20.Enable` | 1 | the 40-player raids are tuned for 20 |
 | `Companions.Raid20.Health` | 0.5 | share of their creatures' health (when they spawn) |
@@ -345,7 +376,11 @@ owner: `login <character>`, `party <owner> [role]`, `raid <owner> [size]`, `say 
 [count]` (enemies in front of the group for 5 minutes), `fire <bot> [spell]` (a hostile ground effect under it), `give <bot>
 <item>` / `equip <bot> <it|name>` (loot decisions), `status <owner>`, `near <owner> [yards]` (creatures around, their health and mechanics rules), `ambient <owner>` (the zone as the ambient
 bots see it and what each one does), `invite <owner> <name>` (a /invite), `order <owner> <order>`, `why <bot>` (what it sees),
-`spells <bot>`, `tactics <owner> <question>` (what the companions answer to it), `auras <name> [spell]` (auras on a character and who cast them, the area triggers that spell made), `kill <bot>`, `logout <owner>`. `why <bot>` also shows where it stands around you and its last casts. Administrators only (the permission of `.server shutdown`).
+`spells <bot>`, `tactics <owner> <question>` (what the companions answer to it), `auras <name> [spell]` (auras on a character and who cast them, the area triggers that spell made), `kill <bot>`, `logout <owner>`.
+For instance events: `trigger <owner> <id>` (the stand-in enters an area trigger), `objects <owner> [yards] [entry]`
+(game objects around and their state: doors 0 open, 1 closed), `use <owner> <entry>` (it uses the nearest one: a lever,
+an altar), `slay <owner> <entry|0> [yards]` (it kills those creatures, whose death scripts run: doors, the next boss),
+`item <owner> <item>` (a key or a quest item in its bags), `idata <owner>` (the instance's boss states and saved data). `why <bot>` also shows where it stands around you and its last casts. Administrators only (the permission of `.server shutdown`).
 
 ## Good to know
 
@@ -373,7 +408,11 @@ bots see it and what each one does), `invite <owner> <name>` (a /invite), `order
   dealers let it open every pull, keep under its threat (85% of it in melee, 90% at range: another target, else they
   hold), leave an enemy that turned on them to the tank, keep area spells until the tank holds the pack, and pets keep
   their taunt (Growl, Torment) off; priests Fade, cats Cower, hunters Feign Death and rogues Feint when an enemy turns on
-  them anyway. A caster or healer an enemy goes after runs to the tank; next to a rooted or frozen enemy (Frost Nova,
+  them anyway. With several tanks (a raid) the main tank (the one marked main tank in the raid, else the first) keeps
+  the boss and the off-tanks take what got loose, what no tank holds, then the adds on the main tank: an enemy one tank
+  went for is its own for a few seconds, nobody taunts from another tank (tank swaps aside) and only one of them uses an
+  area taunt. Tanks think every 50 ms. The damage dealers attack the main tank's target, then yours: `assist` (the
+  default) means fighting with the group, not only next to you. A caster or healer an enemy goes after runs to the tank; next to a rooted or frozen enemy (Frost Nova,
   Entangling Roots) it steps out of its reach instead of standing there.
 - Shamans keep their totems up in every role: Tremor against fear, Poison or Disease Cleansing when someone has one,
   Strength of Earth, Windfury and Mana Spring or Healing Stream for the group, Magma on a pack, Searing on the target,
@@ -385,6 +424,20 @@ bots see it and what each one does), `invite <owner> <name>` (a /invite), `order
   its name back, and Consecration its ground; the Windfury Totem's attack is cast by `CompanionSpells.cpp` (the client's
   aura names no spell to trigger). Flametongue Totem still does nothing.
 - Eating and drinking: the food (drink) that restores the most among those their level allows.
+- Doors and gates of the classic dungeons: Forever's port of the VMaNGOS scripts turned "open the door" and "close the
+  door" into actions that toggle or do nothing on this core, so doors opened or shut at random (Emberseer's room, the
+  gates of Gandling's rooms, the Shadowforge gate, the Scarlet Monastery doors, the Deadmines doors, Shadowfang Keep's
+  courtyard, Blackwing Lair's portcullis...). `docker/sql/world/2026_10_27_91_world_companions_classic_doors.sql` makes them
+  set the door state. The Seal of Ascension (the key to Upper Blackrock Spire) is in the client data again
+  (`docker/sql/hotfixes/2026_10_27_90_hotfixes_companions_seal_of_ascension.sql`).
+  `docker/sql/world/2026_10_28_90_world_companions_classic_script_targets.sql`: the same port made "remove aura" act on
+  the creature's victim instead of the creature (Syndicate rogues kept Sneak in the fight, Gyth kept Rend on his back,
+  Scarlet Commander Mograine stripped the player's auras instead of his own), and the levers TrinityCore's own scripts
+  name by spawn id pointed at nothing in Forever's renumbered database (Herod's door).
+- Classic script fixes (`docker/patches/0006-classic-script-fixes.patch`): crashes in Dire Maul, Stratholme, Ahn'Qiraj
+  and Feralas scripts that lost their victim mid-fight; Blackrock Spire's rune rooms and Shadowfang Keep's Sorcerer's Gate
+  open; the Axe Thrower's Axe Flurry hits one enemy a second (it hit everyone within 30 yards, a sure wipe) and
+  Nefarian's mage call polymorphs one player (it polymorphed the whole raid).
 - Dungeon trash loot is personal to the group's round-robin looter: the core patch keeps that turn with the players
   close enough (the companions take turns only when no player is around), so players do not find most corpses empty.
 - Missing items: Forever's loot tables name 1,416 vanilla items its client data lacks (the boss loot of Blackrock Depths

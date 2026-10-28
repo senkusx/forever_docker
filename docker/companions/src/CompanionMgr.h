@@ -115,6 +115,23 @@ namespace Companions
         // an enemy a bot keeps crowd controlled: the others do not hit it
         void ClaimCrowdControl(ObjectGuid enemy, ObjectGuid bot, uint32 durationMs);
         bool IsCrowdControlClaimed(ObjectGuid enemy, ObjectGuid notBy) const;
+        // several tanks: the loose enemy one of them went for is its own for a moment (no two run for the same one)
+        void ClaimTank(ObjectGuid enemy, ObjectGuid bot, uint32 durationMs);
+        bool IsTankClaimed(ObjectGuid enemy, ObjectGuid notBy) const;
+        // an area taunt (Challenging Shout, Roar): one tank of a group at a time, the others keep theirs for the next crisis
+        bool IsAoeTauntClaimed(ObjectGuid group) const
+        {
+            auto itr = _aoeTauntClaims.find(group);
+            return itr != _aoeTauntClaims.end() && itr->second > _msTime;
+        }
+        void ClaimAoeTaunt(ObjectGuid group, uint32 durationMs) { _aoeTauntClaims[group] = _msTime + durationMs; }
+        // a stun lock: one stun at a time on the same enemy
+        void ClaimStun(ObjectGuid enemy, ObjectGuid bot, uint32 durationMs) { _stunClaims[enemy] = { bot, _msTime + durationMs }; }
+        bool IsStunClaimed(ObjectGuid enemy, ObjectGuid notBy) const
+        {
+            auto itr = _stunClaims.find(enemy);
+            return itr != _stunClaims.end() && itr->second.first != notBy && itr->second.second > _msTime;
+        }
 
         // Player::Update hook (map thread)
         static void OnBotPlayerUpdate(Player* player, uint32 diff);
@@ -168,6 +185,9 @@ namespace Companions
         std::unordered_multimap<ObjectGuid, IncomingHeal> _incomingHeals;
         std::unordered_map<ObjectGuid, std::pair<ObjectGuid, uint32>> _interruptClaims;
         std::unordered_map<ObjectGuid, std::pair<ObjectGuid, uint32>> _ccClaims;
+        std::unordered_map<ObjectGuid, std::pair<ObjectGuid, uint32>> _tankClaims;
+        std::unordered_map<ObjectGuid, std::pair<ObjectGuid, uint32>> _stunClaims;
+        std::unordered_map<ObjectGuid, uint32> _aoeTauntClaims;
         std::unordered_map<ObjectGuid, WorldSession*> _puppets;
         uint32 _msTime = 0;
         bool _shuttingDown = false;

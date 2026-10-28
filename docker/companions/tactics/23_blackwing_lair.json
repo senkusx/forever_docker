@@ -75,5 +75,60 @@
       "healer": "Decurse Veil of Shadow on the tank; react to the class calls.",
       "dps": "Never in front; at 20% kill or area the bone constructs."
     }
+  ],
+  "trash": [
+    {
+      "name": "Death Talon Captain",
+      "aliases": ["death talon captain", "captain"],
+      "general": "Aura of Flames gives the pack a burning shield and Mark of Detonation blows up on players: kill the Captain first.",
+      "tank": "Hold the pack together.",
+      "healer": "Heal the marked players.",
+      "dps": "Captain first, then the Wyrmkin, the Flamescales and the Seethers."
+    },
+    {
+      "name": "Death Talon Wyrmkin",
+      "aliases": ["wyrmkin"],
+      "general": "Fireball Volley hits everyone within 45 yards; Blast Wave around it.",
+      "dps": "Interrupt the volley and kill it early."
+    },
+    {
+      "name": "Death Talon Seether",
+      "aliases": ["seether", "seethers"],
+      "general": "Frenzies and leaves a Mark of Flames.",
+      "dps": "Hunters Tranquilizing Shot the Frenzy."
+    },
+    {
+      "name": "Death Talon Wyrmguard",
+      "aliases": ["wyrmguard", "wyrmguards"],
+      "general": "Weak to one school, resisting the others (its brood power); War Stomp stuns around it, Cleave in front.",
+      "tank": "Face it away from the group.",
+      "dps": "Find the school it takes damage from."
+    },
+    {
+      "name": "Blackwing Technician",
+      "aliases": ["technician", "technicians", "goblins"],
+      "general": "Goblin packs throwing bombs and poison: area damage brings them down; step out of the bombs.",
+      "healer": "Cure poison.",
+      "dps": "Area damage."
+    },
+    {
+      "name": "Blackwing Warlock",
+      "aliases": ["blackwing warlock", "blackwing warlocks"],
+      "general": "Rain of Fire, Shadow Bolts and demon portals: interrupt it and kill it, then its portals.",
+      "dps": "Interrupt Shadow Bolt and Rain of Fire; kill the portal."
+    },
+    {
+      "name": "Blackwing Taskmaster",
+      "aliases": ["taskmaster", "taskmasters"],
+      "general": "Healing Circle heals its friends.",
+      "dps": "Interrupt Healing Circle and kill it first."
+    },
+    {
+      "name": "Blackwing Spellbinder",
+      "aliases": ["spellbinder", "spellbinders"],
+      "general": "Greater Polymorph on players and Flamestrike under them.",
+      "healer": "Dispel the polymorph.",
+      "dps": "Step out of Flamestrike; kill it early."
+    }
   ]
 }

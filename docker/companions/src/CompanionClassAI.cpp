@@ -63,6 +63,13 @@ namespace Companions
         bool Cast(std::string_view spell, Unit* target = nullptr) { return _ai.Cast(spell, target); }
         bool Knows(std::string_view spell) const { return _ai.Knows(spell); }
         bool Has(Unit const* unit, std::string_view spell, bool mine = false) const { return _ai.HasAura(unit, spell, mine); }
+        // Tauren War Stomp (any class): everything within 8 yards
+        bool RacialStun(Unit* target) { return Me()->GetDistance(target) < 7.0f && Cast("war stomp"); }
+
+    public:
+        bool Stun(Unit* target) override { return RacialStun(target); }
+
+    protected:
 
         // a buff that is missing or about to fade
         bool Buff(std::string_view spell, Unit* target)
@@ -208,6 +215,9 @@ namespace Companions
                 return false;
             return (_ai.HasShield() && Cast("shield bash", caster)) || Cast("pummel", caster) || Cast("concussion blow", caster);
         }
+
+        bool Stun(Unit* target) override { return (_ai.InMelee(target) && Cast("concussion blow", target)) || RacialStun(target); }
+        bool BreakCast(Unit* caster) override { return Me()->GetDistance(caster) < 8.0f && Cast("intimidating shout", caster); }
 
         bool Emergency() override
         {
@@ -394,6 +404,7 @@ namespace Companions
 
         bool Resurrect(Player* dead) override { return Cast("redemption", dead); }
         bool Interrupt(Unit* caster) override { return Cast("hammer of justice", caster); }
+        bool Stun(Unit* target) override { return Cast("hammer of justice", target) || RacialStun(target); }
         // no taunt for paladins: Judgement and Holy Strike on the loose one
         bool Taunt(Unit* target) override
         {
@@ -514,6 +525,8 @@ namespace Companions
         }
 
         bool Interrupt(Unit* caster) override { return Cast("scatter shot", caster); }
+        bool Stun(Unit* target) override { return Cast("intimidation", target) || Cast("scatter shot", target) || RacialStun(target); }
+        bool BreakCast(Unit* caster) override { return Cast("scatter shot", caster); }
         bool CanCrowdControl(Unit const* target) const override { return IsCreatureType(target, CREATURE_TYPE_BEAST) && Knows("scare beast"); }
         bool CrowdControl(Unit* target) override { return CanCrowdControl(target) && !Has(target, "scare beast") && Cast("scare beast", target); }
 
@@ -560,6 +573,8 @@ namespace Companions
         float RangedDistance() const override { return 0.0f; }
 
         bool Interrupt(Unit* caster) override { return _ai.InMelee(caster) && (Cast("kick", caster) || Cast("gouge", caster)); }
+        bool Stun(Unit* target) override { return _ai.InMelee(target) && (Cast("kidney shot", target) || Cast("gouge", target)); }
+        bool BreakCast(Unit* caster) override { return _ai.InMelee(caster) && (Cast("gouge", caster) || Cast("blind", caster)); }
         bool CanCrowdControl(Unit const* target) const override { return Knows("gouge") && IsCreatureType(target, CREATURE_TYPE_HUMANOID); }
         bool CrowdControl(Unit* target) override { return _ai.InMelee(target) && CanCrowdControl(target) && Cast("gouge", target); }
 
@@ -608,6 +623,7 @@ namespace Companions
     public:
         using ClassBase::ClassBase;
 
+        bool BreakCast(Unit* caster) override { return Me()->GetDistance(caster) < 8.0f && Cast("psychic scream"); }
         Role DefaultRole() const override { return Role::Healer; }
         bool CanHeal() const override { return true; }
         float RangedDistance() const override { return 28.0f; }
@@ -940,6 +956,7 @@ namespace Companions
         }
 
         bool Interrupt(Unit* caster) override { return Cast("counterspell", caster); }
+        bool BreakCast(Unit* caster) override { return Cast("polymorph", caster); }
 
         bool CanCrowdControl(Unit const* target) const override
         {
@@ -994,6 +1011,8 @@ namespace Companions
     public:
         using ClassBase::ClassBase;
 
+        bool Stun(Unit* target) override { return Cast("death coil", target) || RacialStun(target); }
+        bool BreakCast(Unit* caster) override { return Cast("fear", caster) || Cast("death coil", caster); }
         Role DefaultRole() const override { return Role::RangedDps; }
         float RangedDistance() const override { return 28.0f; }
 
@@ -1197,6 +1216,7 @@ namespace Companions
             return Cast("hibernate", target);
         }
         bool Interrupt(Unit* caster) override { return _ai.InMelee(caster) && Cast("bash", caster); }
+        bool Stun(Unit* target) override { return (_ai.InMelee(target) && Cast("bash", target)) || RacialStun(target); }
 
         bool Emergency() override
         {

@@ -18,3 +18,4 @@
 # Companions.LLM.Tactics = 1
 # Companions.LLM.TacticsInterval = 15
 # Companions.LLM.Banter = 0
+# Companions.LLM.Reactions = 35

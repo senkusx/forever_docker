@@ -72,7 +72,7 @@ namespace Companions
             out += (out.empty() ? "" : ";") + std::string(pref.Avoid ? "avoid" : "prefer") + "|" + pref.Spell + "|"
                 + std::to_string(pref.BelowPct) + "|" + reason;
         }
-        return out.substr(0, 1000);
+        return Utf8Prefix(out, 1000);
     }
 
     bool CompanionAI::SetPref(std::string const& spell, bool avoid, uint8 belowPct, std::string const& reason)
@@ -80,7 +80,7 @@ namespace Companions
         if (!_spells.Has(spell))
             return false;
         ClearPref(spell);
-        _prefs.push_back({ spell, avoid, belowPct, reason.substr(0, 120) });
+        _prefs.push_back({ spell, avoid, belowPct, Utf8Prefix(reason, 120) });
         while (_prefs.size() > 12)
             _prefs.erase(_prefs.begin());
         return true;

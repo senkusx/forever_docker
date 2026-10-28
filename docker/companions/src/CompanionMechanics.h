@@ -43,6 +43,8 @@ namespace Companions::Mechanics
         AvoidLine,      // Spell (cast): leave the band Value yards wide, Radius long, in front of the caster (Deep Breath, Impale)
         NoHealWithAura, // Spell (aura on the bot): its heals hurt, it does not heal while it has it
         FreezeWithDebuff, // Spell (aura on the bot): it does nothing at all while it has it (Threatening Gaze)
+        StunLock,       // Entry: whoever has a stun keeps it stunned, in turn (Gurubashi Axe Thrower before its Axe Flurry)
+        DrainMana,      // Entry: its mana is kept low (it blasts the raid at full mana): Mana Burn, Drain Mana, Viper Sting
     };
 
     enum : uint8

@@ -302,7 +302,7 @@ def add_routes(router, *, query, execute, admin, guarded, session_of, PanelError
         return wrapper
 
     def worker_providers(worker_id: int):
-        return query('SELECT id, name, kind, endpoint, model, api_key, weight, max_concurrent, timeout_s, options '
+        return query('SELECT id, name, kind, endpoint, model, api_key, weight, max_concurrent, timeout_s, options, avg_ms '
                      'FROM characters.companion_llm_providers WHERE enabled = 1 AND worker_id = %s', (worker_id,))
 
     @router.post('/api/brain/heartbeat')

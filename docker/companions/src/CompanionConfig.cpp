@@ -59,6 +59,7 @@ namespace Companions
                 { "LLM.PartyChat",     'b', 0, 1,   [](Config& c) -> void* { return &c.LLMPartyChat; } },
                 { "LLM.Callouts",      'b', 0, 1,   [](Config& c) -> void* { return &c.LLMCallouts; } },
                 { "LLM.Banter",        'b', 0, 1,   [](Config& c) -> void* { return &c.LLMBanter; } },
+                { "LLM.Reactions",     'i', 0, 100, [](Config& c) -> void* { return &c.LLMReactions; } },
                 { "LLM.MaxAge",        'i', 10, 300, [](Config& c) -> void* { return &c.LLMMaxAge; } },
                 { "LLM.Tactics",       'b', 0, 1,   [](Config& c) -> void* { return &c.LLMTactics; } },
                 { "LLM.TacticsInterval", 'i', 5, 60, [](Config& c) -> void* { return &c.LLMTacticsInterval; } },
@@ -164,6 +165,7 @@ namespace Companions
         c.LLMPartyChat    = sConfigMgr->GetBoolDefault("Companions.LLM.PartyChat", true, true);
         c.LLMCallouts     = sConfigMgr->GetBoolDefault("Companions.LLM.Callouts", true, true);
         c.LLMBanter       = sConfigMgr->GetBoolDefault("Companions.LLM.Banter", false, true);
+        c.LLMReactions    = std::clamp<uint32>(sConfigMgr->GetIntDefault("Companions.LLM.Reactions", 35, true), 0, 100);
         c.LLMPollInterval = std::clamp<uint32>(sConfigMgr->GetIntDefault("Companions.LLM.PollInterval", 1000, true), 250, 10000);
         c.LLMMaxAge       = std::clamp<uint32>(sConfigMgr->GetIntDefault("Companions.LLM.MaxAge", 45, true), 10, 300);
         c.LLMTactics      = sConfigMgr->GetBoolDefault("Companions.LLM.Tactics", true, true);
@@ -292,6 +294,16 @@ namespace Companions
         std::string out(text);
         std::transform(out.begin(), out.end(), out.begin(), [](unsigned char c) { return char(std::tolower(c)); });
         return out;
+    }
+
+    std::string Utf8Prefix(std::string_view text, size_t maxBytes)
+    {
+        if (text.size() <= maxBytes)
+            return std::string(text);
+        size_t end = maxBytes;
+        while (end > 0 && (static_cast<unsigned char>(text[end]) & 0xC0) == 0x80)
+            --end;      // text[end] continues a character that starts before it: cut before that start
+        return std::string(text.substr(0, end));
     }
 
     bool ContainsWord(std::string_view text, std::string_view word)

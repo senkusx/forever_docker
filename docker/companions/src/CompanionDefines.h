@@ -70,6 +70,8 @@ namespace Companions
     std::string ToLower(std::string_view text);
     // word appears in text as a whole word (not inside another one): "rend" in "kill rend" but not in "friend"
     bool ContainsWord(std::string_view text, std::string_view word);
+    // at most maxBytes, never cut inside a UTF-8 character (the databases are strict: a broken character fails the insert)
+    std::string Utf8Prefix(std::string_view text, size_t maxBytes);
 }
 
 #endif

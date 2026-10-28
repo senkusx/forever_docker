@@ -9,6 +9,7 @@
 #include "CompanionFactory.h"
 #include "CompanionLLM.h"
 #include "CompanionMechanics.h"
+#include "CompanionTactics.h"
 #include "CompanionMgr.h"
 #include "Creature.h"
 #include "GameObject.h"
@@ -300,7 +301,9 @@ namespace Companions
             return;
 
         _thinkTimer += diff;
-        if (_thinkTimer < GetConfig().UpdateInterval)
+        // a tank decides twice as often: an enemy turning on a healer is taken back at once
+        uint32 const interval = GetEffectiveRole() == Role::Tank ? std::min<uint32>(GetConfig().UpdateInterval, 50) : GetConfig().UpdateInterval;
+        if (_thinkTimer < interval)
             return;
 
         uint32 elapsed = _thinkTimer;
@@ -704,6 +707,8 @@ namespace Companions
         _view.Enemies.clear();
         _view.Owner = ObjectAccessor::GetPlayer(*_bot, _owner);
         _view.Tank = nullptr;
+        _view.Tanks.clear();
+        _view.MainTank = nullptr;
 
         if (Group* group = _bot->GetGroup())
         {
@@ -719,19 +724,27 @@ namespace Companions
                 _view.Members.push_back(_view.Owner);
         }
 
+        // the tanks: bots with the tank role and players the raid marked main tank; the marked one (else the first) holds the
+        // boss, the others the rest
+        Group const* group = _bot->GetGroup();
         for (Player* member : _view.Members)
         {
-            if (CompanionAI* ai = sCompanionMgr->GetAI(member))
+            if (!member->IsAlive())
+                continue;
+            CompanionAI* ai = sCompanionMgr->GetAI(member);
+            bool const marked = group && (group->GetMemberFlags(member->GetGUID()) & MEMBER_FLAG_MAINTANK);
+            if ((ai && ai->GetEffectiveRole() == Role::Tank) || (!ai && marked))
             {
-                if (ai->GetEffectiveRole() == Role::Tank && member->IsAlive())
-                {
-                    _view.Tank = member;
-                    break;
-                }
+                _view.Tanks.push_back(member);
+                if (marked && !_view.MainTank)
+                    _view.MainTank = member;
             }
         }
-        if (!_view.Tank && _view.Owner && _view.Owner->IsAlive())
-            _view.Tank = _view.Owner;
+        if (_view.Tanks.empty() && _view.Owner && _view.Owner->IsAlive())
+            _view.Tanks.push_back(_view.Owner);
+        if (!_view.MainTank && !_view.Tanks.empty())
+            _view.MainTank = _view.Tanks.front();
+        _view.Tank = _view.MainTank;
 
         if (_holdFire)
             return;
@@ -812,6 +825,21 @@ namespace Companions
         return sCompanionMgr->IsCrowdControlClaimed(unit->GetGUID(), _bot->GetGUID());
     }
 
+    Unit* CompanionAI::ControlledLeft() const
+    {
+        Unit* left = nullptr;
+        for (Unit* enemy : _view.Enemies)
+        {
+            if (!IsValidEnemy(enemy) || !IsMechanicTarget(enemy))
+                continue;
+            if (!IsCrowdControlTarget(enemy))
+                return nullptr;     // one still fights: the controlled ones wait for it
+            if (!left || enemy->GetHealth() < left->GetHealth() || (enemy->GetHealth() == left->GetHealth() && enemy->GetGUID() < left->GetGUID()))
+                left = enemy;
+        }
+        return left;
+    }
+
     void CompanionAI::OrderCrowdControl(ObjectGuid target)
     {
         _ccTarget = target;
@@ -890,16 +918,17 @@ namespace Companions
             return first;
 
         Unit* pick = nullptr;
-        // assist the owner (he leads), else the tank
-        if (Player* owner = _view.Owner)
-            if (Unit* victim = owner->GetVictim())
-                if (usable(victim) && std::find(_view.Enemies.begin(), _view.Enemies.end(), victim) != _view.Enemies.end())
-                    pick = victim;
-
-        if (!pick && _view.Tank && _view.Tank != _bot)
+        // assist the group: the main tank's target (where its threat is), else the owner's (the same when nobody else tanks)
+        if (_view.Tank && _view.Tank != _bot)
             if (Unit* victim = _view.Tank->GetVictim())
                 if (usable(victim) && std::find(_view.Enemies.begin(), _view.Enemies.end(), victim) != _view.Enemies.end())
                     pick = victim;
+
+        if (!pick)
+            if (Player* owner = _view.Owner)
+                if (Unit* victim = owner->GetVictim())
+                    if (usable(victim) && std::find(_view.Enemies.begin(), _view.Enemies.end(), victim) != _view.Enemies.end())
+                        pick = victim;
 
         // keep hitting the current target
         if (!pick)
@@ -919,13 +948,31 @@ namespace Companions
             }
         }
 
+        // only crowd controlled ones left: the tank breaks one out, the others join once it holds it
         if (!pick)
-            return nullptr;
+        {
+            Unit* controlled = ControlledLeft();
+            if (!controlled)
+                return nullptr;
+            if (_finishTarget != controlled->GetGUID())
+            {
+                _finishTarget = controlled->GetGUID();
+                _finishSince = GameTime::Now();
+            }
+            Unit* tank = _view.Tank;
+            bool const tankFirst = tank && tank != _bot && tank->IsAlive() && IsTank(tank) && _bot->GetDistance(tank) < 40.0f;
+            if (tankFirst && !(controlled->GetVictim() && IsTank(controlled->GetVictim())) && Elapsed(_finishSince) < 3000)
+            {
+                _waitingFor = controlled->GetGUID();
+                return nullptr;
+            }
+            pick = controlled;
+        }
 
         // a careful player lets the tank build threat first
         uint32 const sincePull = Elapsed(_combatStart);
         if (_view.Tank && _view.Tank != _bot && _view.Tank->IsAlive() && IsTank(_view.Tank) && pick->GetVictim() != _bot
-            && _forcedTarget.IsEmpty() && (sincePull < 1500 || (pick->GetVictim() != _view.Tank && sincePull < 4000)))
+            && _forcedTarget.IsEmpty() && (sincePull < 1500 || (!IsTank(pick->GetVictim()) && sincePull < 4000)))
         {
             _waitingFor = pick->GetGUID();
             return nullptr;
@@ -944,7 +991,8 @@ namespace Companions
         for (Unit* enemy : _view.Enemies)
         {
             Player* victim = enemy->GetVictim() ? enemy->GetVictim()->ToPlayer() : nullptr;
-            if (!victim || victim == _bot || IsCrowdControlTarget(enemy) || !IsValidEnemy(enemy) || _bot->GetDistance(enemy) > 30.0f)
+            if (!victim || victim == _bot || IsTank(victim) || IsCrowdControlTarget(enemy) || !IsValidEnemy(enemy) || _bot->GetDistance(enemy) > 30.0f
+                || sCompanionMgr->IsTankClaimed(enemy->GetGUID(), _bot->GetGUID()))
                 continue;
             if (_bot->GetDistance(enemy) < 10.0f)
                 ++looseNear;
@@ -957,7 +1005,8 @@ namespace Companions
         }
         if (!loose)
             return false;
-        if (looseNear >= 3 && _class->AoeTaunt())
+        sCompanionMgr->ClaimTank(loose->GetGUID(), _bot->GetGUID(), 3000);
+        if (looseNear >= 3 && AoeTauntOnce())
             return true;
         // the taunt now; on cooldown the target choice (loose ones first) and the rotation's big threat hits take over
         return _class->Taunt(loose);
@@ -966,6 +1015,10 @@ namespace Companions
     Unit* CompanionAI::KeepUnderTank(Unit* target)
     {
         _holdingThreat = false;
+        // the ones that wipe a raid if they live (Gurubashi Axe Thrower): burnt down, whatever the threat
+        if (Creature const* creature = target ? target->ToCreature() : nullptr)
+            if (Mechanics::HasRule(creature->GetEntry(), Mechanics::Kind::StunLock))
+                return target;
         Unit* tank = _view.Tank;
         if (!tank || tank == _bot || !tank->IsAlive() || !IsTank(tank) || !_forcedTarget.IsEmpty())
             return target;
@@ -976,9 +1029,10 @@ namespace Companions
         {
             if (enemy->GetVictim() == _bot)
                 return true;        // it turned on me: hitting it more keeps it there, the tank takes it back
-            if (enemy->GetVictim() != tank || !enemy->CanHaveThreatList())
+            Unit* holder = enemy->GetVictim();      // with several tanks, whichever holds it
+            if (!holder || !IsTank(holder) || !enemy->CanHaveThreatList())
                 return false;
-            float const tankThreat = enemy->GetThreatManager().GetThreat(tank);
+            float const tankThreat = enemy->GetThreatManager().GetThreat(holder);
             return tankThreat > 0.0f && enemy->GetThreatManager().GetThreat(_bot) >= tankThreat * cap;
         };
         if (!nearTank(target))
@@ -1010,9 +1064,10 @@ namespace Companions
         {
             if (enemy->GetExactDist(&center) > radius + enemy->GetCombatReach() || !enemy->CanHaveThreatList())
                 continue;
-            if (enemy->GetVictim() != tank)
-                return false;   // one the tank does not hold: area damage would take it
-            float const tankThreat = enemy->GetThreatManager().GetThreat(tank);
+            Unit* holder = enemy->GetVictim();
+            if (!holder || !IsTank(holder))
+                return false;   // one no tank holds: area damage would take it
+            float const tankThreat = enemy->GetThreatManager().GetThreat(holder);
             if (tankThreat <= 0.0f || enemy->GetThreatManager().GetThreat(_bot) >= tankThreat * 0.7f)
                 return false;
         }
@@ -1042,6 +1097,52 @@ namespace Companions
         }
     }
 
+    // several tanks: one area taunt at a time (claimed for its effect, 6 seconds, once it went off), the others keep theirs
+    bool CompanionAI::AoeTauntOnce()
+    {
+        Group* group = _bot->GetGroup();
+        bool const shared = group && _view.Tanks.size() > 1;
+        if (shared && sCompanionMgr->IsAoeTauntClaimed(group->GetGUID()))
+            return false;
+        if (!_class->AoeTaunt())
+            return false;
+        if (shared)
+            sCompanionMgr->ClaimAoeTaunt(group->GetGUID(), 6000);
+        return true;
+    }
+
+    bool CompanionAI::HeldByOtherTank(Unit const* enemy) const
+    {
+        Unit const* victim = enemy->GetVictim();
+        return victim && victim != _bot && IsTank(victim);
+    }
+
+    bool CompanionAI::IsBossUnit(Unit const* unit)
+    {
+        Creature const* creature = unit ? unit->ToCreature() : nullptr;
+        if (!creature)
+            return false;
+        if (creature->IsDungeonBoss() || creature->isWorldBoss() || Mechanics::EncounterFor(creature->GetEntry()))
+            return true;
+        static std::unordered_map<uint32, bool> known;      // by entry: the tactics table knows it as a boss (looked up once)
+        auto itr = known.find(creature->GetEntry());
+        if (itr == known.end())
+        {
+            Tactics::Boss const* boss = Tactics::Of(creature);
+            itr = known.emplace(creature->GetEntry(), boss && !boss->Trash).first;
+        }
+        return itr->second;
+    }
+
+    bool CompanionAI::HandedOver(Unit const* boss) const
+    {
+        if (Creature const* creature = boss ? boss->ToCreature() : nullptr)
+            for (Mechanics::Rule const* rule : Mechanics::RulesFor(creature->GetEntry()))
+                if (rule->Type == Mechanics::Kind::TankSwap && _bot->HasAura(rule->Spell))
+                    return true;
+        return false;
+    }
+
     Unit* CompanionAI::SelectTankTarget()
     {
         if (!_protectTarget.IsEmpty())
@@ -1054,7 +1155,13 @@ namespace Companions
                 if (IsValidEnemy(forced, 100.0f))
                     return forced;
 
-        // enemies hitting someone else: get them back, healers first
+        // Several tanks: the main tank holds the boss, the others take what is loose, what no tank holds, then the adds on
+        // the main tank. Nobody takes from another tank (tank swaps aside), and a loose enemy one tank went for is its own.
+        bool const severalTanks = _view.Tanks.size() > 1;
+        bool const mainTank = !severalTanks || _view.MainTank == _bot;
+        auto claim = [&](Unit* enemy) { sCompanionMgr->ClaimTank(enemy->GetGUID(), _bot->GetGUID(), 3000); return enemy; };
+
+        // enemies hitting someone who is not a tank: get them back, healers first
         Unit* loose = nullptr;
         int32 looseScore = std::numeric_limits<int32>::max();
         for (Unit* enemy : _view.Enemies)
@@ -1062,7 +1169,7 @@ namespace Companions
             if (IsCrowdControlTarget(enemy))
                 continue;
             Unit* victim = enemy->GetVictim();
-            if (!victim || victim == _bot)
+            if (!victim || victim == _bot || IsTank(victim) || sCompanionMgr->IsTankClaimed(enemy->GetGUID(), _bot->GetGUID()))
                 continue;
             Player* victimPlayer = victim->ToPlayer();
             if (!victimPlayer && victim->GetOwnerGUID() == _bot->GetGUID())
@@ -1075,8 +1182,37 @@ namespace Companions
                 loose = enemy;
             }
         }
+        // the main tank with off-tanks keeps a boss it holds: the loose ones are theirs (the next tick takes them if none does)
+        Unit* boss = nullptr;
+        for (Unit* enemy : _view.Enemies)
+            if (IsBossUnit(enemy) && !IsCrowdControlTarget(enemy) && !HandedOver(enemy) && (!boss || enemy->GetVictim() == _bot))
+                boss = enemy;
+        if (loose && !(severalTanks && mainTank && boss && boss->GetVictim() == _bot))
+            return claim(loose);
+        if (mainTank && boss && (!HeldByOtherTank(boss) || !Mechanics::HasRule(boss->ToCreature()->GetEntry(), Mechanics::Kind::TankSwap)))
+            return boss;
+        if (!mainTank)
+        {
+            Unit* untanked = nullptr;
+            Unit* onMain = nullptr;
+            for (Unit* enemy : _view.Enemies)
+            {
+                if (IsCrowdControlTarget(enemy) || enemy == boss || sCompanionMgr->IsTankClaimed(enemy->GetGUID(), _bot->GetGUID()))
+                    continue;
+                Unit* victim = enemy->GetVictim();
+                bool const closer = [&](Unit* best) { return !best || _bot->GetDistance(enemy) < _bot->GetDistance(best); }(victim && IsTank(victim) ? onMain : untanked);
+                if ((!victim || !IsTank(victim)) && closer)
+                    untanked = enemy;
+                else if (victim && victim == _view.MainTank && victim != _bot && closer)
+                    onMain = enemy;
+            }
+            if (untanked)
+                return claim(untanked);
+            if (onMain)
+                return claim(onMain);
+        }
         if (loose)
-            return loose;
+            return claim(loose);
 
         // before anyone pulls it off: the enemy on me with the thinnest lead over the next one (melee take it at 110%,
         // casters at 130%), like a tank tabbing through a pack. The current target is kept unless another is clearly worse.
@@ -1120,6 +1256,11 @@ namespace Companions
                 && std::find(_view.Enemies.begin(), _view.Enemies.end(), current) != _view.Enemies.end())
                 return current;
 
+        if (!mainTank && _view.MainTank && _view.MainTank != _bot)
+            if (Unit* held = _view.MainTank->GetVictim())
+                if (IsValidEnemy(held) && !IsCrowdControlTarget(held))
+                    return held;
+
         if (Player* owner = _view.Owner)
             if (Unit* victim = owner->GetVictim())
                 if (IsValidEnemy(victim) && !IsCrowdControlTarget(victim))
@@ -1129,7 +1270,8 @@ namespace Companions
         for (Unit* enemy : _view.Enemies)
             if (!IsCrowdControlTarget(enemy) && (!nearest || _bot->GetDistance(enemy) < _bot->GetDistance(nearest)))
                 nearest = enemy;
-        return nearest;
+        // only crowd controlled ones left: break one out and hold it
+        return nearest ? nearest : ControlledLeft();
     }
 
     void CompanionAI::UpdateCombat()
@@ -1212,7 +1354,7 @@ namespace Companions
                 if (enemy->GetVictim() && enemy->GetVictim() != _bot && enemy->GetVictim()->ToPlayer() && !IsCrowdControlTarget(enemy)
                     && _bot->GetDistance(enemy) < 10.0f)
                     ++loose;
-            if (loose >= 3 && _class->AoeTaunt())
+            if (loose >= 3 && AoeTauntOnce())
                 return;
             // tank swaps (Mortal Wound, marks, Shadow of Ebonroc...): the other tank takes it at the stacks the rule names, and
             // the one who handed it over does not take it back while the debuff lasts
@@ -1231,7 +1373,9 @@ namespace Companions
                                 if (std::max<uint32>(1, theirs->GetStackAmount()) >= std::max<uint32>(1, rule->Value) && _class->Taunt(target))
                                     return;
                     }
-            if (!handedOver && target->GetVictim() && target->GetVictim() != _bot && _class->Taunt(target))
+            bool const fromTank = HeldByOtherTank(target)
+                && !(_view.MainTank == _bot && IsBossUnit(target) && !Mechanics::HasRule(target->ToCreature()->GetEntry(), Mechanics::Kind::TankSwap));
+            if (!handedOver && !fromTank && target->GetVictim() && target->GetVictim() != _bot && _class->Taunt(target))
                 return;
         }
 
@@ -1292,6 +1436,39 @@ namespace Companions
         _class->Combat(target);
     }
 
+    // A summoning ritual needs several players to click it (the Blackrock Altar before Pyroguard Emberseer wants three): when
+    // the owner channels one, its companions walk over and join until it has its participants
+    bool CompanionAI::UpdateRitual()
+    {
+        Player* owner = _view.Owner;
+        if (!owner || !owner->IsAlive() || _bot->GetDistance(owner) > 40.0f)
+            return false;
+        std::list<GameObject*> objects;
+        Trinity::AllWorldObjectsInRange check(owner, 15.0f);
+        Trinity::GameObjectListSearcher<Trinity::AllWorldObjectsInRange> searcher(owner, objects, check);
+        Cell::VisitGridObjects(owner, searcher, 15.0f);
+        for (GameObject* go : objects)
+        {
+            GameObjectTemplate const* info = go->GetGOInfo();
+            if (go->GetGoType() != GAMEOBJECT_TYPE_RITUAL || !info->ritual.animSpell || !owner->HasAura(info->ritual.animSpell)
+                || _bot->HasAura(info->ritual.animSpell) || go->GetUniqueUseCount() >= info->ritual.casters)
+                continue;
+            if (_bot->GetDistance(go) > 4.0f)
+            {
+                Position spot = go->GetNearPosition(2.5f, go->GetAbsoluteAngle(_bot));
+                _bot->GetMotionMaster()->MovePoint(0, spot);
+                _movement = MoveMode::Point;
+                return true;
+            }
+            StopMovement();
+            _movement = MoveMode::Stay;
+            go->Use(_bot);
+            _recentCasts.emplace_back(GameTime::Now(), std::string("joins ") + go->GetName());
+            return true;
+        }
+        return false;
+    }
+
     void CompanionAI::UpdateIdle()
     {
         if (_eating)
@@ -1312,6 +1489,8 @@ namespace Companions
         }
 
         if (UpdateResurrections())
+            return;
+        if (UpdateRitual())
             return;
         if (UpdateHealing(false))
             return;
@@ -1347,6 +1526,26 @@ namespace Companions
         bool const anyRuled = std::any_of(_view.Enemies.begin(), _view.Enemies.end(), ruled);
         if (_view.Enemies.size() < (anyRuled ? 2u : 3u))
             return false;
+
+        // two of the deadly ones (Gurubashi Axe Throwers): one is controlled at once, hit or not, while the other dies
+        auto deadly = [](Unit const* enemy)
+        {
+            Creature const* creature = enemy->ToCreature();
+            return creature && Mechanics::HasRule(creature->GetEntry(), Mechanics::Kind::StunLock);
+        };
+        if (std::count_if(_view.Enemies.begin(), _view.Enemies.end(), deadly) >= 2)
+            for (Unit* enemy : _view.Enemies)
+                if (deadly(enemy) && enemy != killTarget && !IsCrowdControlTarget(enemy) && _class->CanCrowdControl(enemy)
+                    && _bot->GetDistance(enemy) <= 30.0f && !sCompanionMgr->IsCrowdControlClaimed(enemy->GetGUID(), _bot->GetGUID())
+                    && _class->CrowdControl(enemy))
+                {
+                    _ccTarget = enemy->GetGUID();
+                    _ccUntil = GameTime::Now() + Seconds(60);
+                    _ccCasts = 1;
+                    _ccSince = GameTime::Now();
+                    sCompanionMgr->ClaimCrowdControl(enemy->GetGUID(), _bot->GetGUID(), 5000);
+                    return true;
+                }
 
         // keep two to kill at least; never the kill target, the tank's, a marked one or one half dead
         uint32 controlled = 0;
@@ -2500,6 +2699,7 @@ namespace Companions
 
         if (result == SPELL_FAILED_MOVING)
             StopMovement();
+        _lastCastFailure = ToLower(info->SpellName->Str[LOCALE_enUS]) + " failed " + std::to_string(uint32(result));
         return false;
     }
 
@@ -2719,7 +2919,7 @@ namespace Companions
     {
         if (!unit)
             return false;
-        if (unit == _view.Tank)
+        if (unit == _view.Tank || std::find(_view.Tanks.begin(), _view.Tanks.end(), unit) != _view.Tanks.end())
             return true;
         if (Player const* player = unit->ToPlayer())
             if (CompanionAI* ai = sCompanionMgr->GetAI(player))

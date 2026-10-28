@@ -54,7 +54,9 @@ namespace Companions
     {
         std::vector<Player*> Members;   // includes the bot and the owner when on the same map
         Player* Owner = nullptr;
-        Player* Tank = nullptr;         // the bot with the tank role, else the owner
+        Player* Tank = nullptr;         // the main tank (below), the one the others measure their threat against
+        std::vector<Player*> Tanks;     // bots with the tank role and players marked main tank in the raid (else the owner)
+        Player* MainTank = nullptr;     // holds the boss: the raid's marked main tank, else the first tank
         std::vector<Unit*> Enemies;     // hostile units in combat with a member
     };
 
@@ -94,6 +96,9 @@ namespace Companions
         virtual bool Dispel(Unit* /*target*/) { return false; }
         virtual bool Resurrect(Player* /*dead*/) { return false; }
         virtual bool Interrupt(Unit* /*caster*/) { return false; }
+        virtual bool Stun(Unit* /*target*/) { return false; }            // a stun (or incapacitate) for a stun lock
+        // stops a cast neither an interrupt nor a stun can (a stun-immune channel like Axe Flurry): polymorph, fear, disorient
+        virtual bool BreakCast(Unit* /*caster*/) { return false; }
         virtual bool Taunt(Unit* /*target*/) { return false; }
         virtual bool AoeTaunt() { return false; }                       // several enemies loose around the tank
         virtual bool CrowdControl(Unit* /*target*/) { return false; }
@@ -275,6 +280,7 @@ namespace Companions
         bool UpdateDispels();
         bool UpdateInterrupts();
         bool UpdateResurrections();
+        bool UpdateRitual();        // a ritual the owner started (the Blackrock Altar...): it joins until there are enough
         bool UpdateBuffs(bool inCombat);
         bool UpdateEatDrink();
         bool UpdatePendingCast();
@@ -286,10 +292,15 @@ namespace Companions
         // a damage dealer near the tank's threat on its target: another target, or nullptr to hold
         Unit* KeepUnderTank(Unit* target);
         bool TankPosition(Unit* target);    // tank: walks to the spot or the far side of what it tanks; true while moving
+        bool HeldByOtherTank(Unit const* enemy) const;  // another tank has it: never taunted off it (tank swaps aside)
+        bool AoeTauntOnce();                            // the area taunt, by one tank of the group at a time
+        static bool IsBossUnit(Unit const* unit);       // a dungeon or raid boss: the main tank's
+        bool HandedOver(Unit const* boss) const;        // a tank swap rule: I passed it on and the debuff lasts
         bool RecoverThreat();       // tank: taunts back an enemy on another player (an area taunt for a crowd)
         void UpdatePetTaunt();      // the pet's taunt on autocast only without a tank in the group
         bool IsValidEnemy(Unit* unit, float maxDistance = 60.0f) const;   // ordered targets reach further
         bool IsCrowdControlTarget(Unit const* unit) const;
+        Unit* ControlledLeft() const;   // nothing free left to fight: the crowd controlled one to finish, the same for all
         void MoveForCombat(Unit* target);
         void FollowOwner();
         bool PickLoiterSpot(Player* owner, float angle, float halfWidth, float minDist, float maxDist, Position& spot) const;
@@ -399,11 +410,15 @@ namespace Companions
         TimePoint _interruptUntil = { };
         TimePoint _burstUntil = { };
         ObjectGuid _waitingFor;         // melee waiting for the tank to take this enemy
+        ObjectGuid _finishTarget;       // the crowd controlled one finished once nothing else is left
+        TimePoint _finishSince = { };
         bool _holdingThreat = false;    // near the tank's threat: not hitting for now
         bool _faceAway = false;         // told to turn what it tanks away from the group (until the fight after it ends)
         Optional<Position> _tankSpot;   // told to tank there ("tank here")
         bool _tankOrderUsed = false;    // a fight with those orders went on: they end with it
         TimePoint _tankMoveAt;
+        std::string _stunDebug;         // test harness: the last stun lock decision
+        std::string _lastCastFailure;   // test harness: the last cast the game refused, and why (SpellCastResult)
         int8 _petTaunt = -1;            // the pet taunt autocast as last set (-1 not yet)
         ObjectGuid _petTauntOf;         // ... for that pet
         TimePoint _ccCheckAt = { };

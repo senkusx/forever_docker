@@ -215,5 +215,100 @@
       "healer": "Spread; mana users with detonation run out.",
       "dps": "Interrupt Frostbolt; step out of Shadow Fissures; crowd control the chained."
     }
+  ],
+  "trash": [
+    {
+      "name": "Embalming Slime",
+      "aliases": [
+        "embalming slime",
+        "slimes"
+      ],
+      "general": "Embalming Cloud burns everyone within 8 yards: only the tank stands next to it.",
+      "tank": "Hold it away from the group.",
+      "dps": "Ranged kill it; melee stay out."
+    },
+    {
+      "name": "Living Monstrosity",
+      "aliases": [
+        "living monstrosity",
+        "monstrosity"
+      ],
+      "general": "Fear, Chain Lightning and a Lightning Totem.",
+      "tank": "Fear Ward or Berserker Rage.",
+      "dps": "Interrupt Chain Lightning, kill the totem."
+    },
+    {
+      "name": "Stoneskin Gargoyle",
+      "aliases": [
+        "gargoyle",
+        "gargoyles"
+      ],
+      "general": "At half health it casts Stoneskin and heals to full.",
+      "dps": "Interrupt Stoneskin."
+    },
+    {
+      "name": "Deathknight Captain",
+      "aliases": [
+        "deathknight captain"
+      ],
+      "general": "Whirlwinds now and then.",
+      "dps": "Melee step out while it spins."
+    },
+    {
+      "name": "Deathknight Cavalier",
+      "aliases": [
+        "cavalier",
+        "cavaliers"
+      ],
+      "general": "Death Coil fears, Aura of Agony hurts everyone near, Cleave in front.",
+      "tank": "Face it away from the group.",
+      "healer": "Heal through Aura of Agony."
+    },
+    {
+      "name": "Necro Knight",
+      "aliases": [
+        "necro knight",
+        "necro knights"
+      ],
+      "general": "Blinks around and casts Arcane Explosion, Flamestrike, Frost Nova, Cone of Cold and Blast Wave.",
+      "tank": "Pick it up again after each blink.",
+      "dps": "Casters spread; step out of Flamestrike."
+    },
+    {
+      "name": "Patchwork Golem",
+      "aliases": [
+        "patchwork golem",
+        "golems"
+      ],
+      "general": "Cleave in front and War Stomp around it.",
+      "tank": "Face it away from the group."
+    },
+    {
+      "name": "Bile Retcher",
+      "aliases": [
+        "bile retcher",
+        "bile retchers"
+      ],
+      "general": "Bile Vomit in front, Bile Retcher Slam knocks back.",
+      "tank": "Face it away from the group."
+    },
+    {
+      "name": "Mad Scientist",
+      "aliases": [
+        "mad scientist",
+        "scientists"
+      ],
+      "general": "Great Heal at low health, Mana Burn.",
+      "dps": "Interrupt Great Heal."
+    },
+    {
+      "name": "Tomb Horror",
+      "aliases": [
+        "tomb horror",
+        "tomb horrors"
+      ],
+      "general": "Spike Volley hits everyone within 30 yards for 3000.",
+      "healer": "Heal from more than 30 yards away."
+    }
   ]
 }

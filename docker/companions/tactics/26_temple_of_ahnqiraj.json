@@ -133,5 +133,77 @@
       "healer": "Everyone spread; heal the eye beams.",
       "dps": "Spread, move out of Dark Glare, tentacles first; in phase 2 the eaten kill the stomach tentacles."
     }
+  ],
+  "trash": [
+    {
+      "name": "Qiraji Mindslayer",
+      "aliases": [
+        "mindslayer",
+        "mindslayers"
+      ],
+      "general": "Cause Insanity mind controls a player, Mana Burn fears everyone within 30 yards, Mind Flay fears too. Kill it fast.",
+      "tank": "Fear Ward, Tremor Totem or Berserker Rage.",
+      "healer": "Stay out of the Mana Burn.",
+      "dps": "Crowd control the controlled player, interrupt Mind Flay, burn it."
+    },
+    {
+      "name": "Anubisath Sentinel",
+      "aliases": [
+        "sentinel",
+        "sentinels"
+      ],
+      "general": "Each has one power; when one dies the others take it. Pull them apart and kill them one at a time while the others are tanked away.",
+      "tank": "One tank for each, apart from each other.",
+      "dps": "Kill them in the order called, one at a time."
+    },
+    {
+      "name": "Anubisath Defender",
+      "aliases": [
+        "defender",
+        "defenders"
+      ],
+      "general": "Random powers: Thunderclap or Shadow Storm, Plague, Meteor, summons; it explodes at 10%.",
+      "dps": "Run away with Plague; leave it when it explodes."
+    },
+    {
+      "name": "Obsidian Eradicator",
+      "aliases": [
+        "eradicator",
+        "eradicators"
+      ],
+      "general": "At full mana Shock Blast hits everyone within 40 yards for 7500: keep its mana low.",
+      "healer": "Priests Mana Burn it.",
+      "dps": "Warlocks Drain Mana, hunters Viper Sting it."
+    },
+    {
+      "name": "Obsidian Nullifier",
+      "aliases": [
+        "nullifier",
+        "nullifiers"
+      ],
+      "general": "At full mana Nullify stuns everyone within 45 yards: keep its mana low.",
+      "healer": "Priests Mana Burn it.",
+      "dps": "Warlocks Drain Mana, hunters Viper Sting it."
+    },
+    {
+      "name": "Qiraji Slayer",
+      "aliases": [
+        "slayer",
+        "slayers"
+      ],
+      "general": "Whirlwind, Frenzy and Knock Away.",
+      "tank": "Taunt it back after a knockback.",
+      "dps": "Melee step out of the Whirlwind; hunters Tranquilizing Shot the Frenzy."
+    },
+    {
+      "name": "Qiraji Champion",
+      "aliases": [
+        "champion",
+        "champions"
+      ],
+      "general": "Intimidating Shout fears everyone near it, Knock Away, and Vengeance when its friends die.",
+      "tank": "Fear Ward or Berserker Rage.",
+      "dps": "Kill it last of its pack."
+    }
   ]
 }

@@ -41,6 +41,7 @@ namespace Companions
         bool LLMPartyChat = true;           // every party line that is not an order goes to the brain (callouts, talk)
         bool LLMCallouts = true;            // the brain words the bots' situational callouts
         bool LLMBanter = false;             // bots comment on events (level up, boss kill)
+        uint32 LLMReactions = 35;           // % chance that another companion answers a companion's party line (bounded)
         uint32 LLMPollInterval = 1000;      // ms
         uint32 LLMMaxAge = 45;              // seconds after which an unanswered line is dropped
         bool LLMTactics = true;             // in fights the brain assigns kill order, crowd control, interrupts, cooldowns

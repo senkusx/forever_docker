@@ -19,16 +19,20 @@ class ProviderError(Exception):
 def parse_json(text):
     """The answer as a dict; small local models sometimes wrap it in prose or a code fence."""
     text = (text or "").strip()
-    try:
-        data = json.loads(text)
-    except json.JSONDecodeError:
-        match = re.search(r"\{.*\}", text, re.S)
-        if not match:
-            raise ProviderError(f"answer is not JSON: {text[:120]!r}")
+    if not text:
+        raise ProviderError("empty answer (a reasoning model out of tokens?)")
+    match = re.search(r"\{.*\}", text, re.S)
+    # as written; inside prose or a code fence; with \' (not a JSON escape, some models write it for an apostrophe)
+    for candidate in (text, match.group(0) if match else None, (match.group(0) if match else text).replace("\\'", "'")):
+        if candidate is None:
+            continue
         try:
-            data = json.loads(match.group(0))
-        except json.JSONDecodeError as e:
-            raise ProviderError(f"answer is not JSON: {text[:120]!r}") from e
+            data = json.loads(candidate)
+            break
+        except json.JSONDecodeError:
+            continue
+    else:
+        raise ProviderError(f"answer is not JSON: {text[:120]!r}")
     if not isinstance(data, dict):
         raise ProviderError("answer is not a JSON object")
     return data

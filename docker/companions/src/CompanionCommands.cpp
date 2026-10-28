@@ -23,6 +23,9 @@
 #include "CompanionSpells.h"
 #include "CompanionTactics.h"
 #include "Group.h"
+#include "DB2Stores.h"
+#include "InstanceScript.h"
+#include "GameObject.h"
 #include "CellImpl.h"
 #include "Creature.h"
 #include "GridNotifiers.h"
@@ -600,7 +603,7 @@ namespace Companions
         else if (order == "assist" || order == "defensive" || order == "normal")
         {
             forEach([](Player*, CompanionAI* ai) { ai->SetAggression(Aggression::Assist); });
-            Ack(bots, quiet, "I'll fight what you fight.");
+            Ack(bots, quiet, "I'll fight with the group.");
         }
         else if (order == "aggressive")
         {
@@ -839,6 +842,12 @@ namespace Companions
                 { "fire",   HandleTestFire,   rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "auras",  HandleTestAuras,  rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "tactics", HandleTestTactics, rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
+                { "trigger", HandleTestTrigger, rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
+                { "objects", HandleTestObjects, rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
+                { "use",    HandleTestUse,    rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
+                { "slay",   HandleTestSlay,   rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
+                { "idata",  HandleTestInstanceData, rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
+                { "item",   HandleTestItem,   rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
             };
             static ChatCommandTable botTable =
             {
@@ -1287,7 +1296,7 @@ namespace Companions
                 if (ToLower(botName) != ToLower(name))
                     continue;
                 BotRecord* record = sCompanionMgr->GetRecord(constRecord->Guid);
-                record->Personality = std::string(text).substr(0, 250);
+                record->Personality = Utf8Prefix(text, 250);
                 sCompanionMgr->SaveRecord(*record);
                 handler->PSendSysMessage("Companions: %s will be: %s", botName.c_str(), record->Personality.c_str());
                 return true;
@@ -1496,6 +1505,133 @@ namespace Companions
             return true;
         }
 
+        // instance events without a game client: area triggers, objects, deaths, and the instance's state
+
+        // .bot test trigger <owner> <id>: the stand-in enters that area trigger (its script runs, as the client would ask)
+        static bool HandleTestTrigger(ChatHandler* handler, std::string owner, uint32 id)
+        {
+            Player* puppet = Puppet(handler, owner);
+            if (!puppet)
+                return true;
+            AreaTriggerEntry const* trigger = sAreaTriggerStore.LookupEntry(id);
+            if (!trigger)
+            {
+                handler->PSendSysMessage("Companions test: no area trigger %u", id);
+                return true;
+            }
+            bool const handled = sScriptMgr->OnAreaTrigger(puppet, trigger, true);
+            handler->PSendSysMessage("%s enters area trigger %u (map %d): %s", puppet->GetName().c_str(), id, int32(trigger->ContinentID),
+                handled ? "a script took it" : "no script took it");
+            return true;
+        }
+
+        // .bot test objects <owner> [yards] [entry]: game objects around the stand-in with their state (doors: 0 open, 1 closed)
+        static bool HandleTestObjects(ChatHandler* handler, std::string owner, Optional<float> range, Optional<uint32> entry)
+        {
+            Player* puppet = Puppet(handler, owner);
+            if (!puppet)
+                return true;
+            std::list<GameObject*> objects;
+            Trinity::AllWorldObjectsInRange check(puppet, range.value_or(40.0f));
+            Trinity::GameObjectListSearcher<Trinity::AllWorldObjectsInRange> searcher(puppet, objects, check);
+            Cell::VisitGridObjects(puppet, searcher, range.value_or(40.0f));
+            uint32 shown = 0;
+            for (GameObject* go : objects)
+            {
+                if ((entry && go->GetEntry() != *entry) || ++shown > 40)
+                    continue;
+                handler->PSendSysMessage("  %u %s | type %u | state %u | loot state %u | flags 0x%X | %.1f yards | spawn %llu | at %.1f %.1f %.1f",
+                    go->GetEntry(), go->GetName().c_str(), uint32(go->GetGoType()), uint32(go->GetGoState()), uint32(go->getLootState()),
+                    uint32(*go->m_gameObjectData->Flags), go->GetDistance(puppet), (unsigned long long)go->GetSpawnId(), go->GetPositionX(),
+                    go->GetPositionY(), go->GetPositionZ());
+            }
+            return true;
+        }
+
+        // .bot test use <owner> <entry>: the stand-in uses the nearest object of that entry (a lever, an altar, a brazier)
+        static bool HandleTestUse(ChatHandler* handler, std::string owner, uint32 entry)
+        {
+            Player* puppet = Puppet(handler, owner);
+            if (!puppet)
+                return true;
+            GameObject* go = puppet->FindNearestGameObject(entry, 40.0f);
+            if (!go)
+            {
+                handler->PSendSysMessage("Companions test: no object %u within 40 yards", entry);
+                return true;
+            }
+            go->Use(puppet);
+            handler->PSendSysMessage("%s uses %s: state %u, loot state %u", puppet->GetName().c_str(), go->GetName().c_str(),
+                uint32(go->GetGoState()), uint32(go->getLootState()));
+            return true;
+        }
+
+        // .bot test slay <owner> <entry|0> [yards]: the stand-in kills the creatures of that entry (0: every hostile one) around it,
+        // as if it had (their deaths run their scripts: doors, events, the next boss)
+        static bool HandleTestSlay(ChatHandler* handler, std::string owner, uint32 entry, Optional<float> range)
+        {
+            Player* puppet = Puppet(handler, owner);
+            if (!puppet)
+                return true;
+            std::list<Creature*> creatures;
+            Trinity::AllWorldObjectsInRange check(puppet, range.value_or(30.0f));
+            Trinity::CreatureListSearcher<Trinity::AllWorldObjectsInRange> searcher(puppet, creatures, check);
+            Cell::VisitGridObjects(puppet, searcher, range.value_or(30.0f));
+            uint32 killed = 0;
+            for (Creature* creature : creatures)
+            {
+                if (!creature->IsAlive() || creature->IsPet() || creature->IsTotem() || (entry && creature->GetEntry() != entry)
+                    || (!entry && !puppet->IsValidAttackTarget(creature)))
+                    continue;
+                Unit::Kill(puppet, creature);
+                ++killed;
+            }
+            handler->PSendSysMessage("%s killed %u creatures", puppet->GetName().c_str(), killed);
+            return true;
+        }
+
+        // .bot test item <owner> <item>: an item in the stand-in's bags (a key, a quest item an event asks for)
+        static bool HandleTestItem(ChatHandler* handler, std::string owner, uint32 itemId)
+        {
+            Player* puppet = Puppet(handler, owner);
+            if (!puppet)
+                return true;
+            ItemPosCountVec dest;
+            if (!sObjectMgr->GetItemTemplate(itemId) || puppet->CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, itemId, 1) != EQUIP_ERR_OK)
+            {
+                handler->PSendSysMessage("Companions test: cannot give item %u", itemId);
+                return true;
+            }
+            puppet->StoreNewItem(dest, itemId, true);
+            handler->PSendSysMessage("%s gets item %u", puppet->GetName().c_str(), itemId);
+            return true;
+        }
+
+        // .bot test idata <owner>: the instance's saved state and boss states
+        static bool HandleTestInstanceData(ChatHandler* handler, std::string owner)
+        {
+            Player* puppet = Puppet(handler, owner);
+            if (!puppet)
+                return true;
+            InstanceScript* instance = puppet->GetInstanceScript();
+            if (!instance)
+            {
+                handler->SendSysMessage("Companions test: not in an instance with a script");
+                return true;
+            }
+            std::string bosses;
+            for (uint32 i = 0; i < instance->GetEncounterCount(); ++i)
+                bosses += " " + std::to_string(i) + "=" + std::to_string(uint32(instance->GetBossState(i)));
+            handler->PSendSysMessage("map %u instance %u | bosses:%s", puppet->GetMapId(), puppet->GetInstanceId(), bosses.c_str());
+            std::string data;
+            for (uint32 i = 0; i < 40; ++i)
+                if (uint32 value = instance->GetData(i))
+                    data += " " + std::to_string(i) + "=" + std::to_string(value);
+            handler->PSendSysMessage("data:%s", data.c_str());
+            handler->PSendSysMessage("save: %s", instance->GetSaveData().c_str());
+            return true;
+        }
+
         // .bot test tactics <owner> <question>: what the companions answer, as they would say it in party chat (said too)
         static bool HandleTestTactics(ChatHandler* handler, std::string owner, Tail text)
         {
@@ -1508,7 +1644,7 @@ namespace Companions
             if (lines.empty())
                 handler->SendSysMessage("(no tactics answer: the question goes to the orders and the brain)");
             for (Tactics::Line const& line : lines)
-                handler->PSendSysMessage("  +%u ms %s: %s", line.DelayMs, line.Bot->GetName().c_str(), line.Text.c_str());
+                handler->PSendSysMessage("  +%u ms %s: %s", line.DelayMs, line.Name.c_str(), line.Text.c_str());
             Commands::OnPartyChat(puppet, question, puppet->GetGroup());
             return true;
         }
@@ -1558,6 +1694,13 @@ namespace Companions
                 for (auto const& [spellId, application] : creature->GetAppliedAuras())
                     if (!Mechanics::RulesForSpell(spellId).empty())
                         ruled += " " + std::to_string(spellId);
+                if (creature->HasAuraType(SPELL_AURA_MOD_STUN))
+                    ruled += " | stunned";
+                if (creature->HasAuraTypeWithMiscvalue(SPELL_AURA_MECHANIC_IMMUNITY, MECHANIC_STUN)
+                    || creature->HasAuraTypeWithMiscvalue(SPELL_AURA_STATE_IMMUNITY, SPELL_AURA_MOD_STUN))
+                    ruled += " | stun immune";
+                if (creature->HasBreakableByDamageCrowdControlAura())
+                    ruled += " | controlled";
                 handler->PSendSysMessage("  %u %s | %llu/%llu hp | %.1f yards | rules %u | casting %u%s | at %.1f %.1f%s", creature->GetEntry(),
                     creature->GetName().c_str(), (unsigned long long)creature->GetHealth(), (unsigned long long)creature->GetMaxHealth(),
                     creature->GetDistance(puppet), uint32(Mechanics::RulesFor(creature->GetEntry()).size()),
@@ -1858,7 +2001,11 @@ namespace Companions
             std::vector<Tactics::Line> lines = Tactics::Answer(player, all, asked, msg);
             if (!lines.empty())
             {
-                Tactics::Tell(lines);
+                // with the brain, each companion tells its part in its own words; the plain lines if no answer comes in time
+                Tactics::Boss const* boss = Tactics::Resolve(player, all, msg);
+                if (!boss || !CompanionLLM::OnTacticsQuestion(player, all, msg, asked, Tactics::BrainLine(*boss),
+                    [lines]() { Tactics::Tell(lines); }))
+                    Tactics::Tell(lines);
                 return;
             }
         }

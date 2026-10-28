@@ -1,0 +1,282 @@
+diff --git a/src/server/scripts/Custom/Classic/instances/blackrock_spire/classic_instance_blackrock_spire.cpp b/src/server/scripts/Custom/Classic/instances/blackrock_spire/classic_instance_blackrock_spire.cpp
+index 8d864f1..db31efb 100644
+--- a/src/server/scripts/Custom/Classic/instances/blackrock_spire/classic_instance_blackrock_spire.cpp
++++ b/src/server/scripts/Custom/Classic/instances/blackrock_spire/classic_instance_blackrock_spire.cpp
+@@ -656,6 +656,13 @@ public:
+ 
+             switch (creature->GetEntry())
+             {
++                // the rune rooms of the Hall of Blackhand: every death counts here, whatever AI the creature runs (the
++                // Blackhand Summoners use SmartAI, which never reported theirs: their rooms never emptied, the runes stayed
++                // lit and Emberseer's door shut). The veterans' own AI reports too; a second report changes nothing.
++                case NPC_BLACKHAND_SUMMONER:
++                case NPC_BLACKHAND_VETERAN:
++                    SetGuidData(TYPE_ROOM_EVENT, creature->GetGUID());
++                    break;
+                 case NPC_CHROMATIC_WHELP:
+                 case NPC_CHROMATIC_DRAGON:
+                 case NPC_BLACKHAND_HANDLER:
+diff --git a/src/server/scripts/Custom/Classic/instances/blackwing_lair/classic_boss_nefarian.cpp b/src/server/scripts/Custom/Classic/instances/blackwing_lair/classic_boss_nefarian.cpp
+index 5ed4f90..6418583 100644
+--- a/src/server/scripts/Custom/Classic/instances/blackwing_lair/classic_boss_nefarian.cpp
++++ b/src/server/scripts/Custom/Classic/instances/blackwing_lair/classic_boss_nefarian.cpp
+@@ -21,6 +21,7 @@
+ //          spell_nefarian_polymorph (23603)
+ 
+ #include "ScriptMgr.h"
++#include "Containers.h"
+ #include "InstanceScript.h"
+ #include "Map.h"
+ #include "MapReference.h"
+@@ -33,6 +34,7 @@
+ #include "SpellScript.h"
+ #include "classic_blackwing_lair.h"
+ #include "classic_script_text.h"
++#include <algorithm>
+ #include <list>
+ #include <vector>
+ 
+@@ -710,6 +712,32 @@ class classic_spell_nefarian_class_call_mage : public AuraScript
+     }
+ };
+ 
++// 23603 - Nefarian Class Call Mage - Polymorph: the client data hits every ally of the mage within 100 yards; only the
++// player the mage casts at is polymorphed (VMaNGOS and CMaNGOS limit the spell to one target)
++class classic_spell_nefarian_polymorph_target : public SpellScript
++{
++    void FilterTargets(std::list<WorldObject*>& targets)
++    {
++        if (_chosen.IsEmpty())
++        {
++            Unit* wanted = GetExplTargetUnit();
++            auto it = std::find_if(targets.begin(), targets.end(), [wanted](WorldObject const* target) { return target == wanted; });
++            if (it != targets.end())
++                _chosen = (*it)->GetGUID();
++            else if (!targets.empty())
++                _chosen = Trinity::Containers::SelectRandomContainerElement(targets)->GetGUID();
++        }
++        targets.remove_if([this](WorldObject const* target) { return target->GetGUID() != _chosen; });
++    }
++
++    void Register() override
++    {
++        OnObjectAreaTargetSelect += SpellObjectAreaTargetSelectFn(classic_spell_nefarian_polymorph_target::FilterTargets, EFFECT_ALL, TARGET_UNIT_SRC_AREA_ALLY);
++    }
++
++    ObjectGuid _chosen;
++};
++
+ // 23603 - Nefarian Class Call Mage - Polymorph (Transform Display-ID)
+ class classic_spell_nefarian_polymorph : public AuraScript
+ {
+@@ -753,5 +781,5 @@ void AddSC_classic_boss_nefarian()
+     RegisterSpellScript(classic_spell_nefarian_class_call_warlock);
+     RegisterSpellScript(classic_spell_nefarian_class_call_rogue);
+     RegisterSpellScript(classic_spell_nefarian_class_call_mage);
+-    RegisterSpellScript(classic_spell_nefarian_polymorph);
++    RegisterSpellAndAuraScriptPairWithArgs(classic_spell_nefarian_polymorph_target, classic_spell_nefarian_polymorph, "classic_spell_nefarian_polymorph");
+ }
+diff --git a/src/server/scripts/Custom/Classic/instances/dire_maul/classic_instance_dire_maul.cpp b/src/server/scripts/Custom/Classic/instances/dire_maul/classic_instance_dire_maul.cpp
+index 0449446..d585263 100644
+--- a/src/server/scripts/Custom/Classic/instances/dire_maul/classic_instance_dire_maul.cpp
++++ b/src/server/scripts/Custom/Classic/instances/dire_maul/classic_instance_dire_maul.cpp
+@@ -1208,7 +1208,7 @@ struct classic_npc_gordok_brute : public ScriptedAI
+ 
+         if (m_uiPummel_Timer < diff)
+         {
+-            if (me->GetHealthPct() > 30.0f && me->GetVictim()->IsNonMeleeSpellCast(true))
++            if (me->GetHealthPct() > 30.0f && me->GetVictim() && me->GetVictim()->IsNonMeleeSpellCast(true))
+                 if (DoCastVictim(SPELL_PUMMEL) == SPELL_CAST_OK)
+                     m_uiPummel_Timer = urand(8000, 10000);
+         }
+@@ -1364,7 +1364,7 @@ struct classic_boss_guards : public ScriptedAI
+         // Shield Bash
+         if (m_uiShieldBash_Timer < diff)
+         {
+-            if (me->GetVictim()->IsNonMeleeSpellCast(true))
++            if (me->GetVictim() && me->GetVictim()->IsNonMeleeSpellCast(true))
+             {
+                 if (DoCastVictim(SPELL_SHIELD_BASH) == SPELL_CAST_OK)
+                     m_uiShieldBash_Timer = urand(10000, 15000);
+@@ -2053,7 +2053,7 @@ struct classic_boss_alzzin_the_wildshaper : public ScriptedAI
+                 // Wither
+                 if (m_uiWitherTimer < diff)
+                 {
+-                    if (!me->GetVictim()->HasAura(SPELL_WITHER) && DoCastVictim(SPELL_WITHER) == SPELL_CAST_OK)
++                    if (me->GetVictim() && !me->GetVictim()->HasAura(SPELL_WITHER) && DoCastVictim(SPELL_WITHER) == SPELL_CAST_OK)
+                         m_uiWitherTimer = urand(8000, 10000);
+                 }
+                 else
+@@ -2074,7 +2074,7 @@ struct classic_boss_alzzin_the_wildshaper : public ScriptedAI
+                 // Mangle
+                 if (m_uiMangleTimer < diff)
+                 {
+-                    if (!me->GetVictim()->HasAura(SPELL_MANGLE) && DoCastVictim(SPELL_MANGLE) == SPELL_CAST_OK)
++                    if (me->GetVictim() && !me->GetVictim()->HasAura(SPELL_MANGLE) && DoCastVictim(SPELL_MANGLE) == SPELL_CAST_OK)
+                         m_uiMangleTimer = urand(8000, 10000);
+                 }
+                 else
+@@ -2276,7 +2276,7 @@ struct classic_boss_magister_kalendris : public ScriptedAI
+         // Shadow Word Pain
+         if (m_uiShadowWordPainTimer < diff)
+         {
+-            if (!me->GetVictim()->HasAura(SPELL_SHADOW_WORD_PAIN) && DoCastVictim(SPELL_SHADOW_WORD_PAIN) == SPELL_CAST_OK)
++            if (me->GetVictim() && !me->GetVictim()->HasAura(SPELL_SHADOW_WORD_PAIN) && DoCastVictim(SPELL_SHADOW_WORD_PAIN) == SPELL_CAST_OK)
+                 m_uiShadowWordPainTimer = urand(9000, 11000);
+         }
+         else
+diff --git a/src/server/scripts/Custom/Classic/instances/shadowfang_keep/classic_instance_shadowfang_keep.cpp b/src/server/scripts/Custom/Classic/instances/shadowfang_keep/classic_instance_shadowfang_keep.cpp
+index d9a1170..a0fef8a 100644
+--- a/src/server/scripts/Custom/Classic/instances/shadowfang_keep/classic_instance_shadowfang_keep.cpp
++++ b/src/server/scripts/Custom/Classic/instances/shadowfang_keep/classic_instance_shadowfang_keep.cpp
+@@ -136,6 +136,11 @@ public:
+         ObjectGuid m_uiCmdSpringvaleGUID;
+ 
+         ObjectGuid m_uiFenrusGUID;
++        // VMaNGOS ran these generic scripts on the creature that just died; a dead creature's SmartAI does not update here
++        // (its timed action list never runs), so the instance runs them: Rethilgore's freed prisoners thank the group, and
++        // Arugal's four voidwalkers come 14 seconds after Fenrus dies
++        uint32 _prisonerTalkTimer = 0;
++        uint32 _voidwalkerTimer = 0;
+         ObjectGuid m_uiVincentGUID;
+         ObjectGuid m_uiNandosGUID;
+ 
+@@ -219,6 +224,20 @@ public:
+                 case CSFK_NPC_CMD_SPRINGVALE:
+                     showSpringvalePatrol = true;
+                     break;
++                // the voidwalkers have no script of their own (VMaNGOS counted them with creature_ai_scripts, not ported):
++                // without this the Sorcerer's Gate stayed shut until the instance was loaded again
++                case CSFK_NPC_ARUGAL_VOIDWALKER:
++                    SetData(CSFK_TYPE_VOIDWALKER, DONE);
++                    break;
++                case CSFK_NPC_RETHILGORE:
++                    if (Creature* ada = instance->GetCreature(m_uiAdaGUID))
++                        ada->AI()->Talk(1);
++                    _prisonerTalkTimer = 4000;
++                    break;
++                case CSFK_NPC_FENRUS:
++                    if (Enc(5) <= 3)
++                        _voidwalkerTimer = 14000;
++                    break;
+                 default:
+                     break;
+             }
+@@ -271,6 +290,21 @@ public:
+         {
+             _encounterTracker.Update(diff);
+ 
++            if (_prisonerTalkTimer && (_prisonerTalkTimer <= diff ? (_prisonerTalkTimer = 0, true) : (_prisonerTalkTimer -= diff, false)))
++                if (Creature* ash = instance->GetCreature(m_uiAshGUID))
++                    ash->AI()->Talk(1);
++
++            if (_voidwalkerTimer && (_voidwalkerTimer <= diff ? (_voidwalkerTimer = 0, true) : (_voidwalkerTimer -= diff, false)))
++            {
++                static Position const voidwalkers[] =
++                {
++                    { -148.869f, 2180.86f, 128.448f, 0.0f }, { -155.352f, 2172.78f, 128.448f, 0.0f },
++                    { -147.059f, 2163.19f, 128.696f, 0.0f }, { -140.203f, 2175.26f, 128.448f, 0.0f },
++                };
++                for (Position const& pos : voidwalkers)
++                    instance->SummonCreature(CSFK_NPC_ARUGAL_VOIDWALKER, pos, nullptr, 9000s);
++            }
++
+             // VMaNGOS OnCreatureEnterCombat (no TC instance hook): play Fenrus howl when he enters combat
+             if (Creature* fenrus = instance->GetCreature(m_uiFenrusGUID))
+             {
+diff --git a/src/server/scripts/Custom/Classic/instances/shadowfang_keep/classic_shadowfang_keep.h b/src/server/scripts/Custom/Classic/instances/shadowfang_keep/classic_shadowfang_keep.h
+index 39a3897..d2f52e4 100644
+--- a/src/server/scripts/Custom/Classic/instances/shadowfang_keep/classic_shadowfang_keep.h
++++ b/src/server/scripts/Custom/Classic/instances/shadowfang_keep/classic_shadowfang_keep.h
+@@ -45,6 +45,8 @@ enum ClassicShadowfangKeepData : uint32
+     CSFK_NPC_FENRUS              = 4274,                    // used to summon Arugal in Fenrus event
+     CSFK_NPC_VINCENT             = 4444,                    // Vincent should be "dead" is Arugal is done the intro already
+     CSFK_NPC_NANDOS              = 3927,
++    CSFK_NPC_RETHILGORE          = 3914,
++    CSFK_NPC_ARUGAL_VOIDWALKER   = 4627,                    // the four Arugal calls when Fenrus dies: the Sorcerer's Gate opens after them
+     CSFK_NPC_WOLF_GUARD          = 3854,                    // Baron Silverlaine and Commander Springvale patrol
+ 
+     CSFK_GO_COURTYARD_DOOR       = 18895,                   // door to open when talking to NPC's
+diff --git a/src/server/scripts/Custom/Classic/instances/stratholme/classic_boss_baroness_anastari.cpp b/src/server/scripts/Custom/Classic/instances/stratholme/classic_boss_baroness_anastari.cpp
+index 204a6fd..b2d35e5 100644
+--- a/src/server/scripts/Custom/Classic/instances/stratholme/classic_boss_baroness_anastari.cpp
++++ b/src/server/scripts/Custom/Classic/instances/stratholme/classic_boss_baroness_anastari.cpp
+@@ -250,7 +250,7 @@ struct classic_boss_baroness_anastari : public ScriptedAI
+         if (BansheeCurse_Timer < diff)
+         {
+             // VMaNGOS CF_AURA_NOT_PRESENT
+-            if (!me->GetVictim()->HasAura(SPELL_BANSHEECURSE) && DoCastVictim(SPELL_BANSHEECURSE) == SPELL_CAST_OK)
++            if (me->GetVictim() && !me->GetVictim()->HasAura(SPELL_BANSHEECURSE) && DoCastVictim(SPELL_BANSHEECURSE) == SPELL_CAST_OK)
+                 BansheeCurse_Timer = 18000;
+         }
+         else
+diff --git a/src/server/scripts/Custom/Classic/instances/temple_of_ahnqiraj/classic_boss_bug_trio.cpp b/src/server/scripts/Custom/Classic/instances/temple_of_ahnqiraj/classic_boss_bug_trio.cpp
+index 3ef215f..f3de568 100644
+--- a/src/server/scripts/Custom/Classic/instances/temple_of_ahnqiraj/classic_boss_bug_trio.cpp
++++ b/src/server/scripts/Custom/Classic/instances/temple_of_ahnqiraj/classic_boss_bug_trio.cpp
+@@ -211,7 +211,8 @@ struct classic_aq40_bug_trio_baseAI : public ScriptedAI
+                 ResetThreatList();
+                 m_bIsEating = false;
+                 me->SetFullHealth();
+-                me->SetTarget(me->GetVictim()->GetGUID());
++                if (Unit* victim = me->GetVictim())
++                    me->SetTarget(victim->GetGUID());
+                 me->UpdateSpeed(MOVE_RUN);
+                 me->SetCanMelee(true);
+                 me->GetMotionMaster()->MoveChase(me->GetVictim());
+@@ -450,7 +451,7 @@ struct classic_boss_vem : public classic_aq40_bug_trio_baseAI
+         // Knock Away
+         if (m_uiKnockBackTimer < uiDiff)
+         {
+-            if (me->IsWithinMeleeRange(me->GetVictim()) && !me->GetVictim()->HasUnitState(UNIT_STATE_STUNNED))
++            if (me->GetVictim() && me->IsWithinMeleeRange(me->GetVictim()) && !me->GetVictim()->HasUnitState(UNIT_STATE_STUNNED))
+             {
+                 if (DoCastVictim(SPELL_VEM_KNOCKBACK) == SPELL_CAST_OK)
+                     m_uiKnockBackTimer = urand(10000, 14000);
+diff --git a/src/server/scripts/Custom/Classic/kalimdor/classic_feralas.cpp b/src/server/scripts/Custom/Classic/kalimdor/classic_feralas.cpp
+index a2695cb..13d664e 100644
+--- a/src/server/scripts/Custom/Classic/kalimdor/classic_feralas.cpp
++++ b/src/server/scripts/Custom/Classic/kalimdor/classic_feralas.cpp
+@@ -470,7 +470,7 @@ struct classic_npc_captured_sprite_darter : public ScriptedAI
+             return;
+         }
+ 
+-        if (me->GetVictim()->GetPowerType() == POWER_MANA)
++        if (me->GetVictim() && me->GetVictim()->GetPowerType() == POWER_MANA)
+         {
+             if (_manaBurnTimer < diff)
+             {
+diff --git a/src/server/scripts/EasternKingdoms/ZulGurub/zulgurub.cpp b/src/server/scripts/EasternKingdoms/ZulGurub/zulgurub.cpp
+index f840a57..f5f5192 100644
+--- a/src/server/scripts/EasternKingdoms/ZulGurub/zulgurub.cpp
++++ b/src/server/scripts/EasternKingdoms/ZulGurub/zulgurub.cpp
+@@ -16,6 +16,7 @@
+  */
+ 
+ #include "ScriptMgr.h"
++#include "Containers.h"
+ #include "SpellScript.h"
+ #include "zulgurub.h"
+ #include "Unit.h"
+@@ -57,6 +58,13 @@ class spell_zulgurub_axe_flurry : public SpellScript
+         return ValidateSpellInfo({ SPELL_AXE_FLURRY });
+     }
+ 
++    // one axe a second at a random enemy within 30 yards, as on the original servers: the client data has no target
++    // limit, and every enemy in range took 1250 damage and a stun each second for 10 seconds
++    void FilterTargets(std::list<WorldObject*>& targets)
++    {
++        Trinity::Containers::RandomResize(targets, 1);
++    }
++
+     void HandleDummy(SpellEffIndex /*effIndex*/)
+     {
+         GetCaster()->CastSpell(GetHitUnit(), SPELL_AXE_FLURRY, true);
+@@ -64,6 +72,7 @@ class spell_zulgurub_axe_flurry : public SpellScript
+ 
+     void Register() override
+     {
++        OnObjectAreaTargetSelect += SpellObjectAreaTargetSelectFn(spell_zulgurub_axe_flurry::FilterTargets, EFFECT_0, TARGET_UNIT_SRC_AREA_ENEMY);
+         OnEffectHitTarget += SpellEffectFn(spell_zulgurub_axe_flurry::HandleDummy, EFFECT_0, SPELL_EFFECT_DUMMY);
+     }
+ };

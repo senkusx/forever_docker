@@ -48,8 +48,9 @@ ORDER_WORDS = {
 HELP_WORDS = {"heal", "dispel", "decurse", "cleanse", "protect", "save", "assist", "status", "bless", "rebuff", "buff",
               "salvation", "might", "wisdom", "kings", "light", "sanctuary"}
 # what a tactical review may assign
-TACTIC_WORDS = {"kill", "attack", "focus", "cc", "interrupt", "taunt", "mark", "burst", "spread", "stack", "retreat", "heal",
-                "protect", "dispel", "assist", "stop"}
+# (threat is the tanks' own: they take enemies back by themselves, at once; a review seconds late would only pull them off)
+TACTIC_WORDS = {"kill", "attack", "focus", "cc", "interrupt", "mark", "burst", "spread", "stack", "retreat", "heal",
+                "dispel", "assist", "stop"}
 
 SYSTEM_PROMPT = """You voice companion characters in World of Warcraft Classic on a private server. They are bots that \
 adventure with human players; each has its own name, class, role and personality, and they should feel like real, \
@@ -62,7 +63,7 @@ this!", "Sounds good!", "Got it!", "Will do!") unless that exact phrase is that 
 the recent chat; vary how it starts. A personality also shows in opinions: a cautious one may voice a doubt about a \
 risky plan (and still do it), a show-off may brag, a scholar may add a fact it was given.
 
-How they talk: party chat, short lines (one sentence, under 150 characters), in character, no emotes in \
+How they talk: party chat, short lines (one sentence, under 150 characters, unless the task allows more), in character, no emotes in \
 asterisks, no markdown, no quoting the situation back. Answer in the language the human wrote in (callouts: the \
 language of the recent chat, else English). Never invent game facts you were not given (quest steps, item stats, \
 coordinates); say you are not sure. Real players do not all answer every line: usually one companion answers, the \
@@ -186,7 +187,7 @@ def build_request(event, memory):
                 "- several enemies: one kill target for the damage dealers (kill E#, or mark skull E# so the player sees it too)\n"
                 "- a dangerous extra enemy that can be controlled: cc E# by a companion that can (and mark moon E#)\n"
                 "- a healer or caster enemy casting: interrupt E# by a companion that has an interrupt\n"
-                "- an enemy hitting a healer or caster: taunt E# for the tank\n"
+                "- threat is not yours: the tanks take loose enemies back on their own, give them no orders (an interrupt aside)\n"
                 "- a boss or a hard fight: burst for the damage dealers\n"
                 "- a \"boss tactics\" line: what the encounter needs (the companions already step out of casts, keep out of breaths, "
                 "run with debuffs, kill the named adds first and swap tanks on their own); order what it adds, like the kill order "
@@ -211,6 +212,21 @@ def build_request(event, memory):
         task = (f"{speaker} {how}: {message}\nCompanions who heard it: {names}. They answer out loud (the same channel) only if it "
                 "is for them or worth a reaction from their personality" + (f"; {named} was named and answers" if named else "") +
                 ". No orders here: orders only come through party chat or whispers (if asked to do something, a companion may say so).")
+    elif kind == "group" and context_line(event, "reacting to a companion"):
+        mate = context_line(event, "reacting to a companion")
+        task = (f"{mate}, a fellow companion, just said in party chat: {message}\nOne of the others may answer it, briefly and in "
+                "character: agree, tease, add a thought or a worry, the way their personality would (a quip, not a speech). Often "
+                "nobody does: answer only when it comes naturally, never repeat or paraphrase what was said, no orders, and no "
+                f"question that needs an answer back. Companions who heard it: {names}.")
+    elif kind == "group" and "question about boss tactics" in (event.get("context") or ""):
+        named = context_line(event, "spoken to")
+        task = (f"{speaker} asks in party chat{', to ' + named if named else ''}: {message}\nThe companions answer from the "
+                "\"tactics\" line of the situation, each in its own personality and voice, never reciting it word for word: "
+                f"{named or 'the tank (or the first companion)'} first says how the fight works (what the boss does, from the "
+                "general part: none of it left out) and its own part; then up to two others add their role's part (the healer what "
+                "to heal and dispel, a damage dealer the kill order and what to avoid). Each line one or two sentences, under 230 "
+                "characters. Orders only if the player asked for something. "
+                f"Companions you voice: {names}.")
     elif kind == "group" and context_line(event, "spoken to"):
         named = context_line(event, "spoken to")
         task = (f"{speaker} says in party chat, to {named}: {message}\n{named} answers (and does what is asked); another companion "
@@ -243,7 +259,11 @@ NORMALIZE = [
 
 def clean_orders(orders, allowed):
     clean = []
-    for order in orders or []:
+    if isinstance(orders, str):
+        orders = [orders]
+    elif not isinstance(orders, list):
+        orders = []
+    for order in orders:
         if not isinstance(order, str):
             continue
         order = " ".join(order.strip().lower().split())[:200]
@@ -263,12 +283,15 @@ def actions_from(event, data, order_mode="all"):
     tend to add random orders to small talk) or "none"."""
     bots = roster_of(event)
     by_name = {name.lower(): guid for guid, name, _, _ in bots}
+    roles = {guid: (role or "").lower() for guid, _, _, role in bots}
     leader = leader_of(event).lower()
     speaker = (event.get("speaker") or "").lower()
     # callouts, banter and what was said out loud only talk; a player who is not the leader only gets help; tactics only
     # assign tactics
     aloud = event["channel"] in ("say", "yell")
-    if event["kind"] in ("callout", "event", "test") or order_mode == "none" or aloud:
+    reaction = event["kind"] == "group" and bool(context_line(event, "reacting to a companion"))
+    question = event["kind"] == "group" and "question about boss tactics" in (event.get("context") or "")
+    if event["kind"] in ("callout", "event", "test") or order_mode == "none" or aloud or reaction:
         allowed = set()
     elif event["kind"] == "tactics":
         allowed = TACTIC_WORDS
@@ -300,6 +323,8 @@ def actions_from(event, data, order_mode="all"):
         say = " ".join(str(reply.get("say") or "").split())[:250]
         say = re.sub(r"\b[Ee](\d{1,2})\b", lambda m: enemies.get(m.group(1), m.group(0)), say)
         orders = clean_orders(reply.get("orders"), allowed)
+        if event["kind"] == "tactics" and roles.get(guid) == "tank":
+            orders = [o for o in orders if o.startswith("interrupt")]   # a tank's targets are its own (main tank, off-tanks)
         if not say and not orders:
             continue
         try:
@@ -315,7 +340,8 @@ def actions_from(event, data, order_mode="all"):
             "commands": "\n".join(orders),
             "delay_ms": max(0, min(delay, 6000)),
         })
-        if single or len(actions) >= (len(bots) if event["kind"] == "tactics" else 2):
+        limit = len(bots) if event["kind"] == "tactics" else 1 if reaction else 3 if question else 2
+        if single or len(actions) >= limit:
             break
     if event["kind"] == "tactics":
         # orders now, one voice, and only when the fight starts (later reviews adjust quietly)
@@ -414,12 +440,13 @@ class DbStore:
 
     def answer(self, event, actions, provider_id, ok, ms, error):
         with self.cursor() as cur:
-            for a in actions:
+            # only while the line is open: the worldserver gives up on a question it answered plainly (status 3)
+            cur.execute("UPDATE companion_llm_events SET status = 2 WHERE id = %s AND status < 2", (event["id"],))
+            for a in actions if cur.rowcount else []:
                 cur.execute(
                     "INSERT INTO companion_llm_actions (event_id, bot_guid, channel, target, say, commands, delay_ms) VALUES (%s, %s, %s, %s, %s, %s, %s)",
                     (event["id"], a["bot_guid"], a["channel"], a["target"], a["say"], a["commands"], a["delay_ms"]),
                 )
-            cur.execute("UPDATE companion_llm_events SET status = 2 WHERE id = %s", (event["id"],))
             if provider_id:
                 record_stats(cur, provider_id, ok, ms, error)
 
@@ -509,6 +536,15 @@ class Slot:
         base = max(1, int(self.row.get("weight") or 1))
         return base if self.kinds is None else self.kinds.get(kind, base)
 
+    def speed(self, kind):
+        """Faster providers get more of the lines: about 2.5 s is even, a 20 s one gets an eighth; the time-critical callouts
+        and fight reviews favour speed twice as much."""
+        ms = int(self.row.get("avg_ms") or 0)
+        if ms <= 0:
+            return 1.0
+        factor = min(2.5, max(0.05, 2500.0 / ms))
+        return factor * factor if kind in ("callout", "tactics") else factor
+
     def same_setup(self, row):
         return all(str(self.row.get(f)) == str(row.get(f)) for f in self.FIELDS)
 
@@ -554,7 +590,7 @@ class Brain:
         choices = [s for s in self.slots.values() if s.free and s.id not in exclude and s.serves(kind)]
         if not choices:
             return None
-        return random.choices(choices, weights=[s.weight_for(kind) * s.free for s in choices])[0]
+        return random.choices(choices, weights=[s.weight_for(kind) * s.free * s.speed(kind) for s in choices])[0]
 
     def rate_limited(self):
         now = time.monotonic()
@@ -584,6 +620,8 @@ class Brain:
             try:
                 data = future.result()
                 actions = actions_from(event, data, slot.order_mode)
+                if event["kind"] == "tactics" and int(event.get("age") or 0) + ms / 1000 > 6:
+                    actions = []    # the fight moved on: the bots' own decisions are better than a late review
                 self.store.answer(event, actions, slot.id, True, ms, "")
                 if event["channel"] == "whisper":
                     memory = self.whispers[self.memory_key(event)]

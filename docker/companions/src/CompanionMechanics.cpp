@@ -105,6 +105,13 @@ namespace Companions::Mechanics
             { FreezeWithDebuff, 11382, 24314, 0, 0, ROLES_ALL },                // Mandokir: Threatening Gaze, do nothing
             { KillFirst,     14988,     0,  0, 1, ROLES_ALL },                  // Ohgan
             { AvoidFront,    15114,     0,  0, 0, ROLES_NOT_TANK },             // Gahz'ranka: Frost Breath
+            // Gurubashi Axe Thrower: Axe Flurry (10 seconds of axes, one a second at someone within 30 yards: 1250 damage and
+            // a stun; immune to stuns while it spins): kept stunned before it, killed first, the healers out of its reach
+            { StunLock,      11350,     0,  0, 0, ROLES_ALL },
+            { AvoidNpc,      11350,     0, 31, 0, ROLE_BIT_HEALER },             // Axe Flurry reaches 30 yards: heal from 31
+            { KillFirst,     11350,     0,  0, 2, ROLES_ALL },
+            { CrowdControlNpc, 11350,   0,  0, 0, ROLES_ALL },
+            { Tranquilize,   11350,  8269,  0, 0, ROLES_ALL },                  // Frenzy
 
             // ---------------------------------------------------------------- Ruins of Ahn'Qiraj
             { TankSwap,      15348, 25646,  0, 5, ROLES_ALL },                  // Kurinnaxx: Mortal Wound
@@ -166,6 +173,110 @@ namespace Companions::Mechanics
             { Spread,        15990,     0, 10, 0, ROLE_BIT_RANGED | ROLE_BIT_HEALER },  // Frost Blast chains
             { AvoidNpc,      16129,     0,  5, 0, ROLES_ALL },                  // Shadow Fissure
             { CrowdControlNpc, 16441,   0,  0, 0, ROLES_ALL },                  // Guardian of Icecrown: shackle
+
+            // ---------------------------------------------------------------- raid trash
+            // (from the SmartAI and the Custom/Classic scripts of the trash: what wipes a raid that ignores it)
+            // Molten Core
+            { AvoidFront,    11673,     0,  0, 0, ROLES_NOT_TANK },             // Ancient Core Hound: Lava Breath
+            { AvoidFront,    12076,     0,  0, 0, ROLES_NOT_TANK },             // Lava Elemental: Pyroclast Barrage stuns
+            { AvoidFront,    11667,     0,  0, 0, ROLES_NOT_TANK },             // Flameguard: Cone of Fire
+            { AvoidFront,    12100,     0,  0, 0, ROLES_NOT_TANK },             // Lava Reaver: Cleave
+            { AvoidFront,    12119,     0,  0, 0, ROLES_NOT_TANK },             // Flamewaker Protector: Cleave
+            { DispelFirst,   11668, 19393,  0, 0, ROLES_ALL },                  // Firelord: Soul Burn silences
+            { KillFirst,     12265,     0,  0, 1, ROLES_ALL },                  // Lava Spawn (Firelord) splits if it lives
+            // Blackwing Lair
+            { DispelFirst,   12457, 22274,  0, 0, ROLES_ALL },                  // Blackwing Spellbinder: Greater Polymorph
+            { KillFirst,     12457,     0,  0, 1, ROLES_ALL },
+            { Interrupt,     12458, 22458,  0, 0, ROLES_ALL },                  // Blackwing Taskmaster: Healing Circle
+            { KillFirst,     12458,     0,  0, 1, ROLES_ALL },
+            { Interrupt,     12459, 22336,  0, 0, ROLES_ALL },                  // Blackwing Warlock: Shadow Bolt
+            { Interrupt,     12459, 19717,  0, 0, ROLES_ALL },                  // Rain of Fire
+            { KillFirst,     12459,     0,  0, 1, ROLES_ALL },
+            { KillFirst,     14081,     0,  0, 2, ROLES_ALL },                  // its Demon Portal
+            { AvoidFront,    12460,     0,  0, 0, ROLES_NOT_TANK },             // Death Talon Wyrmguard: Cleave
+            { AvoidFront,    12461,     0,  0, 0, ROLES_NOT_TANK },             // Death Talon Overseer: Cleave
+            { Tranquilize,   12464, 22428,  0, 0, ROLES_ALL },                  // Death Talon Seether: Frenzy
+            { Interrupt,     12465, 22425,  0, 0, ROLES_ALL },                  // Death Talon Wyrmkin: Fireball Volley
+            { KillFirst,     12467,     0,  0, 2, ROLES_ALL },                  // Death Talon Captain: Aura of Flames, marks
+            { AvoidFront,    14456,     0,  0, 0, ROLES_NOT_TANK },             // Blackwing Guardsman: Cleave
+            { DispelFirst,   12557, 22274,  0, 0, ROLES_ALL },                  // Grethok the Controller: Greater Polymorph
+            // Zul'Gurub
+            { KillFirst,     11338,     0,  0, 1, ROLES_ALL },                  // Hakkari Shadowcaster
+            { Interrupt,     11338, 20741,  0, 0, ROLES_ALL },                  // Shadow Bolt Volley
+            { KillFirst,     11830,     0,  0, 1, ROLES_ALL },                  // Hakkari Priest
+            { Interrupt,     11830, 22883,  0, 0, ROLES_ALL },                  // Heal
+            { Fear,          11830,     0,  0, 0, ROLES_ALL },                  // Psychic Scream
+            { StopOnAura,    11830, 24021,  0, 2, ROLES_ALL },                  // Anti-Magic Shield: casters stop
+            { KillFirst,     11831,     0,  0, 1, ROLES_ALL },                  // Hakkari Witch Doctor
+            { DispelFirst,   11831, 24053,  0, 0, ROLES_ALL },                  // Hex
+            { AvoidNpc,      15009,     0,  6, 0, ROLES_ALL },                  // its Voodoo Spirit: unkillable, kited
+            { KillFirst,     11340,     0,  0, 1, ROLES_ALL },                  // Hakkari Blood Priest
+            { Interrupt,     11340, 24618,  0, 0, ROLES_ALL },                  // Drain Life
+            { Interrupt,     11353, 24435,  0, 0, ROLES_ALL },                  // Gurubashi Blood Drinker: Drain Life
+            { Fear,          11352,     0,  0, 0, ROLES_ALL },                  // Gurubashi Berserker: Intimidating Roar
+            { Fear,          11359,     0,  0, 0, ROLES_ALL },                  // Soulflayer
+            { AvoidFront,    11372,     0,  0, 0, ROLES_NOT_TANK },             // Razzashi Adder: Venom Spit
+            { DispelFirst,   11371, 24002,  0, 0, ROLES_ALL },                  // Razzashi Serpent: Tranquilizing Poison
+            { DispelFirst,   11371, 24003,  0, 0, ROLES_ALL },
+            { AvoidCast,     14750, 24024, 10, 0, ROLES_ALL },                  // Gurubashi Bat Rider blows up below 40%
+            { DispelFirst,   14825, 24673,  0, 0, ROLES_ALL },                  // Withered Mistress: Curse of Blood
+            { DispelFirst,   14825, 24674,  0, 0, ROLES_ALL },                  // Veil of Shadow
+            { Interrupt,     11347, 24208,  0, 0, ROLES_ALL },                  // Zealot Lor'Khan: Great Heal
+            // Ruins of Ahn'Qiraj
+            { AvoidFront,    15319,     0,  0, 0, ROLES_NOT_TANK },             // Hive'Zara Collector: Web Spray
+            { AvoidFront,    15462,     0,  0, 0, ROLES_NOT_TANK },             // Spitting Scarab: Acid Spit
+            { AvoidFront,    15388,     0,  0, 0, ROLES_NOT_TANK },             // Major Pakkon: Sweeping Slam
+            { Fear,          15391,     0,  0, 0, ROLES_ALL },                  // Captain Qeez: Intimidating Shout
+            { DrainMana,     15338,     0,  0, 0, ROLES_ALL },                  // Obsidian Destroyer: Purge at full mana
+            // Temple of Ahn'Qiraj
+            { KillFirst,     15246,     0,  0, 1, ROLES_ALL },                  // Qiraji Mindslayer: Cause Insanity
+            { Fear,          15246,     0,  0, 0, ROLES_ALL },                  // Mana Burn and Mind Flay fear
+            { Interrupt,     15246, 26044,  0, 0, ROLES_ALL },
+            { KillFirst,     15247,     0,  0, 1, ROLES_ALL },                  // Qiraji Brainwasher
+            { Interrupt,     15247, 26044,  0, 0, ROLES_ALL },
+            { AvoidCast,     15249, 26038, 10, 0, ROLES_NOT_TANK },             // Qiraji Lasher: Whirlwind
+            { AvoidCast,     15250, 13736, 10, 0, ROLES_NOT_TANK },             // Qiraji Slayer: Whirlwind
+            { Tranquilize,   15250, 26041,  0, 0, ROLES_ALL },                  // Frenzy
+            { Fear,          15252,     0,  0, 0, ROLES_ALL },                  // Qiraji Champion: Intimidating Shout
+            { Fear,          15311,     0,  0, 0, ROLES_ALL },                  // Anubisath Warder
+            { RunWithDebuff, 15277, 26556,  8, 0, ROLES_ALL },                  // Anubisath Defender: Plague
+            { DrainMana,     15262,     0,  0, 0, ROLES_ALL },                  // Obsidian Eradicator: Shock Blast at full mana
+            { DrainMana,     15312,     0,  0, 0, ROLES_ALL },                  // Obsidian Nullifier: Nullify at full mana
+            { Interrupt,     15240, 26601,  0, 0, ROLES_ALL },                  // Vekniss Hive Crawler: Poison Bolt
+            // Naxxramas
+            { AvoidFront,    15975,     0,  0, 0, ROLES_NOT_TANK },             // Carrion Spinner: Poison Spray
+            { AvoidFront,    15978,     0,  0, 0, ROLES_NOT_TANK },             // Crypt Reaver: Cleave
+            { Tranquilize,   15978, 28371,  0, 0, ROLES_ALL },                  // Frenzy
+            { Interrupt,     15981, 28448,  0, 0, ROLES_ALL },                  // Naxxramas Acolyte: Shadow Bolt Volley
+            { Interrupt,     16368, 28448,  0, 0, ROLES_ALL },                  // Necropolis Acolyte
+            { AvoidFront,    16017,     0,  0, 0, ROLES_NOT_TANK },             // Patchwork Golem: Cleave
+            { AvoidFront,    16018,     0,  0, 0, ROLES_NOT_TANK },             // Bile Retcher: Bile Vomit
+            { Interrupt,     16020, 28306,  0, 0, ROLES_ALL },                  // Mad Scientist: Great Heal
+            { Fear,          16021,     0,  0, 0, ROLES_ALL },                  // Living Monstrosity: Fear
+            { Interrupt,     16021, 28293,  0, 0, ROLES_ALL },                  // Chain Lightning
+            { KillFirst,     16385,     0,  0, 2, ROLES_ALL },                  // its Lightning Totem
+            { Interrupt,     16022, 28310,  0, 0, ROLES_ALL },                  // Surgical Assistant: Mind Flay
+            { AvoidNpc,      16024,     0,  9, 0, ROLES_NOT_TANK },             // Embalming Slime: Embalming Cloud
+            { AvoidFront,    16025,     0,  0, 0, ROLES_NOT_TANK },             // Stitched Spewer: cone knockback
+            { AvoidCast,     16145, 28333,  8, 0, ROLES_NOT_TANK },             // Deathknight Captain: Whirlwind
+            { AvoidCast,     16145, 28334,  8, 0, ROLES_NOT_TANK },
+            { Fear,          16146,     0,  0, 0, ROLES_ALL },                  // Deathknight: Intimidating Shout
+            { AvoidFront,    16163,     0,  0, 0, ROLES_NOT_TANK },             // Deathknight Cavalier: Cleave
+            { Fear,          16163,     0,  0, 0, ROLES_ALL },                  // Death Coil
+            { AvoidFront,    16451,     0,  0, 0, ROLES_NOT_TANK },             // Deathknight Vindicator
+            { Fear,          16451,     0,  0, 0, ROLES_ALL },
+            { AvoidFront,    16861,     0,  0, 0, ROLES_NOT_TANK },             // Death Lord
+            { Fear,          16861,     0,  0, 0, ROLES_ALL },
+            { Interrupt,     16164, 28407,  0, 0, ROLES_ALL },                  // Shade of Naxxramas: Shadow Bolt Volley
+            { AvoidFront,    16165,     0,  0, 0, ROLES_NOT_TANK },             // Necro Knight: Cone of Cold
+            { AvoidFront,    16167,     0,  0, 0, ROLES_NOT_TANK },             // Bony Construct: Sweeping Slam
+            { Interrupt,     16168, 28995,  0, 0, ROLES_ALL },                  // Stoneskin Gargoyle: Stoneskin heals it
+            { Interrupt,     16446, 28995,  0, 0, ROLES_ALL },                  // Plagued Gargoyle
+            { AvoidCast,     16194, 24236,  8, 0, ROLES_NOT_TANK },             // Unholy Axe: Whirlwind
+            { AvoidCast,     16215, 28450, 20, 0, ROLES_NOT_TANK },             // Unholy Staff: Arcane Explosion
+            { DispelFirst,   16215, 29848,  0, 0, ROLES_ALL },                  // Polymorph
+            { Tranquilize,   16447, 24318,  0, 0, ROLES_ALL },                  // Plagued Ghoul: Enrage
+            { AvoidFront,    16447,     0,  0, 0, ROLES_NOT_TANK },
 
             // ---------------------------------------------------------------- dungeons
             { Interrupt,      3977,  9232,  0, 0, ROLES_ALL },                  // Whitemane: Scarlet Resurrection

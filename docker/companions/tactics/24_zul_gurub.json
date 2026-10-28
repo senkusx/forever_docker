@@ -145,5 +145,104 @@
       "healer": "Keep the poisoned alive before Siphon; spread for Corrupted Blood.",
       "dps": "Kill a Son of Hakkar before each Siphon and stand in its poison; spread out."
     }
+  ],
+  "trash": [
+    {
+      "name": "Gurubashi Axe Thrower",
+      "aliases": [
+        "axe thrower",
+        "axe throwers",
+        "throwers",
+        "thrower"
+      ],
+      "general": "Axe Flurry: for 10 seconds it throws an axe a second at someone within 30 yards, heavy damage and a stun. Keep it stunned, polymorph a second one, kill it first.",
+      "tank": "Pick it up at once and hold it still so the stuns land before it spins.",
+      "healer": "Heal from more than 30 yards away: the axes cannot reach you there.",
+      "dps": "Stun it in turn (Kidney Shot, Hammer of Justice, Bash, Concussion Blow), sheep the other one, burn it down."
+    },
+    {
+      "name": "Hakkari Priest",
+      "aliases": [
+        "hakkari priest",
+        "hakkari priests"
+      ],
+      "general": "Heals its friends, Psychic Scream fears everyone near it, and Anti-Magic Shield makes it immune to spells for a while.",
+      "tank": "Fear Ward, Tremor Totem or Berserker Rage; keep it away from the casters.",
+      "healer": "Stay out of its fear range.",
+      "dps": "Kill it first and interrupt Heal; casters switch target while its shield is up."
+    },
+    {
+      "name": "Hakkari Witch Doctor",
+      "aliases": [
+        "witch doctor",
+        "witch doctors"
+      ],
+      "general": "Hexes players and throws Shadow Shock. When it dies an unkillable Voodoo Spirit chases its killer: that player keeps moving away from it.",
+      "tank": "Hold it near the group so the hexes can be removed.",
+      "healer": "Dispel Hex at once.",
+      "dps": "Kill it early; whoever kills it kites the spirit."
+    },
+    {
+      "name": "Gurubashi Berserker",
+      "aliases": [
+        "berserker",
+        "berserkers"
+      ],
+      "general": "Intimidating Roar fears everyone near it, Knock Away drops its target's threat, Thunderclap slows. Pull it away from the other packs.",
+      "tank": "Fear Ward, Tremor Totem or Berserker Rage; taunt it back after each knockback.",
+      "healer": "Stand far back, out of the roar.",
+      "dps": "Ranged keep their distance; melee watch their threat after a knockback."
+    },
+    {
+      "name": "Gurubashi Bat Rider",
+      "aliases": [
+        "bat rider",
+        "bat riders"
+      ],
+      "general": "Below 40% it casts Unstable Concoction: three seconds later it explodes for 5000 damage around it. Everyone gets 10 yards away when the cast starts.",
+      "tank": "Step out with the others when it casts; the blast kills it.",
+      "healer": "Top everyone up before it reaches 40%.",
+      "dps": "Melee back out at the cast; ranged finish it."
+    },
+    {
+      "name": "Razzashi Adder",
+      "aliases": [
+        "adder",
+        "adders"
+      ],
+      "general": "Venom Spit poisons everyone in a cone in front of it.",
+      "tank": "Face it away from the group.",
+      "healer": "Cure the poison.",
+      "dps": "Stay behind it."
+    },
+    {
+      "name": "Hakkari Shadowcaster",
+      "aliases": [
+        "shadowcaster",
+        "shadowcasters"
+      ],
+      "general": "Shadow Bolt Volley hits everyone within 30 yards.",
+      "tank": "Pull it around a corner so it comes to you.",
+      "healer": "Heal the group through the volleys.",
+      "dps": "Interrupt the volley and kill it first."
+    },
+    {
+      "name": "Gurubashi Blood Drinker",
+      "aliases": [
+        "blood drinker",
+        "blood drinkers"
+      ],
+      "general": "Below half health it heals itself with Drain Life.",
+      "dps": "Interrupt Drain Life."
+    },
+    {
+      "name": "Soulflayer",
+      "aliases": [
+        "soulflayers"
+      ],
+      "general": "Fears its target and silences casters with Soul Tap.",
+      "tank": "Fear Ward or Berserker Rage.",
+      "dps": "Burn it down."
+    }
   ]
 }
