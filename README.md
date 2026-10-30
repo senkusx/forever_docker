@@ -1,6 +1,6 @@
 # Forever
 
-A ready-to-run private server for the **World of Warcraft Forever** beta, client build **1.60.1.70532**, with an
+A ready-to-run private server for the **World of Warcraft Forever** beta, client build **1.60.1.70685**, with an
 account sign-up website and a launcher for Windows, Linux and macOS.
 
 I made it to play the free beta with my friends. It is built on the
@@ -27,8 +27,8 @@ a few fixes of my own found with packet logs.
 The launcher and the website are in English, French, Spanish and Portuguese (Latin America), following the system
 or browser language.
 
-**Requirements on the player side**: the game client in exactly build **1.60.1.70532** (World of Warcraft Forever
-beta, installed with Battle.net). Another build will not connect.
+**Requirements on the player side**: the game client in exactly build **1.60.1.70685** (World of Warcraft Forever
+beta, installed with Battle.net in the `_forever_` folder). Another build will not connect.
 
 **No Blizzard assets**: this repository contains no game client, game data, artwork or logo (only screenshots of the
 game running on this server). The launcher and the website use neutral visuals drawn in CSS. The game data the
@@ -44,10 +44,16 @@ git clone <this repository> forever && cd forever
 cp .env.example .env               # passwords, PUBLIC_ADDRESS (public IP or DNS name), WOW_DIR
 ./scripts/gen-certs.sh             # your own CA + server certificate (never share certs/ca/forever_root_ca.key)
 docker compose build               # compiles TrinityCore, takes a while
-docker compose run --rm extractor  # extracts the game data from your client into ./data
+docker compose run --rm extractor  # extracts the game data from your client into ./data (see below)
 docker compose up -d
 docker compose logs -f worldserver # the first start imports the database (a few minutes)
 ```
+
+`WOW_DIR` is the "World of Warcraft" folder itself, the one that holds `Data`, `_forever_` and the hidden
+`.build.info`. The extractor reads the game from `Data`, and `.build.info` says which build is installed: when you copy
+the folder to the server, copy `.build.info` too, or the extractor stops with "lists no WoW Forever product".
+Since 1.60.1.70685 Battle.net installs the game as its own product (`wowf`, folder `_forever_`) instead of the Classic
+beta (`wow_classic_beta`, `_classic_beta_`); the extractor finds either.
 
 ### Ports
 
@@ -143,8 +149,10 @@ signed by Apple, so players run `xattr -cr "/Applications/Forever Launcher.app"`
 - **Update**: `docker compose build --no-cache && docker compose up -d`; new SQL updates are applied on start.
   If the branch merges one of the patches, the build stops at that patch: delete it.
 - **Using an AI assistant**: [AGENTS.md](AGENTS.md) explains the project and the steps to it.
-- **Newer game client**: set `CLIENT_BUILD` in `.env` to the build number (for example, `70532`). The build
-  override is experimental and does not itself add protocol support to TrinityCore.
+- **Newer game client**: set `CLIENT_BUILD` in `.env` to the build number (for example, `70685`), extract the data
+  of the new client into a new folder, point `DATA_DIR` at it and restart. The build override is experimental and does
+  not itself add protocol support to TrinityCore: it only works while the new build keeps the protocol and the DB2
+  layouts of the supported one (70685 kept the DB2 layouts of 70532).
 
 ## License
 

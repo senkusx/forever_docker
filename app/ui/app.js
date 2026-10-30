@@ -47,7 +47,7 @@ async function refresh() {
   $('view-login').hidden = logged;
   $('view-play').hidden = !logged;
   $('account').hidden = !logged;
-  $('game-field').textContent = `WoW Forever ${state.gameVersion || '1.60.1.70532'}`;
+  $('game-field').textContent = state.gameVersion ? `WoW Forever ${state.gameVersion}` : 'WoW Forever';
   if (logged) {
     $('account-email').textContent = state.email;
     $('avatar').textContent = state.email[0].toUpperCase();
@@ -229,7 +229,7 @@ function gameDirState() {
   const el = $('game-dir-state');
   const dir = $('s-game-dir').value.trim();
   const same = dir === state.settings.gameDir;
-  const game = state.platform === 'macos' ? t('gameApp') : 'WowB.exe';
+  const game = state.platform === 'macos' ? t('gameApp') : state.gameExe;
   el.textContent = !dir ? t('noFolder') : same && state.gameFound ? t('gameFound', { game }) : same ? t('gameMissing', { game }) : '';
   el.className = 'small ' + (same && state.gameFound ? 'ok' : dir && same ? 'ko' : '');
 }

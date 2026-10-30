@@ -70,7 +70,8 @@ impl Memory for ProcessMemory {
     }
 }
 
-fn is_client(pid: u32) -> bool {
+/// `exe_name`: the game's file name in lower case (wow.exe, wowb.exe).
+fn is_client(pid: u32, exe_name: &str) -> bool {
     // Wine sets argv[0] to the .exe path; on drives mounted without exec the .exe is not mapped from the file
     let argv0 = std::fs::read(format!("/proc/{pid}/cmdline"))
         .ok()
@@ -80,21 +81,24 @@ fn is_client(pid: u32) -> bool {
         .ok()
         .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_lowercase()))
         .unwrap_or_default();
-    if (argv0.ends_with("/wowb.exe") || argv0 == "wowb.exe") && exe.starts_with("wine") {
+    let suffix = format!("/{exe_name}");
+    if (argv0.ends_with(&suffix) || argv0 == exe_name) && exe.starts_with("wine") {
         return true;
     }
     std::fs::read_to_string(format!("/proc/{pid}/maps"))
-        .map(|m| m.lines().any(|l| l.trim_end().to_lowercase().ends_with("/wowb.exe")))
+        .map(|m| m.lines().any(|l| l.trim_end().to_lowercase().ends_with(&suffix)))
         .unwrap_or(false)
 }
 
-/// The game process: the WowB.exe Wine process using the most memory (the launcher stub uses ~30 MB).
-pub fn find_client() -> Option<ProcessMemory> {
+/// The game process: the Wine process of the game's executable (`exe_name`, e.g. Wow.exe) using the most memory
+/// (the launcher stub uses ~30 MB).
+pub fn find_client(exe_name: &str) -> Option<ProcessMemory> {
+    let exe_name = exe_name.to_lowercase();
     let me = std::process::id();
     let mut best: Option<(u64, u32)> = None;
     for entry in std::fs::read_dir("/proc").ok()?.flatten() {
         let Some(pid) = entry.file_name().to_str().and_then(|s| s.parse::<u32>().ok()) else { continue };
-        if pid == me || !is_client(pid) {
+        if pid == me || !is_client(pid, &exe_name) {
             continue;
         }
         let rss = rss_pages(pid);

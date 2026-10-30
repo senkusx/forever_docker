@@ -6,6 +6,7 @@
 !.env.example
 .DS_Store
 _classic_beta_
+_forever_
 data
 certs
 downloads

@@ -1,4 +1,4 @@
-//! Game preparation and start: WTF config, Launch Options\WoW (auto-login), WowB.exe -launcherlogin.
+//! Game preparation and start: WTF config, Launch Options\WoW (auto-login), Wow.exe -launcherlogin.
 //! macOS starts a copy of the game app instead: see macos.rs.
 
 use crate::config::Settings;
@@ -89,7 +89,7 @@ pub fn spawn(settings: &Settings) -> Result<Child, String> {
         .args(["-launcherlogin", "-config", WTF_NAME])
         .current_dir(&settings.game_dir)
         .spawn()
-        .map_err(|e| tf("launch_failed", &[&"WowB.exe", &e]))
+        .map_err(|e| tf("launch_failed", &[&crate::config::exe_name(settings), &e]))
 }
 
 #[cfg(target_os = "linux")]

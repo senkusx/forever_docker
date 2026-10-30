@@ -92,6 +92,7 @@ services:
       REALM_LOCAL_SUBNET_MASK: ${REALM_LOCAL_SUBNET_MASK:-255.255.255.0}
       REALM_NAME: ${REALM_NAME:-Forever}
       REALM_PORT: ${REALM_PORT:-8085}
+      CLIENT_BUILD: ${CLIENT_BUILD:-}   # waits for worldserver to add it to auth.build_info
     # bnetserver refuses to start if it cannot resolve the LoginREST hostname itself
     extra_hosts:
       - "trinity.actual.battle.net:${PUBLIC_ADDRESS:-127.0.0.1}"
@@ -122,7 +123,7 @@ services:
       SOAP_USER: ${SOAP_USER:-FOREVERWEB}
       SOAP_PASSWORD: ${SOAP_PASSWORD:?set SOAP_PASSWORD in .env}
       SERVER_NAME: ${REALM_NAME:-Forever}
-      GAME_VERSION: 1.60.1.${CLIENT_BUILD:-70532}
+      GAME_VERSION: 1.60.1.${CLIENT_BUILD:-70685}
       PUBLIC_ADDRESS: ${PUBLIC_ADDRESS:-127.0.0.1}
       CA_CERT: /certs/ca/forever_root_ca.crt
       LAUNCHER_LINUX_URL: ${LAUNCHER_LINUX_URL:-}
@@ -192,6 +193,7 @@ services:
     user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     environment:
       EXTRACT_MMAPS: ${EXTRACT_MMAPS:-0}
+      CASC_PRODUCT: ${CASC_PRODUCT:-}   # empty: the Forever product .build.info lists (wowf, else wow_classic_beta)
     volumes:
       - "${WOW_DIR:-/path/to/World of Warcraft}:/wow:ro"
       - ${DATA_DIR:-./data}:/opt/trinitycore/data

@@ -39,6 +39,8 @@ struct Snapshot {
     locales: &'static [&'static str],
     runners: Vec<(String, String)>,
     game_found: bool,
+    /// Wow.exe, WowB.exe or the game .app
+    game_exe: String,
     game_version: Option<String>,
     playing: bool,
 }
@@ -70,6 +72,7 @@ fn get_state(state: State<AppState>) -> Snapshot {
     let settings = state.settings.lock().unwrap().clone();
     Snapshot {
         game_found: settings.game_found(),
+        game_exe: config::exe_name(&settings),
         game_version: config::installed_version(std::path::Path::new(&settings.game_dir)),
         email: Session::load().map(|s| s.email),
         platform: if cfg!(windows) { "windows" } else if cfg!(target_os = "macos") { "macos" } else { "linux" },
@@ -241,6 +244,7 @@ async fn launch(app: &AppHandle, settings: Settings) -> Result<(), String> {
 async fn launch(app: &AppHandle, settings: Settings) -> Result<(), String> {
     emit(app, "step", t("step_launching"));
     let patcher = patcher::Patcher::new(&settings.server.public_key, settings.server.region_group)?;
+    let exe_name = config::exe_name(&settings);
     let mut child = game::spawn(&settings)?;
     let app = app.clone();
     std::thread::spawn(move || {
@@ -249,14 +253,14 @@ async fn launch(app: &AppHandle, settings: Settings) -> Result<(), String> {
         std::thread::spawn(move || {
             let _ = child.wait();
         });
-        let first = wait_for_client(child_pid);
+        let first = wait_for_client(child_pid, &exe_name);
         match first {
             Some(mem) => {
                 emit(&app, "running", t("running"));
                 patcher.watch(
                     Box::new(mem),
                     |cur| {
-                        let other = patcher::find_client()?;
+                        let other = patcher::find_client(&exe_name)?;
                         let better = !cur.alive() || other.rss() > (current_rss(cur) * 2).max(50 * 1024);
                         (other_pid(&other) != cur.pid() && better).then(|| Box::new(other) as Box<dyn patcher::Memory>)
                     },
@@ -289,14 +293,14 @@ fn current_rss(m: &dyn patcher::Memory) -> u64 {
 }
 
 #[cfg(not(target_os = "macos"))]
-fn wait_for_client(child_pid: u32) -> Option<patcher::ProcessMemory> {
+fn wait_for_client(child_pid: u32, exe_name: &str) -> Option<patcher::ProcessMemory> {
     #[cfg(windows)]
     if let Some(m) = patcher::ProcessMemory::open(child_pid) {
         return Some(m);
     }
     let _ = child_pid;
     for _ in 0..180 {
-        if let Some(m) = patcher::find_client() {
+        if let Some(m) = patcher::find_client(exe_name) {
             return Some(m);
         }
         std::thread::sleep(Duration::from_secs(1));

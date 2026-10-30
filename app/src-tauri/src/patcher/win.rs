@@ -1,4 +1,4 @@
-//! Windows: ReadProcessMemory / WriteProcessMemory on the WowB.exe process started by the launcher.
+//! Windows: ReadProcessMemory / WriteProcessMemory on the game process (Wow.exe) started by the launcher.
 
 use super::Memory;
 use std::ffi::c_void;
@@ -102,8 +102,8 @@ impl Memory for ProcessMemory {
     }
 }
 
-/// The running WowB.exe using the most memory.
-pub fn find_client() -> Option<ProcessMemory> {
+/// The running game (`exe_name`, e.g. Wow.exe) using the most memory.
+pub fn find_client(exe_name: &str) -> Option<ProcessMemory> {
     let mut best: Option<(u64, ProcessMemory)> = None;
     unsafe {
         let snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0).ok()?;
@@ -112,7 +112,7 @@ pub fn find_client() -> Option<ProcessMemory> {
         while ok {
             let len = entry.szExeFile.iter().position(|c| *c == 0).unwrap_or(entry.szExeFile.len());
             let name = String::from_utf16_lossy(&entry.szExeFile[..len]);
-            if name.eq_ignore_ascii_case("WowB.exe") {
+            if name.eq_ignore_ascii_case(exe_name) {
                 if let Some(p) = ProcessMemory::open(entry.th32ProcessID) {
                     let rss = p.rss();
                     if best.as_ref().map_or(true, |(r, _)| rss > *r) {

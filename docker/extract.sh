@@ -7,15 +7,32 @@ set -euo pipefail
 WOW=/wow
 OUT=/opt/trinitycore/data
 BIN=/opt/trinitycore/bin
-PRODUCT="${CASC_PRODUCT:-wow_classic_beta}"
 
 if [ ! -f "$WOW/.build.info" ] || [ ! -d "$WOW/Data" ]; then
     echo "[extract] ERROR: $WOW must be the 'World of Warcraft' folder (with .build.info and Data). Check WOW_DIR in .env."
     exit 1
 fi
 
+# Battle.net product of the client in .build.info: wowf (folder _forever_) since 1.60.1.70685, wow_classic_beta
+# (_classic_beta_) before. CASC_PRODUCT forces one.
+listed() { awk -F'|' -v p="$1" '{ sub(/\r$/, "") } NR > 1 && $NF == p { found = 1 } END { exit !found }' "$WOW/.build.info"; }
+PRODUCT="${CASC_PRODUCT:-}"
+if [ -z "$PRODUCT" ]; then
+    for p in wowf wow_classic_beta; do
+        if listed "$p"; then PRODUCT=$p; break; fi
+    done
+fi
+if [ -z "$PRODUCT" ] || ! listed "$PRODUCT"; then
+    echo "[extract] ERROR: $WOW/.build.info lists no ${PRODUCT:-WoW Forever product (wowf or wow_classic_beta)}."
+    echo "[extract] Copy the hidden .build.info file next to Data too when you upload the client: Battle.net rewrites"
+    echo "[extract] it at every update, and Data alone does not say which build is installed."
+    exit 1
+fi
+version="$(awk -F'|' -v p="$PRODUCT" '{ sub(/\r$/, "") } NR == 1 { for (i = 1; i <= NF; i++) if ($i ~ /^Version!/) c = i } NR > 1 && $NF == p { print $c }' "$WOW/.build.info")"
+echo "[extract] client: product $PRODUCT, version ${version:-unknown}"
+
 cd "$OUT"
-echo "[extract] === 1/3 mapextractor (dbc, gt, cameras, maps) - product $PRODUCT"
+echo "[extract] === 1/3 mapextractor (dbc, gt, cameras, maps)"
 "$BIN/mapextractor" -i "$WOW" -o "$OUT" -p "$PRODUCT"
 # mapextractor exits 0 even when it cannot open the CASC storage
 if [ ! -d "$OUT/dbc" ] || [ ! -d "$OUT/maps" ]; then
