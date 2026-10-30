@@ -176,8 +176,18 @@ namespace Companions
         GroupView const& View() const { return _view; }
         // for callers outside the bot's update (chat, commands, the brain): built again, as the last one may hold units removed
         // since (an add that despawned, a player who logged out); during the update, the current one (rebuilding it then would
-        // pull the lists from under a loop over them)
-        GroupView const& FreshView() { if (!_thinking) BuildView(); return _view; }
+        // pull the lists from under a loop over them); between two maps, none
+        GroupView const& FreshView()
+        {
+            if (!_thinking)
+            {
+                if (_bot->IsInWorld() && !_bot->IsBeingTeleported())
+                    BuildView();
+                else
+                    _view = GroupView();
+            }
+            return _view;
+        }
         Unit* GetCurrentTarget() const;
         std::string StatusLine() const;
         bool IsPulling() const { return _pulling && !_forcedTarget.IsEmpty(); }
