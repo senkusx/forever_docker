@@ -1,0 +1,34 @@
+diff --git a/src/server/game/Spells/Auras/SpellAuraDefines.h b/src/server/game/Spells/Auras/SpellAuraDefines.h
+index 7c89bd46..e37a573c 100644
+--- a/src/server/game/Spells/Auras/SpellAuraDefines.h
++++ b/src/server/game/Spells/Auras/SpellAuraDefines.h
+@@ -756,10 +756,13 @@ enum AuraType : uint32
+ // Classic 1.60 client data (70374) uses aura types beyond TOTAL_AURAS for effects that used a retail aura before: they are handled as
+ // that aura. 674: armor buffs and debuffs (Mark of the Wild, Devotion Aura, Sunder Armor, Faerie Fire, Expose Armor, Curse of
+ // Recklessness: physical school mask, flat value; all were SPELL_AURA_MOD_RESISTANCE). 673: Thick Hide (armor from items in %).
++// 668: "IsEffectivelyTank" (Defensive Stance, Bear Form, Dire Bear Form, Righteous Fury), the tank's threat bonus; the data holds
++// no value: SpellEffectInfo makes it the classic stance and form bonus, +30% threat of every school.
+ inline int32 GetClassicAuraType(int32 aura)
+ {
+     switch (aura)
+     {
++        case 668: return SPELL_AURA_MOD_THREAT;
+         case 673: return SPELL_AURA_MOD_BASE_RESISTANCE_PCT;
+         case 674: return SPELL_AURA_MOD_RESISTANCE;
+         default:  return aura;
+diff --git a/src/server/game/Spells/SpellInfo.cpp b/src/server/game/Spells/SpellInfo.cpp
+index 5a8b52ec..a14c3b69 100644
+--- a/src/server/game/Spells/SpellInfo.cpp
++++ b/src/server/game/Spells/SpellInfo.cpp
+@@ -428,6 +428,11 @@ SpellEffectInfo::SpellEffectInfo(SpellInfo const* spellInfo, SpellEffectEntry co
+     BonusCoefficient = _effect.EffectBonusCoefficient;
+     MiscValue = _effect.EffectMiscValue[0];
+     MiscValueB = _effect.EffectMiscValue[1];
++    if (_effect.EffectAura == 668 && !BasePoints && !MiscValue)   // IsEffectivelyTank, see GetClassicAuraType
++    {
++        BasePoints = 30.0f;
++        MiscValue = SPELL_SCHOOL_MASK_ALL;
++    }
+     Mechanic = Mechanics(_effect.EffectMechanic);
+     PositionFacing = _effect.EffectPosFacing;
+     TargetA = SpellImplicitTargetInfo(_effect.ImplicitTarget[0]);

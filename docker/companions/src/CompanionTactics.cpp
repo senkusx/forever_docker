@@ -205,7 +205,7 @@ namespace Companions::Tactics
             boss = Of(asker->GetSelectedUnit());
         for (Player* bot : bots)
             if (CompanionAI* ai = sCompanionMgr->GetAI(bot); ai && !boss)
-                for (Unit* enemy : ai->View().Enemies)
+                for (Unit* enemy : ai->FreshView().Enemies)
                     if (!boss)
                         boss = Of(enemy);
         return boss;
@@ -324,7 +324,7 @@ namespace Companions::Tactics
         if (Boss const* boss = Named(message, map))
             told.push_back(boss);
         if (CompanionAI* ai = sCompanionMgr->GetAI(bot))
-            for (Unit* enemy : ai->View().Enemies)
+            for (Unit* enemy : ai->FreshView().Enemies)
                 if (Boss const* boss = Of(enemy); boss && std::find(told.begin(), told.end(), boss) == told.end())
                     told.push_back(boss);
         for (Boss const* boss : told)

@@ -372,10 +372,11 @@ All of these (but `Enable` and the account) can be changed live in the web panel
 
 From the worldserver console (`docker compose attach worldserver`) or SOAP, `.bot test` drives a headless stand-in
 owner: `login <character>`, `party <owner> [role]`, `raid <owner> [size]`, `say <owner> <text>` (a party line), `create <owner> <class> [role]`, `go <owner> <map> <x> <y> <z>`,
-`fight <owner>` (attack the nearest enemy), `pull <owner>` (the tank pulls the nearest one), `spawn <owner> <entry>
+`fight <owner>` (attack the nearest enemy), `pull <owner> [name]` (the tank pulls the nearest one, or the nearest with that name), `spawn <owner> <entry>
 [count]` (enemies in front of the group for 5 minutes), `fire <bot> [spell]` (a hostile ground effect under it), `give <bot>
-<item>` / `equip <bot> <it|name>` (loot decisions), `status <owner>`, `near <owner> [yards]` (creatures around, their health and mechanics rules), `ambient <owner>` (the zone as the ambient
+<item>` / `equip <bot> <it|name>` (loot decisions), `status <owner>`, `near <owner> [yards] [name]` (creatures around, their health and mechanics rules), `ambient <owner>` (the zone as the ambient
 bots see it and what each one does), `invite <owner> <name>` (a /invite), `order <owner> <order>`, `why <bot>` (what it sees),
+`threat <bot>` (the group's threat modifiers, and for each enemy of its fight the health it lost and its threat list),
 `spells <bot>`, `tactics <owner> <question>` (what the companions answer to it), `auras <name> [spell]` (auras on a character and who cast them, the area triggers that spell made), `kill <bot>`, `logout <owner>`.
 For instance events: `trigger <owner> <id>` (the stand-in enters an area trigger), `objects <owner> [yards] [entry]`
 (game objects around and their state: doors 0 open, 1 closed), `use <owner> <entry>` (it uses the nearest one: a lever,
@@ -385,8 +386,8 @@ an altar), `slay <owner> <entry|0> [yards]` (it kills those creatures, whose dea
 ## Good to know
 
 - **Pathfinding**: without mmaps (`MMAP_PATHFINDING=0`, the default here) bots, like creatures, move in straight
-  lines; they catch up with you when they get stuck. With `EXTRACT_MMAPS=1` (re-run the extractor, it takes
-  hours) and `MMAP_PATHFINDING=1` they find their way around walls.
+  lines; they catch up with you when they get stuck. With `EXTRACT_MMAPS=1` (re-run the extractor; about 25 minutes on
+  8 cores) and `MMAP_PATHFINDING=1` they find their way around walls.
 - Loot: with group loot a companion rolls **Need** only on a clear upgrade it can use (at least 5% better than what it
   wears in that slot, and better than any piece for that slot in its bags, judged with the stats that drop rolled, so a
   green "of the Bear" counts with its stats) and puts it on; it passes on everything else, the greed rolls are yours. With master loot it keeps
@@ -411,18 +412,22 @@ an altar), `slay <owner> <entry|0> [yards]` (it kills those creatures, whose dea
   them anyway. With several tanks (a raid) the main tank (the one marked main tank in the raid, else the first) keeps
   the boss and the off-tanks take what got loose, what no tank holds, then the adds on the main tank: an enemy one tank
   went for is its own for a few seconds, nobody taunts from another tank (tank swaps aside) and only one of them uses an
-  area taunt. Tanks think every 50 ms. The damage dealers attack the main tank's target, then yours: `assist` (the
+  area taunt. Tanks think every 50 ms in a fight. Defensive Stance, Bear and Dire Bear Form and Righteous Fury add 30%
+  threat (core patch 0007, for players too: the 1.60 client marks them with an aura type the core skipped, so they added
+  none). The damage dealers attack the main tank's target, then yours: `assist` (the
   default) means fighting with the group, not only next to you. A caster or healer an enemy goes after runs to the tank; next to a rooted or frozen enemy (Frost Nova,
   Entangling Roots) it steps out of its reach instead of standing there.
 - Shamans keep their totems up in every role: Tremor against fear, Poison or Disease Cleansing when someone has one,
-  Strength of Earth, Windfury and Mana Spring or Healing Stream for the group, Magma on a pack, Searing on the target,
-  Mana Tide when a healing shaman runs low.
+  Strength of Earth, Windfury and Mana Spring or Healing Stream for the group, Magma on a pack, Flametongue when two or
+  more of the group hit in melee around them, else Searing on the target, Mana Tide when a healing shaman runs low.
 - Totems and Consecration (for players too): Forever's database left most player totems without their spell (they
   stood there doing nothing, the higher ranks named "zzOLD..."), Healing Stream, Searing and Magma healed or hit with
   their rank 1 spell, and Consecration lacked its consecrated ground (the damage ticked, nothing showed).
   `docker/sql/world/2026_10_26_91_world_companions_totems.sql` gives every totem rank its spell from the client data and
   its name back, and Consecration its ground; the Windfury Totem's attack is cast by `CompanionSpells.cpp` (the client's
-  aura names no spell to trigger). Flametongue Totem still does nothing.
+  aura names no spell to trigger). Flametongue Totem works the same way
+  (`docker/sql/world/2026_10_30_90_world_companions_flametongue_totem.sql`): each melee hit of the party deals the rank's
+  Fire damage, its points / 100 per second of weapon speed, like Flametongue Weapon.
 - Eating and drinking: the food (drink) that restores the most among those their level allows.
 - Doors and gates of the classic dungeons: Forever's port of the VMaNGOS scripts turned "open the door" and "close the
   door" into actions that toggle or do nothing on this core, so doors opened or shut at random (Emberseer's room, the
@@ -437,7 +442,10 @@ an altar), `slay <owner> <entry|0> [yards]` (it kills those creatures, whose dea
 - Classic script fixes (`docker/patches/0006-classic-script-fixes.patch`): crashes in Dire Maul, Stratholme, Ahn'Qiraj
   and Feralas scripts that lost their victim mid-fight; Blackrock Spire's rune rooms and Shadowfang Keep's Sorcerer's Gate
   open; the Axe Thrower's Axe Flurry hits one enemy a second (it hit everyone within 30 yards, a sure wipe) and
-  Nefarian's mage call polymorphs one player (it polymorphed the whole raid).
+  Nefarian's mage call polymorphs one player (it polymorphed the whole raid). General Rajaxx's army in the Ruins of
+  Ahn'Qiraj comes in waves again: once a pack is pulled, the next charges 5 seconds after the last one falls (at the
+  latest after 3 minutes), each with Rajaxx's yell, then Rajaxx himself (until then he stands by, passive and unkillable,
+  as his script has it; pulling him sets his army moving); a wipe resets the order.
 - Dungeon trash loot is personal to the group's round-robin looter: the core patch keeps that turn with the players
   close enough (the companions take turns only when no player is around), so players do not find most corpses empty.
 - Missing items: Forever's loot tables name 1,416 vanilla items its client data lacks (the boss loot of Blackrock Depths

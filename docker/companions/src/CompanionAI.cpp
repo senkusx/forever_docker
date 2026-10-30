@@ -301,14 +301,17 @@ namespace Companions
             return;
 
         _thinkTimer += diff;
-        // a tank decides twice as often: an enemy turning on a healer is taken back at once
-        uint32 const interval = GetEffectiveRole() == Role::Tank ? std::min<uint32>(GetConfig().UpdateInterval, 50) : GetConfig().UpdateInterval;
+        // a tank in a fight decides twice as often: an enemy turning on a healer is taken back at once
+        uint32 const interval = (_inCombat || _bot->IsInCombat()) && GetEffectiveRole() == Role::Tank
+            ? std::min<uint32>(GetConfig().UpdateInterval, 50) : GetConfig().UpdateInterval;
         if (_thinkTimer < interval)
             return;
 
         uint32 elapsed = _thinkTimer;
         _thinkTimer = 0;
+        _thinking = true;
         Think(elapsed);
+        _thinking = false;
     }
 
     void CompanionAI::Think(uint32 diff)
@@ -749,15 +752,19 @@ namespace Companions
         if (_holdFire)
             return;
 
+        // each unit is judged once: in a raid a pack is in the attackers and the combat references of every member
+        _viewSeen.clear();
         auto addEnemy = [this](Unit* unit, float maxDistance = 60.0f)
         {
+            if (!unit || std::find(_viewSeen.begin(), _viewSeen.end(), unit) != _viewSeen.end())
+                return;
+            _viewSeen.push_back(unit);
             if (!IsValidEnemy(unit, maxDistance))
                 return;
             // a mind controlled friend is crowd controlled (MechanicSpells), never fought
             if (unit->GetTypeId() == TYPEID_PLAYER && std::find(_view.Members.begin(), _view.Members.end(), unit) != _view.Members.end())
                 return;
-            if (std::find(_view.Enemies.begin(), _view.Enemies.end(), unit) == _view.Enemies.end())
-                _view.Enemies.push_back(unit);
+            _view.Enemies.push_back(unit);
         };
 
         for (Player* member : _view.Members)
@@ -783,7 +790,14 @@ namespace Companions
         {
             Unit* forced = ObjectAccessor::GetUnit(*_bot, _forcedTarget);
             if (forced && IsValidEnemy(forced, 100.0f))
-                addEnemy(forced, 100.0f);
+            {
+                // farther than the others may be: judged again at its own range, unless it is in already
+                if (std::find(_view.Enemies.begin(), _view.Enemies.end(), forced) == _view.Enemies.end())
+                {
+                    _viewSeen.erase(std::remove(_viewSeen.begin(), _viewSeen.end(), forced), _viewSeen.end());
+                    addEnemy(forced, 100.0f);
+                }
+            }
             else
             {
                 _forcedTarget.Clear();

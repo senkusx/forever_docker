@@ -861,12 +861,28 @@ namespace Companions
             // air: for the ones who hit in melee
             if (melee && DropTotem({ "windfury totem", "grace of air totem" }))
                 return true;
-            // fire: a pack around a melee shaman takes Magma, else Searing on the target; a Magma Totem stays while the pack
-            // thins out (one totem per element, each would replace the other)
+            // fire: a pack around a melee shaman takes Magma; with two or more of the group fighting in melee around the
+            // shaman, Flametongue (Fire damage on each of their hits); else Searing on the target. A fire totem that is down
+            // stays while it still serves (one totem per element, each would replace the other)
             if (MyRole() == Role::MeleeDps && _ai.EnemiesNear(Me()->GetPosition(), 8.0f) >= 3
                 && !_ai.AnyCrowdControlledNear(Me()->GetPosition(), 12.0f) && _ai.SafeToAoe(Me()->GetPosition(), 8.0f) && DropTotem({ "magma totem" }))
                 return true;
-            if (target && Me()->GetDistance(target) < 20.0f && MyRole() != Role::Healer && !HasTotemNear("magma totem") && DropTotem({ "searing totem" }))
+            // the ones of the group who fight in melee near the shaman: companions by role, players by class or by what they do
+            uint32 hitters = 0;
+            for (Player* member : _ai.View().Members)
+            {
+                if (!member->IsAlive() || Me()->GetDistance(member) > 25.0f)
+                    continue;
+                CompanionAI* ai = sCompanionMgr->GetAI(member);
+                bool const melee = ai ? ai->GetEffectiveRole() == Role::MeleeDps || ai->GetEffectiveRole() == Role::Tank
+                    : member->GetClass() == CLASS_WARRIOR || member->GetClass() == CLASS_ROGUE
+                        || (member->GetVictim() && member->IsWithinMeleeRange(member->GetVictim()));
+                hitters += melee ? 1 : 0;
+            }
+            bool const fireDown = HasTotemNear("magma totem") || HasTotemNear("flametongue totem") || HasTotemNear("searing totem");
+            if (hitters >= 2 && !fireDown && DropTotem({ "flametongue totem" }))
+                return true;
+            if (target && Me()->GetDistance(target) < 20.0f && MyRole() != Role::Healer && !fireDown && DropTotem({ "searing totem" }))
                 return true;
             return false;
         }

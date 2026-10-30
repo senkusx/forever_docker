@@ -42,6 +42,8 @@
 #include "ScriptMgr.h"
 #include "Spell.h"
 #include "TemporarySummon.h"
+#include "StringFormat.h"
+#include "ThreatManager.h"
 #include "World.h"
 #include "WorldSession.h"
 #include <cstring>
@@ -834,6 +836,7 @@ namespace Companions
                 { "order",  HandleTestOrder,  rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "spells", HandleTestSpells, rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "why",    HandleTestWhy,    rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
+                { "threat", HandleTestThreat, rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "kill",   HandleTestKill,   rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "give",   HandleTestGive,   rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "kick",   HandleTestKick,   rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
@@ -1412,7 +1415,8 @@ namespace Companions
         }
 
         // .bot test pull <owner>: the owner targets the nearest enemy and says "pull" (the tank goes, the melee walk with it)
-        static bool HandleTestPull(ChatHandler* handler, std::string owner)
+        // the nearest enemy that is not fighting (with a name part: the nearest of those)
+        static bool HandleTestPull(ChatHandler* handler, std::string owner, Optional<std::string> named)
         {
             Player* puppet = Puppet(handler, owner);
             if (!puppet)
@@ -1425,7 +1429,8 @@ namespace Companions
             Cell::VisitAllObjects(puppet, searcher, best);
             for (Unit* creature : units)
                 if (creature->IsAlive() && creature->ToCreature() && puppet->IsValidAttackTarget(creature) && !creature->IsCritter()
-                    && !creature->IsInCombat() && puppet->GetDistance(creature) < best)
+                    && !creature->IsInCombat() && puppet->GetDistance(creature) < best
+                    && (!named || creature->GetName().find(*named) != std::string::npos))
                 {
                     best = puppet->GetDistance(creature);
                     target = creature;
@@ -1673,7 +1678,8 @@ namespace Companions
         }
 
         // creatures around the stand-in: entry, health (raid scaling) and what the mechanics know of them
-        static bool HandleTestNear(ChatHandler* handler, std::string owner, Optional<float> range)
+        // the creatures around the owner (with a name part: only those, Rajaxx's officers among fifty soldiers)
+        static bool HandleTestNear(ChatHandler* handler, std::string owner, Optional<float> range, Optional<std::string> named)
         {
             Player* puppet = Puppet(handler, owner);
             if (!puppet)
@@ -1685,6 +1691,8 @@ namespace Companions
             uint32 shown = 0;
             for (Creature* creature : creatures)
             {
+                if (named && creature->GetName().find(*named) == std::string::npos)
+                    continue;
                 if (creature->IsPet() || creature->IsTotem() || ++shown > 25)
                     continue;
                 Spell const* casting = creature->GetCurrentSpell(CURRENT_CHANNELED_SPELL);
@@ -1889,7 +1897,7 @@ namespace Companions
             CompanionAI* ai = sCompanionMgr->GetAI(bot);
             if (!ai)
                 return true;
-            GroupView const& view = ai->View();
+            GroupView const& view = ai->FreshView();
             handler->PSendSysMessage("%s: members %u enemies %u tank %s owner %s aggression %u stance %u inCombat %u sees-flag %u group %u",
                 bot->GetName().c_str(), uint32(view.Members.size()), uint32(view.Enemies.size()), view.Tank ? view.Tank->GetName().c_str() : "-",
                 view.Owner ? view.Owner->GetName().c_str() : "-", uint32(ai->GetAggression()), uint32(ai->GetStance()), uint32(bot->IsInCombat()),
@@ -1921,6 +1929,33 @@ namespace Companions
                     items += trade->GetItem(TradeSlots(slot)) ? 1 : 0;
                 handler->PSendSysMessage("  trading with %s: %u items offered, %s", trade->GetTrader()->GetName().c_str(), items,
                     trade->IsAccepted() ? "accepted" : "not accepted");
+            }
+            return true;
+        }
+
+        // every enemy of the bot's fight: the health it lost, who it attacks and its threat list (stance and form
+        // bonuses show as threat over damage)
+        static bool HandleTestThreat(ChatHandler* handler, std::string botName)
+        {
+            Player* bot = ObjectAccessor::FindPlayerByName(botName);
+            CompanionAI* ai = sCompanionMgr->GetAI(bot);
+            if (!ai)
+                return true;
+            std::string mods;
+            for (Player* member : ai->FreshView().Members)
+                mods += Trinity::StringFormat(" {} x{:.2f} (holy x{:.2f});", member->GetName(),
+                    member->GetTotalAuraMultiplierByMiscMask(SPELL_AURA_MOD_THREAT, SPELL_SCHOOL_MASK_NORMAL),
+                    member->GetTotalAuraMultiplierByMiscMask(SPELL_AURA_MOD_THREAT, SPELL_SCHOOL_MASK_HOLY));
+            handler->PSendSysMessage("threat modifiers:%s", mods.c_str());
+            for (Unit* enemy : ai->FreshView().Enemies)
+            {
+                std::string line;
+                if (enemy->CanHaveThreatList())
+                    for (ThreatReference const* ref : enemy->GetThreatManager().GetSortedThreatList())
+                        line += Trinity::StringFormat(" {} {:.0f};", ref->GetVictim()->GetName(), ref->GetThreat());
+                handler->PSendSysMessage("%s: lost %u of %u health, on %s, threat:%s", enemy->GetName().c_str(),
+                    uint32(enemy->GetMaxHealth() - enemy->GetHealth()), uint32(enemy->GetMaxHealth()),
+                    enemy->GetVictim() ? enemy->GetVictim()->GetName().c_str() : "-", line.c_str());
             }
             return true;
         }

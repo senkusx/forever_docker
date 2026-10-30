@@ -1,5 +1,5 @@
 diff --git a/src/server/game/Entities/Creature/Creature.cpp b/src/server/game/Entities/Creature/Creature.cpp
-index d8dd964..1cf5c83 100644
+index d8dd9641..1cf5c83d 100644
 --- a/src/server/game/Entities/Creature/Creature.cpp
 +++ b/src/server/game/Entities/Creature/Creature.cpp
 @@ -1622,6 +1622,13 @@ void Creature::SelectLevel()
@@ -35,7 +35,7 @@ index d8dd964..1cf5c83 100644
      SetCreateHealth(health);
      SetMaxHealth(health);
 diff --git a/src/server/game/Entities/Creature/Creature.h b/src/server/game/Entities/Creature/Creature.h
-index 97391a1..303d103 100644
+index 97391a1b..303d1034 100644
 --- a/src/server/game/Entities/Creature/Creature.h
 +++ b/src/server/game/Entities/Creature/Creature.h
 @@ -78,6 +78,14 @@ static constexpr size_t CREATURE_TAPPERS_SOFT_CAP = 5;
@@ -62,7 +62,7 @@ index 97391a1..303d103 100644
          void LoadEquipment(int8 id = 1, bool force = false);
          void SetSpawnHealth();
 diff --git a/src/server/game/Entities/Player/Player.cpp b/src/server/game/Entities/Player/Player.cpp
-index 78d59ec..8ea48f5 100644
+index 2c38b978..5397f0b2 100644
 --- a/src/server/game/Entities/Player/Player.cpp
 +++ b/src/server/game/Entities/Player/Player.cpp
 @@ -1010,6 +1010,9 @@ void Player::Update(uint32 p_time)
@@ -91,7 +91,7 @@ index 78d59ec..8ea48f5 100644
      }
      else
 diff --git a/src/server/game/Entities/Player/Player.h b/src/server/game/Entities/Player/Player.h
-index d87f3ab..4fed20e 100644
+index d87f3ab8..4fed20ec 100644
 --- a/src/server/game/Entities/Player/Player.h
 +++ b/src/server/game/Entities/Player/Player.h
 @@ -2319,6 +2319,7 @@ class TC_GAME_API Player final : public Unit, public GridObject<Player>
@@ -102,23 +102,8 @@ index d87f3ab..4fed20e 100644
  
          void RemovedInsignia(Player* looterPlr);
  
-diff --git a/src/server/game/Entities/Unit/Unit.cpp b/src/server/game/Entities/Unit/Unit.cpp
-index 59e0dca..de07d7b 100644
---- a/src/server/game/Entities/Unit/Unit.cpp
-+++ b/src/server/game/Entities/Unit/Unit.cpp
-@@ -11620,7 +11620,9 @@ void Unit::SetMeleeAnimKitId(uint16 animKitId)
-                 else if (!tappers.empty())
-                 {
-                     Group* group = !groups.empty() ? *groups.begin() : nullptr;
--                    Player* looter = group ? ASSERT_NOTNULL(ObjectAccessor::GetPlayer(*creature, group->GetLooterGuid())) : tappers[0];
-+                    Player* looter = group ? ObjectAccessor::GetPlayer(*creature, group->GetLooterGuid()) : nullptr;
-+                    if (!looter)    // companions: the looter left the map (a bot dismissed in the fight): no assertion crash
-+                        looter = tappers[0];
- 
-                     Loot* loot = new Loot(creature->GetMap(), creature->GetGUID(), LOOT_CORPSE, dungeonEncounter ? group : nullptr);
- 
 diff --git a/src/server/game/Groups/Group.cpp b/src/server/game/Groups/Group.cpp
-index e443899..ae4f2d7 100644
+index e4438991..ae4f2d7e 100644
 --- a/src/server/game/Groups/Group.cpp
 +++ b/src/server/game/Groups/Group.cpp
 @@ -1133,6 +1133,18 @@ void Group::UpdateLooterGuid(WorldObject* pLootedObject, bool ifneed)
@@ -168,7 +153,7 @@ index e443899..ae4f2d7 100644
                      pNewLooter = player;
                      break;
 diff --git a/src/server/game/Groups/Group.h b/src/server/game/Groups/Group.h
-index 40e7a38..8ec82eb 100644
+index 40e7a381..8ec82eb9 100644
 --- a/src/server/game/Groups/Group.h
 +++ b/src/server/game/Groups/Group.h
 @@ -367,6 +367,7 @@ class TC_GAME_API Group
@@ -180,7 +165,7 @@ index 40e7a38..8ec82eb 100644
          void SendUpdateToPlayer(Player* player, MemberSlot const* slot = nullptr) const;
          void SendUpdateDestroyGroupToPlayer(Player* player) const;
 diff --git a/src/server/game/Handlers/CharacterHandler.cpp b/src/server/game/Handlers/CharacterHandler.cpp
-index 21faa16..bf7cd61 100644
+index 21faa16d..bf7cd618 100644
 --- a/src/server/game/Handlers/CharacterHandler.cpp
 +++ b/src/server/game/Handlers/CharacterHandler.cpp
 @@ -46,6 +46,7 @@
@@ -213,7 +198,7 @@ index 21faa16..bf7cd61 100644
      SetSize(MAX_PLAYER_LOGIN_QUERY);
 diff --git a/src/server/game/Handlers/LoginQueryHolder.h b/src/server/game/Handlers/LoginQueryHolder.h
 new file mode 100644
-index 0000000..214e994
+index 00000000..214e994d
 --- /dev/null
 +++ b/src/server/game/Handlers/LoginQueryHolder.h
 @@ -0,0 +1,39 @@
@@ -257,7 +242,7 @@ index 0000000..214e994
 +
 +#endif
 diff --git a/src/server/game/Loot/Loot.cpp b/src/server/game/Loot/Loot.cpp
-index 8088797..7be6f03 100644
+index 8088797e..7be6f036 100644
 --- a/src/server/game/Loot/Loot.cpp
 +++ b/src/server/game/Loot/Loot.cpp
 @@ -575,6 +575,11 @@ bool LootRoll::UpdateRoll()
@@ -273,7 +258,7 @@ index 8088797..7be6f03 100644
  {
      return m_loot->GetGUID() == lootObject && m_lootItem->LootListId == lootListId;
 diff --git a/src/server/game/Loot/Loot.h b/src/server/game/Loot/Loot.h
-index edf57ad..cf0c8c2 100644
+index edf57ad0..cf0c8c2a 100644
 --- a/src/server/game/Loot/Loot.h
 +++ b/src/server/game/Loot/Loot.h
 @@ -262,6 +262,8 @@ public:
@@ -286,7 +271,7 @@ index edf57ad..cf0c8c2 100644
  private:
      void SendStartRoll();
 diff --git a/src/server/game/Server/WorldSession.cpp b/src/server/game/Server/WorldSession.cpp
-index 5e6b41b..a9da99b 100644
+index 5e6b41b8..a9da99b9 100644
 --- a/src/server/game/Server/WorldSession.cpp
 +++ b/src/server/game/Server/WorldSession.cpp
 @@ -186,9 +186,13 @@ WorldSession::~WorldSession()
@@ -353,7 +338,7 @@ index 5e6b41b..a9da99b 100644
  
      if (m_Socket[CONNECTION_TYPE_INSTANCE])
 diff --git a/src/server/game/Server/WorldSession.h b/src/server/game/Server/WorldSession.h
-index 9a2e9b9..7dc48af 100644
+index 9a2e9b94..7dc48afa 100644
 --- a/src/server/game/Server/WorldSession.h
 +++ b/src/server/game/Server/WorldSession.h
 @@ -1009,6 +1009,10 @@ class TC_GAME_API WorldSession
@@ -387,10 +372,10 @@ index 9a2e9b9..7dc48af 100644
 +
  #endif
 diff --git a/src/server/game/Spells/Spell.cpp b/src/server/game/Spells/Spell.cpp
-index 829ffd1..b1452fd 100644
+index 6403d023..1e649f05 100644
 --- a/src/server/game/Spells/Spell.cpp
 +++ b/src/server/game/Spells/Spell.cpp
-@@ -1814,8 +1814,13 @@ void Spell::SelectImplicitCasterObjectTargets(SpellEffectInfo const& spellEffect
+@@ -1807,8 +1807,13 @@ void Spell::SelectImplicitCasterObjectTargets(SpellEffectInfo const& spellEffect
  
  void Spell::SelectImplicitTargetObjectTargets(SpellEffectInfo const& spellEffectInfo, SpellImplicitTargetInfo const& targetType, uint32 effMask)
  {
@@ -407,7 +392,7 @@ index 829ffd1..b1452fd 100644
      WorldObject* target = m_targets.GetObjectTarget();
  
 diff --git a/src/server/scripts/Custom/Classic/instances/blackwing_lair/classic_boss_razorgore.cpp b/src/server/scripts/Custom/Classic/instances/blackwing_lair/classic_boss_razorgore.cpp
-index 06bf2aa..81324e0 100644
+index 06bf2aa4..81324e01 100644
 --- a/src/server/scripts/Custom/Classic/instances/blackwing_lair/classic_boss_razorgore.cpp
 +++ b/src/server/scripts/Custom/Classic/instances/blackwing_lair/classic_boss_razorgore.cpp
 @@ -563,7 +563,7 @@ struct classic_trigger_orb_of_command : public ScriptedAI
@@ -431,7 +416,7 @@ index 06bf2aa..81324e0 100644
                      pRazorgore->GetMotionMaster()->Initialize();
                      ClassicBwlRazSetChannel(me, ObjectGuid::Empty, 0);
 diff --git a/src/server/scripts/Custom/Classic/instances/blackwing_lair/classic_instance_blackwing_lair.cpp b/src/server/scripts/Custom/Classic/instances/blackwing_lair/classic_instance_blackwing_lair.cpp
-index 4769fda..7f614c4 100644
+index 4769fda6..7f614c41 100644
 --- a/src/server/scripts/Custom/Classic/instances/blackwing_lair/classic_instance_blackwing_lair.cpp
 +++ b/src/server/scripts/Custom/Classic/instances/blackwing_lair/classic_instance_blackwing_lair.cpp
 @@ -864,8 +864,9 @@ struct classic_go_oeuf_raz : public GameObjectAI
@@ -447,7 +432,7 @@ index 4769fda..7f614c4 100644
                  }
              }
 diff --git a/src/server/scripts/Custom/Classic/instances/naxxramas/classic_boss_kelthuzad.cpp b/src/server/scripts/Custom/Classic/instances/naxxramas/classic_boss_kelthuzad.cpp
-index 57e65b5..b4ce4a5 100644
+index 57e65b57..b4ce4a5d 100644
 --- a/src/server/scripts/Custom/Classic/instances/naxxramas/classic_boss_kelthuzad.cpp
 +++ b/src/server/scripts/Custom/Classic/instances/naxxramas/classic_boss_kelthuzad.cpp
 @@ -941,8 +941,8 @@ struct classic_unstoppable_abomination_ai : public classic_kt_p1AddAI
@@ -484,7 +469,7 @@ index 57e65b5..b4ce4a5 100644
  
      void UpdateAI(uint32 /*diff*/) override
 diff --git a/src/server/scripts/Custom/custom_script_loader.cpp b/src/server/scripts/Custom/custom_script_loader.cpp
-index 977f5fd..63baa90 100644
+index 977f5fdb..63baa90e 100644
 --- a/src/server/scripts/Custom/custom_script_loader.cpp
 +++ b/src/server/scripts/Custom/custom_script_loader.cpp
 @@ -17,10 +17,12 @@

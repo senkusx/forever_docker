@@ -753,7 +753,7 @@ namespace Companions::CompanionLLM
 
         if (ai)
         {
-            GroupView const& view = ai->View();
+            GroupView const& view = ai->FreshView();
             ObjectGuid ownerGuid = ai->GetOwnerGUID();
             if (view.Enemies.empty())
                 _enemyRefs.erase(ownerGuid);

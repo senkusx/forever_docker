@@ -1,5 +1,5 @@
 diff --git a/src/server/scripts/Custom/Classic/instances/blackrock_spire/classic_instance_blackrock_spire.cpp b/src/server/scripts/Custom/Classic/instances/blackrock_spire/classic_instance_blackrock_spire.cpp
-index 8d864f1..db31efb 100644
+index 8d864f1d..db31efb2 100644
 --- a/src/server/scripts/Custom/Classic/instances/blackrock_spire/classic_instance_blackrock_spire.cpp
 +++ b/src/server/scripts/Custom/Classic/instances/blackrock_spire/classic_instance_blackrock_spire.cpp
 @@ -656,6 +656,13 @@ public:
@@ -17,7 +17,7 @@ index 8d864f1..db31efb 100644
                  case NPC_CHROMATIC_DRAGON:
                  case NPC_BLACKHAND_HANDLER:
 diff --git a/src/server/scripts/Custom/Classic/instances/blackwing_lair/classic_boss_nefarian.cpp b/src/server/scripts/Custom/Classic/instances/blackwing_lair/classic_boss_nefarian.cpp
-index 5ed4f90..6418583 100644
+index 5ed4f908..6418583d 100644
 --- a/src/server/scripts/Custom/Classic/instances/blackwing_lair/classic_boss_nefarian.cpp
 +++ b/src/server/scripts/Custom/Classic/instances/blackwing_lair/classic_boss_nefarian.cpp
 @@ -21,6 +21,7 @@
@@ -77,7 +77,7 @@ index 5ed4f90..6418583 100644
 +    RegisterSpellAndAuraScriptPairWithArgs(classic_spell_nefarian_polymorph_target, classic_spell_nefarian_polymorph, "classic_spell_nefarian_polymorph");
  }
 diff --git a/src/server/scripts/Custom/Classic/instances/dire_maul/classic_instance_dire_maul.cpp b/src/server/scripts/Custom/Classic/instances/dire_maul/classic_instance_dire_maul.cpp
-index 0449446..d585263 100644
+index 04494467..d5852635 100644
 --- a/src/server/scripts/Custom/Classic/instances/dire_maul/classic_instance_dire_maul.cpp
 +++ b/src/server/scripts/Custom/Classic/instances/dire_maul/classic_instance_dire_maul.cpp
 @@ -1208,7 +1208,7 @@ struct classic_npc_gordok_brute : public ScriptedAI
@@ -125,8 +125,248 @@ index 0449446..d585263 100644
                  m_uiShadowWordPainTimer = urand(9000, 11000);
          }
          else
+diff --git a/src/server/scripts/Custom/Classic/instances/ruins_of_ahnqiraj/classic_instance_ruins_of_ahnqiraj.cpp b/src/server/scripts/Custom/Classic/instances/ruins_of_ahnqiraj/classic_instance_ruins_of_ahnqiraj.cpp
+index 3b5b8b80..486597b4 100644
+--- a/src/server/scripts/Custom/Classic/instances/ruins_of_ahnqiraj/classic_instance_ruins_of_ahnqiraj.cpp
++++ b/src/server/scripts/Custom/Classic/instances/ruins_of_ahnqiraj/classic_instance_ruins_of_ahnqiraj.cpp
+@@ -34,6 +34,7 @@
+ #include "Player.h"
+ #include "QuaternionData.h"
+ #include "ReputationMgr.h"
++#include "SmartAI.h"
+ #include "TemporarySummon.h"
+ #include "ThreatManager.h"
+ #include "classic_ruins_of_ahnqiraj.h"
+@@ -142,6 +143,29 @@ bool ClassicAQ20IsRajaxxWaveEntry(uint32 entry)
+     }
+ }
+ 
++// Rajaxx's army, in the order he sends it (generic_scripts 153911 in VMaNGOS, a DB script this port has in C++): each
++// officer leads a pack of Qiraji Warriors and Swarmguard Needlers (creature_formations), and Rajaxx yells as it goes
++struct ClassicAQ20RajaxxWave
++{
++    uint32 Leader;
++    uint32 Yell;    // BroadcastText; the first wave answers Andorov's call
++};
++
++std::array<ClassicAQ20RajaxxWave, 7> const ClassicAQ20RajaxxWaves =
++{ {
++    { CLASSIC_AQ20_NPC_CAPTAIN_QEEZ,   0 },
++    { CLASSIC_AQ20_NPC_CAPTAIN_TUUBID, 11434 },     // Warriors, Captains, continue the fight!
++    { CLASSIC_AQ20_NPC_CAPTAIN_DRENN,  11440 },     // The time of our retribution is at hand!
++    { CLASSIC_AQ20_NPC_CAPTAIN_XURREM, 11439 },     // No longer will we wait behind barred doors and walls of stone!
++    { CLASSIC_AQ20_NPC_MAJOR_YEGGETH,  11438 },     // Fear is for the enemy! Fear and death!
++    { CLASSIC_AQ20_NPC_MAJOR_PAKKON,   11437 },     // Staghelm will whimper and beg for his life
++    { CLASSIC_AQ20_NPC_COLONEL_ZERRAN, 11436 },     // Fandral! Your time has come!
++} };
++
++uint32 constexpr CLASSIC_AQ20_SAY_RAJAXX_ATTACK = 11435;   // Impudent fool! I will kill you myself!
++uint32 constexpr CLASSIC_AQ20_RAJAXX_NEXT_WAVE_CLEARED = 5 * IN_MILLISECONDS;
++uint32 constexpr CLASSIC_AQ20_RAJAXX_NEXT_WAVE_ANYWAY = 3 * MINUTE * IN_MILLISECONDS;
++
+ // VMaNGOS CreatureGroup::GetOriginalLeaderGuid().GetEntry()
+ uint32 ClassicAQ20GetFormationLeaderEntry(Creature* creature)
+ {
+@@ -209,6 +233,14 @@ public:
+         std::array<uint32, 5> m_squadRespawnTimer;   // ms, 0 = no pending respawn
+         uint32 m_andorovScriptTimer;                  // generic_scripts 154710 delayed text
+ 
++        // Rajaxx's army: moving once a pack is pulled; a bit per wave sent or pulled; Rajaxx came himself
++        bool m_rajaxxArmyMoving = false;
++        uint8 m_rajaxxWavesSent = 0;
++        bool m_rajaxxHimself = false;
++        uint32 m_rajaxxClearedTimer = 0;    // the packs that were sent are down: the next one after a breath
++        uint32 m_rajaxxWaveTimer = 0;       // the next one goes anyway
++        std::array<GuidVector, 7> m_rajaxxWaveMembers;
++
+         bool IsEncounterInProgress() const override
+         {
+             if (InstanceScript::IsEncounterInProgress())
+@@ -280,6 +312,7 @@ public:
+                     SetData(CLASSIC_AQ20_TYPE_GENERAL_ANDOROV, IN_PROGRESS);
+                 }
+             }
++            RajaxxWaveEngaged(pCreature);
+             m_bRajaxxEventIsToReset = false;
+         }
+ 
+@@ -463,6 +496,7 @@ public:
+                 case CLASSIC_AQ20_TYPE_RAJAXX:
+                     if (uiData == NOT_STARTED)
+                     {
++                        ResetRajaxxWaves();
+                         /** Respawn Andorov and elite in 15 minutes */
+                         if (GetBossState(CLASSIC_AQ20_TYPE_KURINNAXX) == DONE)
+                             SetAndorovSquadRespawnTime(CLASSIC_AQ20_RESPAWN_15_MINUTES);
+@@ -563,6 +597,7 @@ public:
+                     if (Creature* pRajaxx = instance->GetCreature(m_uiRajaxxGUID))
+                         if (pRajaxx->IsAIEnabled())
+                             pRajaxx->AI()->EnterEvadeMode(EvadeReason::Other);
++                    ResetRajaxxWaves();
+                     m_bRajaxxEventIsToReset = false;
+                 }
+                 else
+@@ -579,6 +614,7 @@ public:
+             }
+ 
+             UpdateSquadRespawns(uiDiff);
++            UpdateRajaxxWaves(uiDiff);
+ 
+             if (m_andorovScriptTimer)
+             {
+@@ -653,8 +689,148 @@ public:
+             ClassicScriptText(CLASSIC_AQ20_SAY_ANDOROV_START_1, pAndorov);
+             m_andorovScriptTimer = 3000;
+             // TODO(classic): generic_scripts 154710 also starts waypoints (delay 2s, command 60: creature_movement_special
+-            // path 15471) whose point scripts 1547102/1547103 position the elites and start the Rajaxx waves (generic_scripts
+-            // 153911). The Rajaxx/Andorov wave event is DB-scripted in VMaNGOS and is not part of this C++ port.
++            // path 15471) whose point scripts 1547102/1547103 position the elites. The waves they start (generic_scripts
++            // 153911) are sent by RajaxxWaveEngaged / UpdateRajaxxWaves.
++        }
++
++        // the wave of each of Rajaxx's creatures that is still alive, by its formation's officer
++        void GatherRajaxxWaves()
++        {
++            for (GuidVector& members : m_rajaxxWaveMembers)
++                members.clear();
++            for (auto const& [guid, watch] : m_combatWatch)
++            {
++                Creature* creature = instance->GetCreature(guid);
++                if (!creature || !creature->IsAlive() || !ClassicAQ20IsRajaxxWaveEntry(creature->GetEntry()))
++                    continue;
++                uint32 const leader = ClassicAQ20GetFormationLeaderEntry(creature);
++                for (uint32 i = 0; i < ClassicAQ20RajaxxWaves.size(); ++i)
++                    if (ClassicAQ20RajaxxWaves[i].Leader == leader || ClassicAQ20RajaxxWaves[i].Leader == creature->GetEntry())
++                    {
++                        m_rajaxxWaveMembers[i].push_back(guid);
++                        break;
++                    }
++            }
++        }
++
++        bool RajaxxWaveAlive(uint32 wave) const
++        {
++            for (ObjectGuid const& guid : m_rajaxxWaveMembers[wave])
++                if (Creature* creature = instance->GetCreature(guid))
++                    if (creature->IsAlive())
++                        return true;
++            return false;
++        }
++
++        // a pack of the army engaged, pulled or sent: the army moves, and that wave counts as sent
++        void RajaxxWaveEngaged(Creature* creature)
++        {
++            if (GetBossState(CLASSIC_AQ20_TYPE_RAJAXX) == DONE)
++                return;
++            if (!m_rajaxxArmyMoving)
++            {
++                GatherRajaxxWaves();
++                m_rajaxxArmyMoving = true;
++                m_rajaxxWaveTimer = CLASSIC_AQ20_RAJAXX_NEXT_WAVE_ANYWAY;
++            }
++            for (uint32 i = 0; i < m_rajaxxWaveMembers.size(); ++i)
++                if (std::find(m_rajaxxWaveMembers[i].begin(), m_rajaxxWaveMembers[i].end(), creature->GetGUID()) != m_rajaxxWaveMembers[i].end())
++                    m_rajaxxWavesSent |= 1 << i;
++        }
++
++        void SendRajaxxWave(uint32 wave)
++        {
++            m_rajaxxWavesSent |= 1 << wave;
++            Creature* rajaxx = instance->GetCreature(m_uiRajaxxGUID);
++            if (rajaxx && rajaxx->IsAlive() && ClassicAQ20RajaxxWaves[wave].Yell)
++                ClassicScriptText(ClassicAQ20RajaxxWaves[wave].Yell, rajaxx);
++            for (ObjectGuid const& guid : m_rajaxxWaveMembers[wave])
++                if (Creature* creature = instance->GetCreature(guid))
++                    if (creature->IsAlive() && !creature->IsEngaged() && creature->IsAIEnabled())
++                        creature->AI()->DoZoneInCombat();
++        }
++
++        // the next wave in Rajaxx's order that is still alive; with none left and the last ones down, Rajaxx himself
++        void SendNextRajaxxWave(bool sentDown)
++        {
++            GatherRajaxxWaves();    // packs of grids loaded since the army moved
++            m_rajaxxClearedTimer = 0;
++            m_rajaxxWaveTimer = CLASSIC_AQ20_RAJAXX_NEXT_WAVE_ANYWAY;
++            for (uint32 i = 0; i < ClassicAQ20RajaxxWaves.size(); ++i)
++                if (!(m_rajaxxWavesSent & (1 << i)) && RajaxxWaveAlive(i))
++                {
++                    SendRajaxxWave(i);
++                    return;
++                }
++            if (!sentDown)
++                return;
++            m_rajaxxHimself = true;
++            if (Creature* rajaxx = instance->GetCreature(m_uiRajaxxGUID))
++                if (rajaxx->IsAlive() && rajaxx->IsAIEnabled())
++                {
++                    ClassicScriptText(CLASSIC_AQ20_SAY_RAJAXX_ATTACK, rajaxx);
++                    SetRajaxxWaiting(rajaxx, false);
++                    if (!rajaxx->IsEngaged())
++                        rajaxx->AI()->DoZoneInCombat();
++                }
++        }
++
++        // while his army fights, Rajaxx stands passive and cannot be killed (his SmartAI on spawn: react passive,
++        // invincible at 1 health); he fights once it is beaten
++        void SetRajaxxWaiting(Creature* rajaxx, bool waiting)
++        {
++            rajaxx->SetReactState(waiting ? REACT_PASSIVE : REACT_AGGRESSIVE);
++            if (SmartAI* smart = dynamic_cast<SmartAI*>(rajaxx->AI()))
++                smart->SetInvincibilityHpLevel(waiting ? 1 : 0);
++        }
++
++        void UpdateRajaxxWaves(uint32 diff)
++        {
++            if (m_rajaxxHimself || GetBossState(CLASSIC_AQ20_TYPE_RAJAXX) == DONE)
++                return;
++            if (!m_rajaxxArmyMoving)
++            {
++                // Rajaxx himself pulled: what is left of his army comes first, then he does
++                Creature* rajaxx = instance->GetCreature(m_uiRajaxxGUID);
++                if (!rajaxx || !rajaxx->IsAlive() || !rajaxx->IsEngaged())
++                    return;
++                GatherRajaxxWaves();
++                m_rajaxxArmyMoving = true;
++                m_rajaxxWaveTimer = CLASSIC_AQ20_RAJAXX_NEXT_WAVE_ANYWAY;
++            }
++            bool fighting = false;
++            for (uint32 i = 0; i < ClassicAQ20RajaxxWaves.size() && !fighting; ++i)
++                fighting = (m_rajaxxWavesSent & (1 << i)) && RajaxxWaveAlive(i);
++            if (!fighting)
++            {
++                if (!m_rajaxxClearedTimer)
++                    m_rajaxxClearedTimer = CLASSIC_AQ20_RAJAXX_NEXT_WAVE_CLEARED;
++                else if (m_rajaxxClearedTimer <= diff)
++                {
++                    SendNextRajaxxWave(true);
++                    return;
++                }
++                else
++                    m_rajaxxClearedTimer -= diff;
++            }
++            if (m_rajaxxWaveTimer <= diff)
++                SendNextRajaxxWave(!fighting);
++            else
++                m_rajaxxWaveTimer -= diff;
++        }
++
++        // a wipe: the packs still alive wait in their place again, the ones cut down stay down, and Rajaxx behind them
++        void ResetRajaxxWaves()
++        {
++            if (m_rajaxxHimself)
++                if (Creature* rajaxx = instance->GetCreature(m_uiRajaxxGUID))
++                    if (rajaxx->IsAlive())
++                        SetRajaxxWaiting(rajaxx, true);
++            m_rajaxxArmyMoving = false;
++            m_rajaxxWavesSent = 0;
++            m_rajaxxHimself = false;
++            m_rajaxxClearedTimer = 0;
++            m_rajaxxWaveTimer = 0;
+         }
+ 
+         int32 FindSquadSlot(ObjectGuid const& guid) const
 diff --git a/src/server/scripts/Custom/Classic/instances/shadowfang_keep/classic_instance_shadowfang_keep.cpp b/src/server/scripts/Custom/Classic/instances/shadowfang_keep/classic_instance_shadowfang_keep.cpp
-index d9a1170..a0fef8a 100644
+index d9a11703..a0fef8af 100644
 --- a/src/server/scripts/Custom/Classic/instances/shadowfang_keep/classic_instance_shadowfang_keep.cpp
 +++ b/src/server/scripts/Custom/Classic/instances/shadowfang_keep/classic_instance_shadowfang_keep.cpp
 @@ -136,6 +136,11 @@ public:
@@ -185,7 +425,7 @@ index d9a1170..a0fef8a 100644
              if (Creature* fenrus = instance->GetCreature(m_uiFenrusGUID))
              {
 diff --git a/src/server/scripts/Custom/Classic/instances/shadowfang_keep/classic_shadowfang_keep.h b/src/server/scripts/Custom/Classic/instances/shadowfang_keep/classic_shadowfang_keep.h
-index 39a3897..d2f52e4 100644
+index 39a3897f..d2f52e4f 100644
 --- a/src/server/scripts/Custom/Classic/instances/shadowfang_keep/classic_shadowfang_keep.h
 +++ b/src/server/scripts/Custom/Classic/instances/shadowfang_keep/classic_shadowfang_keep.h
 @@ -45,6 +45,8 @@ enum ClassicShadowfangKeepData : uint32
@@ -198,7 +438,7 @@ index 39a3897..d2f52e4 100644
  
      CSFK_GO_COURTYARD_DOOR       = 18895,                   // door to open when talking to NPC's
 diff --git a/src/server/scripts/Custom/Classic/instances/stratholme/classic_boss_baroness_anastari.cpp b/src/server/scripts/Custom/Classic/instances/stratholme/classic_boss_baroness_anastari.cpp
-index 204a6fd..b2d35e5 100644
+index 204a6fd0..b2d35e5d 100644
 --- a/src/server/scripts/Custom/Classic/instances/stratholme/classic_boss_baroness_anastari.cpp
 +++ b/src/server/scripts/Custom/Classic/instances/stratholme/classic_boss_baroness_anastari.cpp
 @@ -250,7 +250,7 @@ struct classic_boss_baroness_anastari : public ScriptedAI
@@ -211,7 +451,7 @@ index 204a6fd..b2d35e5 100644
          }
          else
 diff --git a/src/server/scripts/Custom/Classic/instances/temple_of_ahnqiraj/classic_boss_bug_trio.cpp b/src/server/scripts/Custom/Classic/instances/temple_of_ahnqiraj/classic_boss_bug_trio.cpp
-index 3ef215f..f3de568 100644
+index 3ef215f6..f3de568a 100644
 --- a/src/server/scripts/Custom/Classic/instances/temple_of_ahnqiraj/classic_boss_bug_trio.cpp
 +++ b/src/server/scripts/Custom/Classic/instances/temple_of_ahnqiraj/classic_boss_bug_trio.cpp
 @@ -211,7 +211,8 @@ struct classic_aq40_bug_trio_baseAI : public ScriptedAI
@@ -234,7 +474,7 @@ index 3ef215f..f3de568 100644
                  if (DoCastVictim(SPELL_VEM_KNOCKBACK) == SPELL_CAST_OK)
                      m_uiKnockBackTimer = urand(10000, 14000);
 diff --git a/src/server/scripts/Custom/Classic/kalimdor/classic_feralas.cpp b/src/server/scripts/Custom/Classic/kalimdor/classic_feralas.cpp
-index a2695cb..13d664e 100644
+index a2695cb9..13d664e2 100644
 --- a/src/server/scripts/Custom/Classic/kalimdor/classic_feralas.cpp
 +++ b/src/server/scripts/Custom/Classic/kalimdor/classic_feralas.cpp
 @@ -470,7 +470,7 @@ struct classic_npc_captured_sprite_darter : public ScriptedAI
@@ -247,7 +487,7 @@ index a2695cb..13d664e 100644
              if (_manaBurnTimer < diff)
              {
 diff --git a/src/server/scripts/EasternKingdoms/ZulGurub/zulgurub.cpp b/src/server/scripts/EasternKingdoms/ZulGurub/zulgurub.cpp
-index f840a57..f5f5192 100644
+index f840a571..f5f51923 100644
 --- a/src/server/scripts/EasternKingdoms/ZulGurub/zulgurub.cpp
 +++ b/src/server/scripts/EasternKingdoms/ZulGurub/zulgurub.cpp
 @@ -16,6 +16,7 @@

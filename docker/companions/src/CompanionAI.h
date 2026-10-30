@@ -172,7 +172,12 @@ namespace Companions
         Aggression GetAggression() const { return _aggression; }
         ClassAI* GetClassAI() const { return _class.get(); }
         SpellBook const& Spells() const { return _spells; }
+        // the view of the bot's last decision: for its own update (the class AI); its units may have left the world since
         GroupView const& View() const { return _view; }
+        // for callers outside the bot's update (chat, commands, the brain): built again, as the last one may hold units removed
+        // since (an add that despawned, a player who logged out); during the update, the current one (rebuilding it then would
+        // pull the lists from under a loop over them)
+        GroupView const& FreshView() { if (!_thinking) BuildView(); return _view; }
         Unit* GetCurrentTarget() const;
         std::string StatusLine() const;
         bool IsPulling() const { return _pulling && !_forcedTarget.IsEmpty(); }
@@ -352,8 +357,10 @@ namespace Companions
         SpellBook _spells;
         bool _spellsDirty = true;
         GroupView _view;
+        std::vector<Unit*> _viewSeen;   // BuildView: the units already judged this time
 
         uint32 _thinkTimer = 0;
+        bool _thinking = false;
         uint32 _slowTimer = 0;          // ~1 s housekeeping
         uint32 _followSlot = 0;
         uint32 _followCount = 1;
