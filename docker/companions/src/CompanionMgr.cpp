@@ -7,6 +7,7 @@
 #include "AccountMgr.h"
 #include "CharacterCache.h"
 #include "Chat.h"
+#include "Config.h"
 #include "CompanionAI.h"
 #include "CompanionAmbient.h"
 #include "CompanionPersonality.h"
@@ -52,6 +53,12 @@ namespace Companions
         LoadStoredSettings();
         if (!GetConfig().Enable)
             return;
+
+        // the bots share their claims (tanks, crowd control, interrupts, heals on the way) and the brain's state between
+        // maps without locks: maps have to update one after the other
+        if (sConfigMgr->GetIntDefault("MapUpdate.Threads", 1) > 1)
+            TC_LOG_ERROR("server.worldserver", "Companions: MapUpdate.Threads above 1 is not supported (the companions share "
+                "state between maps without locks): set it to 1");
 
         EnsureTables();
         _botAccountId = GetOrCreateCreationAccount();

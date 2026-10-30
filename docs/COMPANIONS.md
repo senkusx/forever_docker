@@ -385,6 +385,8 @@ an altar), `slay <owner> <entry|0> [yards]` (it kills those creatures, whose dea
 
 ## Good to know
 
+- **One map thread**: keep `MapUpdate.Threads = 1` (the default). The companions share their claims and the brain's
+  state between maps without locks; the worldserver logs an error at start when it is higher.
 - **Pathfinding**: without mmaps (`MMAP_PATHFINDING=0`, the default here) bots, like creatures, move in straight
   lines; they catch up with you when they get stuck. With `EXTRACT_MMAPS=1` (re-run the extractor; about 25 minutes on
   8 cores) and `MMAP_PATHFINDING=1` they find their way around walls.
