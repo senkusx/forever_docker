@@ -1,5 +1,5 @@
 diff --git a/src/server/scripts/Custom/Classic/instances/blackrock_spire/classic_instance_blackrock_spire.cpp b/src/server/scripts/Custom/Classic/instances/blackrock_spire/classic_instance_blackrock_spire.cpp
-index 8d864f1d..db31efb2 100644
+index 8d864f1d..24143ffd 100644
 --- a/src/server/scripts/Custom/Classic/instances/blackrock_spire/classic_instance_blackrock_spire.cpp
 +++ b/src/server/scripts/Custom/Classic/instances/blackrock_spire/classic_instance_blackrock_spire.cpp
 @@ -656,6 +656,13 @@ public:
@@ -16,6 +16,17 @@ index 8d864f1d..db31efb2 100644
                  case NPC_CHROMATIC_WHELP:
                  case NPC_CHROMATIC_DRAGON:
                  case NPC_BLACKHAND_HANDLER:
+@@ -932,7 +939,9 @@ public:
+                         {
+                             if (Creature* spectator = nefarius->SummonCreature(aStadiumSpectators[i], aSpectatorsSpawnLocs[i], TEMPSUMMON_DEAD_DESPAWN, 0s))
+                             {
+-                                // TODO(classic): VMaNGOS SetDetectionDistance(1.0f) (spectators do not aggro from the balcony) has no TC equivalent
++                                // VMaNGOS SetDetectionDistance(1.0f): the spectators do not aggro from the balcony; defensive, they
++                                // still fight whoever attacks them
++                                spectator->SetReactState(REACT_DEFENSIVE);
+                                 spectator->SetNoCallAssistance(true);
+                                 spectator->SetWalk(false);
+                                 spectator->SetHomePosition(aSpectatorsTargetLocs[i]);
 diff --git a/src/server/scripts/Custom/Classic/instances/blackwing_lair/classic_boss_nefarian.cpp b/src/server/scripts/Custom/Classic/instances/blackwing_lair/classic_boss_nefarian.cpp
 index 5ed4f908..6418583d 100644
 --- a/src/server/scripts/Custom/Classic/instances/blackwing_lair/classic_boss_nefarian.cpp
