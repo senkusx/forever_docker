@@ -48,6 +48,7 @@
 #include "WorldSession.h"
 #include <cstring>
 #include <sstream>
+#include <unordered_map>
 
 using namespace Trinity::ChatCommands;
 
@@ -308,13 +309,133 @@ namespace Companions
     {
         return "Orders (party chat, whisper, or \".bot order\"; start with a bot name for one bot): follow, stay, come, attack [skull|cross|...], "
                "pull, stop, retreat, assist [name], heal <name|me>, dispel <name|me>, protect <name|me>, cc <marker>, interrupt <marker>, "
-               "taunt <marker>, burst, bless <name|me> salvation|might|wisdom|kings|light, rebuff <name|me> [buff], equip <item|it|upgrades>, "
+               "taunt <marker>, burst, salvation|might|wisdom|kings|light on <name|me|dps|melee|ranged|healers|tanks|all>, bless reset, rebuff <name|me> [buff], equip <item|it|upgrades>, "
                "spread, stack, normal, passive, aggressive, "
                "role tank|heal|dps, rest, cast <spell> [on me|on target|on <name>], tactics [boss], face away|normal (tank), tank here, "
                "status, gear, dismiss, help. "
                "Also: plan <steps> (pull p1|next, <bot> cc <marker>; rest; ready; wait 10), prefer|avoid|allow <spell> [below 30], prefs [clear], "
-               "give me <item|potions|food>, loot all|useful|off, potions on|off, autocc on|off; or say it plainly "
+               "give me <item|potions|food|water>, conjure [food|water], loot all|useful|off, potions on|off, autocc on|off; or say it plainly "
                "(\"use more frost nova\", \"attack this pack, then rest and pull the next one when we're ready\").";
+    }
+
+    // "salvation on the dps", "i want salv on dis in raid", "kings on bob", "bless me with wisdom", "bless reset": a blessing for
+    // a member or a role, anywhere in the line. Every paladin companion keeps it, the plan they share picks who gives it.
+    static bool BlessingOrder(Player* commander, std::vector<Player*> const& bots, std::vector<std::string> const& words, bool quiet)
+    {
+        auto kindOf = [](std::string const& word) -> char const*
+        {
+            if (word == "salvation" || word == "salv") return "salvation";
+            if (word == "might" || word == "bom") return "might";
+            if (word == "wisdom" || word == "bow") return "wisdom";
+            if (word == "kings" || word == "bok") return "kings";
+            if (word == "light" || word == "bol") return "light";
+            if (word == "sanctuary" || word == "sanc") return "sanctuary";
+            return nullptr;
+        };
+        auto roleOf = [](std::string const& word) -> char const*
+        {
+            if (word == "dps" || word == "dds" || word == "dd" || word == "damage") return "dps";
+            if (word == "melee" || word == "melees") return "melee";
+            if (word == "ranged" || word == "casters" || word == "caster") return "ranged";
+            if (word == "healers" || word == "healer" || word == "heals") return "healer";
+            if (word == "tanks" || word == "tank") return "tank";
+            if (word == "all" || word == "everyone" || word == "everybody" || word == "raid" || word == "group" || word == "party" || word == "us")
+                return "all";
+            return nullptr;
+        };
+        static std::unordered_map<std::string, char const*> const roleWords = {
+            { "dps", "the damage dealers" }, { "melee", "the melee" }, { "ranged", "the ranged and the casters" },
+            { "healer", "the healers" }, { "tank", "the tanks" }, { "all", "everyone" } };
+
+        char const* kind = nullptr;
+        char const* role = nullptr;
+        Player* member = nullptr;
+        bool reset = false;
+        auto who = [&](size_t i)
+        {
+            while (i < words.size() && (words[i] == "the" || words[i] == "our" || words[i] == "my" || (words[i] == "all" && i + 1 < words.size())))
+                ++i;
+            if (i >= words.size())
+                return;
+            std::string const& word = words[i];
+            if (word == "me" || word == "myself")
+                member = commander;
+            else if (word == "this" || word == "that" || word == "dis" || word == "target" || word == "him" || word == "her")
+            {
+                Unit* selected = commander->GetSelectedUnit();
+                Player* player = selected ? selected->ToPlayer() : nullptr;
+                if (player && commander->IsInSameRaidWith(player))
+                    member = player;
+                else if (word == "dis")
+                    role = "dps";
+            }
+            else if (char const* r = roleOf(word))
+                role = r;
+            else
+                member = NamedMember(commander, word);
+        };
+        if (words[0] == "bless" || words[0] == "blessings")
+        {
+            for (size_t i = 1; i < words.size(); ++i)
+            {
+                if (words[i] == "reset" || words[i] == "default" || words[i] == "clear" || words[i] == "normal")
+                    reset = true;
+                else if (char const* k = kindOf(words[i]))
+                    kind = k;
+                else if (words[i] != "with" && words[i] != "of" && words[i] != "blessing" && !member && !role)
+                    who(i);
+            }
+            if (!kind && !reset)
+                return false;
+            if (kind && !member && !role)
+                member = commander;
+        }
+        else
+        {
+            for (size_t i = 0; i + 2 < words.size() && !kind; ++i)
+                if (char const* k = kindOf(words[i]); k && words[i + 1] == "on")
+                {
+                    kind = k;
+                    who(i + 2);
+                }
+            if (!kind)
+                return false;
+        }
+
+        std::vector<Player*> paladins;
+        for (Player* bot : bots)
+            if (bot->GetClass() == CLASS_PALADIN && sCompanionMgr->GetAI(bot))
+                paladins.push_back(bot);
+        if (paladins.empty())
+        {
+            Ack(bots, quiet, "No paladin here to bless you.");
+            return true;
+        }
+        if (!reset && !member && !role)
+        {
+            Ack({ paladins.front() }, quiet, "Who should get it? Name them, a role (dps, melee, ranged, healers, tanks) or target them.");
+            return true;
+        }
+        for (Player* paladin : paladins)
+        {
+            CompanionAI* ai = sCompanionMgr->GetAI(paladin);
+            if (reset)
+                ai->ClearBlessingRequests();
+            else if (member)
+                ai->SetBlessingFor(member->GetGUID(), kind);
+            else
+                ai->SetBlessingForRole(role, kind);
+        }
+        if (reset)
+            Ack({ paladins.front() }, quiet, "Back to our usual blessings, we split them between us.");
+        else
+        {
+            std::string name(kind);
+            name[0] = char(std::toupper(name[0]));
+            Ack({ paladins.front() }, quiet, "Blessing of " + name + " on " + (member ? member->GetName() : std::string(roleWords.at(role)))
+                + " from now on" + (paladins.size() > 1 ? ", we split the rest between us." : "."));
+        }
+        return true;
     }
 
     bool Commands::ExecuteOrder(Player* commander, std::vector<Player*> const& bots, std::string const& said, bool quiet)
@@ -333,6 +454,9 @@ namespace Companions
             return false;
         // "stop using arcane explosion" is about an ability, not the "stop" order
         if (words.size() >= 3 && words[0] != "prefer" && words[0] != "avoid" && words[0] != "allow" && SpeechPreference(commander, bots, text, quiet))
+            return true;
+
+        if (BlessingOrder(commander, bots, words, quiet))
             return true;
 
         std::string const& order = words[0];
@@ -412,46 +536,6 @@ namespace Companions
             if (!target || !target->IsAlive() || !group)
                 return true;
             group->SetTargetIcon(uint8(IconIndex(words[1])), target->GetGUID(), bots.front()->GetGUID());
-        }
-        else if (order == "bless" || ((order == "salvation" || order == "salv" || order == "might" || order == "wisdom" || order == "kings"
-            || order == "light" || order == "sanctuary") && words.size() >= 3 && words[1] == "on"))
-        {
-            // "bless me salvation", "bless bob with kings", "salvation on me": that blessing instead of the usual one
-            std::string kind;
-            Player* member = commander;
-            if (order == "bless")
-            {
-                for (size_t i = 1; i < words.size(); ++i)
-                {
-                    if (words[i] == "with" || words[i] == "of" || words[i] == "blessing")
-                        continue;
-                    if (Player* named = i == 1 ? NamedMember(commander, words[i]) : nullptr)
-                        member = named;
-                    else
-                        kind = words[i];
-                }
-            }
-            else
-            {
-                kind = order;
-                member = NamedMember(commander, words[2]);
-            }
-            if (kind == "salv")
-                kind = "salvation";
-            static char const* const kinds[] = { "salvation", "might", "wisdom", "kings", "light", "sanctuary" };
-            if (!member || std::find_if(std::begin(kinds), std::end(kinds), [&](char const* k) { return kind == k; }) == std::end(kinds))
-                return false;
-            bool any = false;
-            forEach([&](Player* bot, CompanionAI* ai)
-            {
-                if (bot->GetClass() != CLASS_PALADIN || any)
-                    return;
-                ai->SetBlessingFor(member->GetGUID(), kind);
-                any = true;
-                Ack({ bot }, quiet, "Blessing of " + std::string(1, char(std::toupper(kind[0]))) + kind.substr(1) + " on " + member->GetName() + " from now on.");
-            });
-            if (!any)
-                Ack(bots, quiet, "No paladin here to bless you.");
         }
         else if (order == "rebuff" || order == "buff")
         {
@@ -726,6 +810,28 @@ namespace Companions
             if (clear)
                 Ack(bots, quiet, Personality::Line(bots.front(), "ok"));
         }
+        else if (order == "conjure")
+        {
+            // "conjure me water", "conjure food", "conjure": a mage makes it (if it has none) and opens a trade
+            size_t i = 1;
+            while (i < words.size() && (words[i] == "me" || words[i] == "us" || words[i] == "some"))
+                ++i;
+            std::string what = Join(words, i);
+            if (what.empty() || what == "food and water" || what == "water and food")
+                what = "both";
+            std::string reply = "No mage here to conjure it.";
+            for (Player* bot : bots)
+                if (CompanionAI* ai = bot->GetClass() == CLASS_MAGE ? sCompanionMgr->GetAI(bot) : nullptr)
+                {
+                    bool const done = ai->OrderGive(commander, what, reply);
+                    if (!quiet)
+                        ai->Say(reply);
+                    if (done)
+                        return true;
+                }
+            if (!quiet && reply == "No mage here to conjure it.")
+                Ack(bots, quiet, reply);
+        }
         else if (order == "give" || order == "hand" || (order == "trade" && words.size() >= 2))
         {
             // "give me your potions", "give bob the sword", "trade me food": the first of these bots that has it opens a trade
@@ -828,6 +934,7 @@ namespace Companions
                 { "pull",   HandleTestPull,   rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "spawn",  HandleTestSpawn,  rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "status", HandleTestStatus, rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
+                { "rolepoll", HandleTestRolePoll, rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "go",     HandleTestGo,     rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "near",   HandleTestNear,   rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "ambient", HandleTestAmbient, rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
@@ -844,6 +951,7 @@ namespace Companions
                 { "equip",  HandleTestEquip,  rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "fire",   HandleTestFire,   rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "auras",  HandleTestAuras,  rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
+                { "unaura", HandleTestUnaura, rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "tactics", HandleTestTactics, rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "trigger", HandleTestTrigger, rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "objects", HandleTestObjects, rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
@@ -1510,6 +1618,31 @@ namespace Companions
             return true;
         }
 
+        // .bot test rolepoll <owner>: the stand-in starts a role check, as the raid leader's client would; prints the group roles
+        // (2 tank, 4 healer, 8 damage) as they are now, so a second call shows the answers
+        static bool HandleTestRolePoll(ChatHandler* handler, std::string owner)
+        {
+            Player* puppet = Puppet(handler, owner);
+            if (!puppet)
+                return true;
+            Group* group = puppet->GetGroup();
+            if (!group)
+            {
+                handler->PSendSysMessage("Companions test: %s is not in a group", puppet->GetName().c_str());
+                return true;
+            }
+            std::string roles;
+            for (GroupReference const& ref : group->GetMembers())
+                if (Player* member = ref.GetSource())
+                    roles += Trinity::StringFormat("{}{}={}", roles.empty() ? "" : " ", member->GetName(), uint32(group->GetLfgRoles(member->GetGUID())));
+            handler->PSendSysMessage("roles: %s", roles.c_str());
+            WorldPackets::Party::RolePollInform inform;
+            inform.From = puppet->GetGUID();
+            inform.PartyIndex = group->GetGroupCategory();
+            group->BroadcastPacket(inform.Write(), true);
+            return true;
+        }
+
         // instance events without a game client: area triggers, objects, deaths, and the instance's state
 
         // .bot test trigger <owner> <id>: the stand-in enters that area trigger (its script runs, as the client would ask)
@@ -1922,6 +2055,8 @@ namespace Companions
                 victim ? victim->GetName().c_str() : "-", victim ? bot->GetDistance(victim) : 0.0f, uint32(victim && ai->InMelee(victim)),
                 ai->RecentCasts().c_str());
             handler->PSendSysMessage("  mechanics: %s", ai->MechanicsLine().c_str());
+            if (bot->GetClass() == CLASS_MAGE)
+                handler->PSendSysMessage("  conjuring: %s", ai->ConjureLine().c_str());
             if (TradeData* trade = bot->GetTradeData())
             {
                 uint32 items = 0;
@@ -1930,6 +2065,28 @@ namespace Companions
                 handler->PSendSysMessage("  trading with %s: %u items offered, %s", trade->GetTrader()->GetName().c_str(), items,
                     trade->IsAccepted() ? "accepted" : "not accepted");
             }
+            // a paladin: the blessing it gives each member by the shared plan
+            if (bot->GetClass() == CLASS_PALADIN)
+            {
+                std::string plan;
+                for (Player* member : view.Members)
+                    for (std::string_view spell : ai->GetClassAI()->OwnBuffs(member))
+                        plan += Trinity::StringFormat(" {}={}", member->GetName(), spell);
+                handler->PSendSysMessage("  blessings:%s", plan.empty() ? " none" : plan.c_str());
+            }
+            return true;
+        }
+
+        // .bot test unaura <name>: every aura off that player but the passive ones, to watch the buffs come back from nothing
+        static bool HandleTestUnaura(ChatHandler* handler, std::string name)
+        {
+            Player* player = ObjectAccessor::FindPlayerByName(name);
+            if (!player)
+            {
+                handler->PSendSysMessage("Companions test: %s is not in the world", name.c_str());
+                return true;
+            }
+            player->RemoveAppliedAuras([](AuraApplication const* application) { return !application->GetBase()->IsPassive(); });
             return true;
         }
 

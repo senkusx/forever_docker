@@ -479,6 +479,44 @@ AI_TEXTS = {
     },
 }
 
+# the companion list: filters, rows that open, the switch for tactical orders, the reply limit
+LIST_TEXTS = {
+    'en': {
+        'filter_search': 'Search by name', 'filter_all': 'All', 'filter_class': 'Class', 'filter_state': 'State',
+        'filter_summoned': 'Summoned', 'filter_offline': 'Not summoned', 'filter_sort': 'Sort by', 'sort_name': 'Name',
+        'sort_class': 'Class', 'sort_role': 'Role', 'sort_level': 'Level', 'sort_ilvl': 'Item level', 'expand_all': 'Open all',
+        'collapse_all': 'Close all', 'shown_n': '{n} of {total} companions', 'no_match': 'No companion matches these filters.',
+        'details_reload': 'Reload', 'tactics_orders': 'Tactical orders', 'tactics_all': 'Tactical orders for all',
+        'set_LLM_MaxReplies': 'Answers to one chat line (most)',
+    },
+    'fr': {
+        'filter_search': 'Chercher un nom', 'filter_all': 'Tous', 'filter_class': 'Classe', 'filter_state': 'État',
+        'filter_summoned': 'Invoqués', 'filter_offline': 'Absents', 'filter_sort': 'Trier par', 'sort_name': 'Nom',
+        'sort_class': 'Classe', 'sort_role': 'Rôle', 'sort_level': 'Niveau', 'sort_ilvl': 'Niveau d’objet', 'expand_all': 'Tout ouvrir',
+        'collapse_all': 'Tout fermer', 'shown_n': '{n} compagnons sur {total}', 'no_match': 'Aucun compagnon ne correspond à ces filtres.',
+        'details_reload': 'Recharger', 'tactics_orders': 'Ordres tactiques', 'tactics_all': 'Ordres tactiques pour tous',
+        'set_LLM_MaxReplies': 'Réponses à un message (au plus)',
+    },
+    'es': {
+        'filter_search': 'Buscar por nombre', 'filter_all': 'Todos', 'filter_class': 'Clase', 'filter_state': 'Estado',
+        'filter_summoned': 'Invocados', 'filter_offline': 'No invocados', 'filter_sort': 'Ordenar por', 'sort_name': 'Nombre',
+        'sort_class': 'Clase', 'sort_role': 'Rol', 'sort_level': 'Nivel', 'sort_ilvl': 'Nivel de objeto', 'expand_all': 'Abrir todos',
+        'collapse_all': 'Cerrar todos', 'shown_n': '{n} de {total} compañeros', 'no_match': 'Ningún compañero coincide con estos filtros.',
+        'details_reload': 'Recargar', 'tactics_orders': 'Órdenes tácticas', 'tactics_all': 'Órdenes tácticas para todos',
+        'set_LLM_MaxReplies': 'Respuestas a un mensaje (máximo)',
+    },
+    'pt': {
+        'filter_search': 'Buscar por nome', 'filter_all': 'Todos', 'filter_class': 'Classe', 'filter_state': 'Estado',
+        'filter_summoned': 'Invocados', 'filter_offline': 'Não invocados', 'filter_sort': 'Ordenar por', 'sort_name': 'Nome',
+        'sort_class': 'Classe', 'sort_role': 'Função', 'sort_level': 'Nível', 'sort_ilvl': 'Nível de item', 'expand_all': 'Abrir todos',
+        'collapse_all': 'Fechar todos', 'shown_n': '{n} de {total} companheiros', 'no_match': 'Nenhum companheiro corresponde a estes filtros.',
+        'details_reload': 'Recarregar', 'tactics_orders': 'Ordens táticas', 'tactics_all': 'Ordens táticas para todos',
+        'set_LLM_MaxReplies': 'Respostas a uma mensagem (máximo)',
+    },
+}
+for _lang, _extra in LIST_TEXTS.items():
+    TEXTS[_lang].update(_extra)
+
 for _lang, _extra in AI_TEXTS.items():
     TEXTS[_lang].update(_extra)
 

@@ -193,6 +193,7 @@ namespace Companions::CompanionLLM
             std::string context = BuildContext(mainBot, voiced) + Tactics::BrainContext(mainBot, message);
             if (addressed)
                 context += "spoken to: " + addressed->GetName() + "\n";
+            context += "most answers: " + std::to_string(GetConfig().LLMMaxReplies) + "\n";   // Companions.LLM.MaxReplies
             context += extraContext;
             CharacterDatabase.PExecute("INSERT INTO companion_llm_events (bot_guid, owner_guid, kind, channel, speaker, message, context, bots, provider_id) "
                 "VALUES ({}, {}, '{}', '{}', '{}', '{}', '{}', '{}', {})",
@@ -524,7 +525,7 @@ namespace Companions::CompanionLLM
         if (addressed && IsEnabledFor(addressed))
             voiced.push_back(addressed);
         for (Player* bot : bots)
-            if (bot != addressed && voiced.size() < 5 && IsEnabledFor(bot))
+            if (bot != addressed && voiced.size() < std::max<size_t>(5, config.LLMMaxReplies + 1) && IsEnabledFor(bot))
                 voiced.push_back(bot);
         if (voiced.empty())
             return false;
@@ -545,7 +546,7 @@ namespace Companions::CompanionLLM
         if (addressed && IsEnabledFor(addressed))
             voiced.push_back(addressed);
         for (Player* bot : bots)
-            if (bot != addressed && voiced.size() < 4 && IsEnabledFor(bot))
+            if (bot != addressed && voiced.size() < std::max<size_t>(4, GetConfig().LLMMaxReplies + 1) && IsEnabledFor(bot))
                 voiced.push_back(bot);
         if (voiced.empty())
             return false;
@@ -666,12 +667,15 @@ namespace Companions::CompanionLLM
         state.LastMs = _msTime;
         state.Enemies = view.Enemies.size();
 
+        // the companions that take tactical orders (each can be left out in the panel)
         std::vector<Player*> voiced;
         for (Player* member : sCompanionMgr->GetBotsOf(ownerGuid))
-            if (IsEnabledFor(member))
+            if (BotRecord const* record = RecordOf(member); IsEnabledFor(member) && record && record->Tactics)
                 voiced.push_back(member);
         if (voiced.empty())
             return;
+        if (std::find(voiced.begin(), voiced.end(), bot) == voiced.end())
+            bot = voiced.front();
         Insert(ObjectAccessor::FindPlayer(ownerGuid), bot, "tactics", "party", "tactics",
             std::to_string(view.Enemies.size()) + (firstLook ? " enemies, the fight just started" : " enemies, the fight goes on"), voiced, ProviderOf(bot));
     }

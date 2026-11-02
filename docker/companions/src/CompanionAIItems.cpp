@@ -23,6 +23,7 @@
 #include "Player.h"
 #include "SpellHistory.h"
 #include "SpellInfo.h"
+#include "GameTime.h"
 #include "SpellMgr.h"
 #include "TradeData.h"
 #include "TradePackets.h"
@@ -201,7 +202,7 @@ namespace Companions
             _bot->Whisper(line, LANG_UNIVERSAL, trader);
     }
 
-    bool CompanionAI::OrderGive(Player* to, std::string const& what, std::string& reply)
+    bool CompanionAI::OrderGive(Player* to, std::string const& what, std::string& reply, bool conjure)
     {
         std::string wanted = Lower(what);
         // "it", "that": what it got last
@@ -222,6 +223,26 @@ namespace Companions
         }
         if (!found)
         {
+            // a mage makes it: "mage food", "water", "food and water"
+            if (conjure && _bot->GetClass() == CLASS_MAGE && _conjureFor.IsEmpty())
+            {
+                bool const water = wanted.find("water") != std::string::npos || wanted.find("drink") != std::string::npos;
+                bool const food = wanted.find("food") != std::string::npos || wanted == "both" || wanted.find("conjured") != std::string::npos;
+                _conjureSpells.clear();
+                if ((water || (food && wanted.find("mage") != std::string::npos) || wanted == "both") && Knows("conjure water"))
+                    _conjureSpells.push_back("conjure water");
+                if (food && Knows("conjure food"))
+                    _conjureSpells.push_back("conjure food");
+                if (!_conjureSpells.empty())
+                {
+                    _conjureFor = to->GetGUID();
+                    _deliverWhat = "conjured";
+                    _conjureCasts = 0;
+                    _conjureUntil = GameTime::Now() + Seconds(90);
+                    reply = "Conjuring some for you, one moment.";
+                    return true;
+                }
+            }
             reply = bound ? "That's soulbound, I can't hand it over." : "I don't have any " + what + ".";
             return false;
         }
@@ -232,9 +253,13 @@ namespace Companions
         }
         if (!_bot->IsWithinDistInMap(to, 10.0f))
         {
-            _bot->GetMotionMaster()->MoveFollow(to, 2.0f);
-            reply = "Coming over, ask me again when I'm next to you.";
-            return false;
+            // casters stand further back than a trade reaches: it walks over and opens it there
+            _conjureFor = to->GetGUID();
+            _deliverWhat = wanted;
+            _conjureSpells.clear();
+            _conjureUntil = GameTime::Now() + Seconds(30);
+            reply = "Coming over with it.";
+            return true;
         }
         _giveTo = to->GetGUID();
         _giveWhat = wanted;
@@ -250,6 +275,72 @@ namespace Companions
             return false;
         }
         reply = "Here you go, accept the trade.";
+        return true;
+    }
+
+    std::string CompanionAI::ConjureLine() const
+    {
+        if (_conjureFor.IsEmpty())
+            return _conjureNote.empty() ? "-" : "- (" + _conjureNote + ")";
+        std::string line;
+        for (char const* spell : _conjureSpells)
+            line += std::string(line.empty() ? "" : ", ") + spell;
+        Player const* to = ObjectAccessor::FindConnectedPlayer(_conjureFor);
+        return Trinity::StringFormat("for {}: {} (casts {}, {} s left){}{}", to ? to->GetName() : "?", line.empty() ? "done" : line, _conjureCasts,
+            std::chrono::duration_cast<Seconds>(_conjureUntil - GameTime::Now()).count(), _conjureNote.empty() ? "" : "; ", _conjureNote);
+    }
+
+    // a mage's stack of each (or six casts), out of a fight; then it walks over to them and opens the trade for what was asked
+    bool CompanionAI::UpdateConjure()
+    {
+        if (_conjureFor.IsEmpty() || _inCombat)
+            return false;
+        Player* to = ObjectAccessor::FindConnectedPlayer(_conjureFor);
+        if (!to || !to->IsInMap(_bot) || GameTime::Now() > _conjureUntil)
+        {
+            if (to && _conjureSpells.empty())
+                _bot->Whisper("I couldn't get to you, ask me again.", LANG_UNIVERSAL, to);
+            _conjureFor.Clear();
+            _conjureSpells.clear();
+            return false;
+        }
+        while (!_conjureSpells.empty())
+        {
+            char const* spell = _conjureSpells.front();
+            uint32 made = 0;
+            if (SpellInfo const* info = sSpellMgr->GetSpellInfo(SpellIdOf(spell), DIFFICULTY_NONE))
+                for (SpellEffectInfo const& effect : info->GetEffects())
+                    if (effect.IsEffect(SPELL_EFFECT_CREATE_ITEM) && effect.ItemType)
+                        made = _bot->GetItemCount(effect.ItemType);
+            if (_conjureCasts < 6 && made < 20)
+            {
+                if (Cast(spell, _bot))
+                {
+                    ++_conjureCasts;
+                    return true;
+                }
+                _conjureNote = Trinity::StringFormat("{} failed: spell {}, castable {}", spell, SpellIdOf(spell), uint32(CanCast(spell, _bot)));
+            }
+            // a stack, or no mana left for more: the next one
+            _conjureSpells.erase(_conjureSpells.begin());
+            _conjureCasts = 0;
+        }
+        // the trade needs it next to them
+        if (!_bot->IsWithinDistInMap(to, 8.0f))
+        {
+            if (!_bot->isMoving())
+            {
+                _bot->GetMotionMaster()->MovePoint(0, to->GetPosition());
+                _movement = MoveMode::Point;
+            }
+            return true;
+        }
+        StopMovement();
+        _conjureFor.Clear();
+        std::string reply;
+        if (!OrderGive(to, _deliverWhat, reply, false) && _deliverWhat == "conjured")
+            reply = "I couldn't make any, my bags may be full.";
+        _bot->Whisper(reply, LANG_UNIVERSAL, to);
         return true;
     }
 

@@ -21,8 +21,18 @@
 
   const state = { me: null, owner: null, view: null, templates: { bots: [], parties: [] }, tab: 'party', form: null, looks: {}, timer: null,
     page: 'owner', server: null, providerForm: null, newToken: null,
-    drafts: {}, applied: {}, groupDraft: {}, groupApplied: null, teams: [], teamEdit: null };
+    drafts: {}, applied: {}, groupDraft: {}, groupApplied: null, teams: [], teamEdit: null,
+    filter: loadFilter(), open: new Set(), inline: {} };
   const $ = (id) => document.getElementById(id);
+
+  // the list's filters stay for the next visit (this browser only; private windows may refuse the storage)
+  function loadFilter() {
+    const empty = { q: '', role: '', klass: '', status: '', sort: 'name' };
+    try { return { ...empty, ...JSON.parse(localStorage.getItem('cp-filter') || '{}') }; } catch (e) { return empty; }
+  }
+  function saveFilter() {
+    try { localStorage.setItem('cp-filter', JSON.stringify(state.filter)); } catch (e) { /* storage refused */ }
+  }
 
   // ------------------------------------------------------------------ helpers
 
@@ -253,7 +263,7 @@
   // ---- changes wait on the card until Apply: one request, then a clear confirmation of what changed and when it acts
 
   const FIELD_LABELS = { role: 'role', spec: 'spec', quality: 'gear_quality', aggression: 'aggression', stance: 'stance', llm: 'brain',
-    provider: 'provider', personality: 'personality', loot: 'loot_mode', potions: 'use_potions', autocc: 'auto_cc' };
+    provider: 'provider', personality: 'personality', loot: 'loot_mode', potions: 'use_potions', autocc: 'auto_cc', tactics: 'tactics_orders' };
   const botValue = (bot, key) => (key === 'personality' ? (bot.personality || '') : key === 'spec' ? (bot.spec || '')
     : key === 'provider' ? (bot.provider || 0) : key === 'quality' ? (bot.quality || 0) : bot[key]);
 
@@ -347,6 +357,7 @@
       h('div', { class: 'label' }, T('group_settings')),
       h('div', { class: 'cp-row' },
         toggle(T('brain_all'), 'llm' in gd ? gd.llm : anyBrain, (on) => setGroup('llm', on)),
+        toggle(T('tactics_all'), 'tactics' in gd ? gd.tactics : view.bots.some((b) => b.tactics), (on) => setGroup('tactics', on)),
         h('label', null, T('aggression'), select([['', '—'], ...aggressionOptions()], 'aggression' in gd ? String(gd.aggression) : '', (v) => setGroup('aggression', v === '' ? '' : Number(v)), { 'aria-label': T('aggression') })),
         h('label', null, T('stance'), select([['', '—'], ['0', T('stance_0')], ['1', T('stance_1')]], 'stance' in gd ? String(gd.stance) : '', (v) => setGroup('stance', v === '' ? '' : Number(v)))),
         h('label', null, T('gear_quality'), select([['', '—'], ...qualityOptions()], 'quality' in gd ? String(gd.quality) : '', (v) => setGroup('quality', v === '' ? '' : Number(v)))),
@@ -363,9 +374,108 @@
           onclick: async () => { await run(() => api('POST', `/api/companions/owner/${state.owner}/summon-all`, { dismiss: true, bots: view.bots.filter((b) => b.live).map((b) => b.guid) }), T('dismissed_all')); setTimeout(() => refresh(true), 800); } }, T('dismiss_all')),
         h('button', { type: 'button', class: 'cp-btn', disabled: !view.bots.length, onclick: () => savePartyFromCurrent() }, T('save_party_template'))));
 
-    const cards = view.bots.length ? view.bots.map((bot) => botCard(bot, online))
-      : [h('div', { class: 'card muted' }, T('no_bots'))];
-    panel.replaceChildren(orders, teamsCard(), group, h('div', { class: 'cp-bots' }, cards));
+    const list = h('div', { class: 'cp-bots cp-list' });
+    panel.replaceChildren(orders, teamsCard(), group, filterBar(view.bots, list, online), list);
+    renderList(list, online);
+  }
+
+  // ------------------------------------------------------------------ the companion list: filters, rows that open
+
+  // the role it plays now (in the game), else the one it is set to
+  const effectiveRole = (bot) => (bot.live && bot.live.role && bot.live.role !== 'auto' ? bot.live.role : bot.role);
+  const ROLE_ORDER = { tank: 0, healer: 1, melee: 2, ranged: 3, auto: 4 };
+
+  function shownBots(bots) {
+    const f = state.filter;
+    const q = f.q.trim().toLowerCase();
+    const level = (b) => (b.live ? b.live.level : b.level);
+    const ilvl = (b) => (b.live ? b.live.item_level : -1);
+    const by = {
+      name: (a, b) => a.name.localeCompare(b.name),
+      class: (a, b) => className(a.class).localeCompare(className(b.class)) || a.name.localeCompare(b.name),
+      role: (a, b) => (ROLE_ORDER[effectiveRole(a)] ?? 9) - (ROLE_ORDER[effectiveRole(b)] ?? 9) || a.name.localeCompare(b.name),
+      level: (a, b) => level(b) - level(a) || a.name.localeCompare(b.name),
+      ilvl: (a, b) => ilvl(b) - ilvl(a) || a.name.localeCompare(b.name),
+    }[f.sort] || ((a, b) => a.name.localeCompare(b.name));
+    return bots.filter((b) => (!q || `${b.name} ${b.surname || ''}`.toLowerCase().includes(q))
+      && (!f.role || effectiveRole(b) === f.role) && (!f.klass || String(b.class) === f.klass)
+      && (!f.status || (f.status === 'summoned') === !!b.live)).sort(by);
+  }
+
+  function filterBar(bots, list, online) {
+    const f = state.filter;
+    const counts = {};
+    for (const b of bots) counts[effectiveRole(b)] = (counts[effectiveRole(b)] || 0) + 1;
+    const classes = [...new Set(bots.map((b) => b.class))].sort((a, b) => className(a).localeCompare(className(b)));
+    const set = (key) => (v) => { f[key] = v; saveFilter(); renderList(list, online); };
+    return h('div', { class: 'card cp-filters' },
+      h('div', { class: 'cp-row' },
+        h('input', { type: 'search', value: f.q, placeholder: T('filter_search'), 'aria-label': T('filter_search'),
+          oninput: (e) => { f.q = e.target.value; saveFilter(); renderList(list, online); } }),
+        h('label', null, T('role'), select([['', T('filter_all')], ...['tank', 'healer', 'melee', 'ranged']
+          .map((r) => [r, `${roleName(r)} (${counts[r] || 0})`])], f.role, set('role'))),
+        h('label', null, T('filter_class'), select([['', T('filter_all')], ...classes.map((c) => [String(c), className(c)])], f.klass, set('klass'))),
+        h('label', null, T('filter_state'), select([['', T('filter_all')], ['summoned', T('filter_summoned')], ['offline', T('filter_offline')]],
+          f.status, set('status'))),
+        h('label', null, T('filter_sort'), select(['name', 'class', 'role', 'level', 'ilvl'].map((k) => [k, T('sort_' + k)]), f.sort, set('sort')))),
+      h('div', { class: 'cp-row' },
+        h('span', { class: 'muted small cp-shown' }),
+        h('button', { type: 'button', class: 'cp-btn small', onclick: () => { shownBots(bots).forEach((b) => openRow(b, true)); renderList(list, online); } }, T('expand_all')),
+        h('button', { type: 'button', class: 'cp-btn small', onclick: () => { state.open.clear(); renderList(list, online); } }, T('collapse_all'))));
+  }
+
+  function renderList(list, online) {
+    const bots = state.view.bots;
+    const shown = shownBots(bots);
+    const counter = document.querySelector('.cp-filters .cp-shown');
+    if (counter) counter.textContent = T('shown_n', { n: shown.length, total: bots.length });
+    list.replaceChildren(...(shown.length ? shown.map((bot) => botRow(bot, online))
+      : [h('div', { class: 'card muted' }, bots.length ? T('no_match') : T('no_bots'))]));
+  }
+
+  function openRow(bot, open) {
+    if (open) {
+      state.open.add(bot.guid);
+      if (!state.inline[bot.guid]) {
+        const d = state.inline[bot.guid] = { bot, tab: state.detailsTab || 'gear', data: null, rerender: () => renderParty() };
+        loadDetails(d);
+      }
+    } else state.open.delete(bot.guid);
+  }
+
+  // one line per companion; it opens into its settings and everything about it (gear, bags, stats, talents, abilities)
+  function botRow(bot, online) {
+    const open = state.open.has(bot.guid);
+    const live = bot.live;
+    const role = effectiveRole(bot);
+    const status = bot.loading ? T('state_loading') : live ? T('state_' + live.state) : T('state_offline');
+    const head = h('button', { type: 'button', class: 'cp-row-head', 'aria-expanded': open ? 'true' : 'false',
+      onclick: () => { openRow(bot, !open); renderParty(); } },
+      h('span', { class: 'cp-caret', 'aria-hidden': 'true' }, open ? '▾' : '▸'),
+      h('span', { class: 'cp-row-name' }, bot.surname ? `${bot.name} ${bot.surname}` : bot.name),
+      h('span', { class: 'cp-row-meta muted' }, `${live ? live.level : bot.level} ${className(bot.class)}`),
+      h('span', { class: 'cp-tag cp-role-' + role }, roleName(role)),
+      live ? h('span', { class: 'cp-row-meta muted small' }, `ilvl ${live.item_level}`) : null,
+      live ? h('span', { class: 'cp-row-bars' }, bar(live.health, 'health'), live.mana >= 0 ? bar(live.mana, 'mana') : null) : null,
+      h('span', { class: 'cp-state ' + (live ? live.state : 'offline') }, status));
+    const row = h('article', { class: 'card cp-bot-row' + (open ? ' open' : '') + (live ? ' live' : '') }, head);
+    if (open) {
+      const d = state.inline[bot.guid];
+      if (d) d.bot = bot;
+      row.append(botCard(bot, online, true));
+      if (d) row.append(inlineDetails(d));
+    }
+    return row;
+  }
+
+  function inlineDetails(d) {
+    const tabs = ['gear', 'bags', 'stats', 'talents', 'abilities'];
+    return h('section', { class: 'cp-inline-details' },
+      h('div', { class: 'cp-tabs', role: 'tablist' }, tabs.map((t) => h('button', { type: 'button', role: 'tab', class: 'cp-tab' + (d.tab === t ? ' on' : ''),
+        onclick: () => { d.tab = state.detailsTab = t; renderParty(); } }, T('details_' + t))),
+        h('button', { type: 'button', class: 'cp-btn small', onclick: () => loadDetails(d) }, T('details_reload'))),
+      d.data && !d.data.online ? h('p', { class: 'muted small' }, T('details_offline')) : null,
+      h('div', { class: 'cp-modal-body' }, detailsBody(d)));
   }
 
   // ------------------------------------------------------------------ teams: companions summoned together, again and again
@@ -453,7 +563,7 @@
         h('button', { type: 'button', class: 'cp-btn', disabled: !view.bots.some((b) => b.live), onclick: () => saveCurrentAsTeam() }, T('team_save_current'))));
   }
 
-  function botCard(bot, ownerIn) {
+  function botCard(bot, ownerIn, embedded) {
     const live = bot.live;
     const status = bot.loading ? T('state_loading') : live ? T('state_' + live.state) : T('state_offline');
     const value = (key) => { const draft = state.drafts[bot.guid]; return draft && key in draft ? draft[key] : botValue(bot, key); };
@@ -463,7 +573,7 @@
     const applyButton = h('button', { type: 'button', class: 'cp-btn primary cp-apply', onclick: (e) => applyBot(bot, e.target) }, T('apply'));
     const discardButton = h('button', { type: 'button', class: 'cp-btn', onclick: () => { delete state.drafts[bot.guid]; renderParty(); } }, T('discard'));
     const note = h('span', { class: 'muted small' });
-    const card = h('article', { class: 'card cp-bot' + (live ? ' live' : '') });
+    const card = h(embedded ? 'div' : 'article', { class: (embedded ? 'cp-bot embedded' : 'card cp-bot') + (live ? ' live' : '') });
     const refreshState = () => {
       const dirty = Object.keys(pendingOf(bot)).length > 0;
       applyButton.disabled = !dirty;
@@ -474,13 +584,14 @@
     const set = (key, v) => { (state.drafts[bot.guid] = state.drafts[bot.guid] || {})[key] = v; refreshState(); };
 
     card.append(...[
-      h('header', null,
+      embedded ? h('div', { class: 'muted small' }, `${raceName(bot.race)} ${className(bot.class)} · ${T('role')}: ${roleName(bot.role)}`,
+        bot.created ? null : h('small', { class: 'cp-tag' }, T('your_character'))) : h('header', null,
         h('div', null,
           h('h3', null, bot.surname ? `${bot.name} ${bot.surname}` : bot.name, bot.created ? null : h('small', { class: 'cp-tag' }, T('your_character'))),
           h('div', { class: 'muted' }, `${live ? live.level : bot.level} ${raceName(bot.race)} ${className(bot.class)} · ${roleName(bot.role)}`)),
         h('span', { class: 'cp-state ' + (live ? live.state : 'offline') }, status)),
       live ? h('div', { class: 'cp-vitals' },
-        bar(live.health, 'hp'), live.mana >= 0 ? bar(live.mana, 'mana') : null,
+        bar(live.health, 'health'), live.mana >= 0 ? bar(live.mana, 'mana') : null,
         h('div', { class: 'muted small' }, T('live_line', { ilvl: live.item_level, spells: live.spells, zone: live.zone || '?' })),
         live.talents ? h('div', { class: 'muted small cp-talents' }, live.talents) : null) : null,
       h('div', { class: 'cp-grid' },
@@ -493,7 +604,8 @@
         hasProviders() ? h('label', null, T('provider'), select(providerOptions(), String(value('provider')), (v) => set('provider', Number(v)))) : null,
         h('label', null, T('loot_mode'), select([0, 1, 2].map((m) => [String(m), T('loot_' + m)]), String(value('loot')), (v) => set('loot', Number(v)))),
         h('div', { class: 'cp-check' }, toggle(T('use_potions'), value('potions'), (on) => set('potions', on))),
-        h('div', { class: 'cp-check' }, toggle(T('auto_cc'), value('autocc'), (on) => set('autocc', on)))),
+        h('div', { class: 'cp-check' }, toggle(T('auto_cc'), value('autocc'), (on) => set('autocc', on))),
+        h('div', { class: 'cp-check' }, toggle(T('tactics_orders'), value('tactics'), (on) => set('tactics', on)))),
       h('label', { class: 'cp-wide' }, T('personality'),
         h('textarea', { rows: 2, maxlength: 250, placeholder: T('personality_placeholder'), oninput: (e) => set('personality', e.target.value) }, value('personality'))),
       h('div', { class: 'cp-row cp-apply-row' }, applyButton, discardButton, note),
@@ -507,7 +619,7 @@
           : h('button', { type: 'button', class: 'cp-btn primary', disabled: !ownerIn || bot.loading, title: ownerIn ? null : T('owner_must_play'), onclick: () => botAction(bot, 'summon') }, T('summon')),
         h('button', { type: 'button', class: 'cp-btn', disabled: !live, onclick: () => botAction(bot, 'regear') }, T('regear')),
         h('button', { type: 'button', class: 'cp-btn', disabled: !live, onclick: () => botAction(bot, 'respec') }, T('respec')),
-        h('button', { type: 'button', class: 'cp-btn', onclick: () => openDetails(bot) }, T('details')),
+        embedded ? null : h('button', { type: 'button', class: 'cp-btn', onclick: () => openDetails(bot) }, T('details')),
         h('button', { type: 'button', class: 'cp-btn', onclick: () => saveBotTemplate(templateFromBot(bot)) }, T('save_template')),
         h('button', { type: 'button', class: 'cp-btn danger', disabled: !!live, title: bot.created ? null : T('forget_hint'), onclick: () => botAction(bot, 'delete') },
           bot.created ? T('delete') : T('forget')))].filter(Boolean));
@@ -538,48 +650,47 @@
     const overlay = h('div', { class: 'cp-modal', onclick: (e) => { if (e.target === overlay) closeDetails(); } }, box);
     document.body.append(overlay);
     document.addEventListener('keydown', escClose);
-    state.details = { bot, overlay, box, tab: state.detailsTab || 'gear', data: null };
+    state.details = { bot, overlay, box, tab: state.detailsTab || 'gear', data: null, rerender: () => { if (state.details) renderDetails(); } };
     renderDetails();
-    await loadDetails();
+    await loadDetails(state.details);
   }
 
-  async function loadDetails() {
-    const d = state.details;
+  // d: the details window (state.details) or an open row of the list (state.inline[guid])
+  async function loadDetails(d) {
     if (!d) return;
     try {
       d.data = await api('GET', `/api/companions/owner/${state.owner}/bots/${d.bot.guid}/inspect`);
     } catch (err) {
       toast(errorText(err), true);
     }
-    if (state.details === d) renderDetails();
+    if (state.details === d || state.inline[d.bot.guid] === d) d.rerender();
   }
 
-  async function itemAction(action, item) {
+  async function itemAction(d, action, item) {
     if (action === 'destroy' && !window.confirm(T('destroy_confirm', { name: item.name }))) return;
-    const d = state.details;
     const done = await run(() => api('POST', `/api/companions/owner/${state.owner}/bots/${d.bot.guid}/item`,
       { action, item: action === 'unequip' ? item.slot : item.item }), T('item_done'));
-    if (done) await loadDetails();
+    if (done) await loadDetails(d);
   }
 
-  async function setPref(spell, kind) {
-    const d = state.details;
+  async function setPref(d, spell, kind) {
     const done = await run(() => api('POST', `/api/companions/owner/${state.owner}/bots/${d.bot.guid}/pref`, { kind, spell }), T('pref_saved'));
-    if (done) await loadDetails();
+    if (done) await loadDetails(d);
   }
 
   function itemName(item) {
     return h('span', { class: 'cp-item q' + item.quality }, item.name, item.count > 1 ? ` ×${item.count}` : null);
   }
 
-  function detailsBody(tab, data) {
+  function detailsBody(d) {
+    const tab = d.tab, data = d.data;
     if (!data) return h('p', { class: 'muted' }, T('loading'));
     const online = data.online;
     if (tab === 'gear') {
       if (!data.gear.length) return h('p', { class: 'muted' }, T('no_items'));
       return h('table', { class: 'cp-table' }, h('tbody', null, data.gear.sort((a, b) => a.slot - b.slot).map((item) =>
         h('tr', null, h('td', { class: 'muted' }, T('slot_' + item.slot)), h('td', null, itemName(item)), h('td', { class: 'muted' }, `ilvl ${item.ilvl}`),
-          h('td', null, online ? h('button', { type: 'button', class: 'cp-btn small', onclick: () => itemAction('unequip', item) }, T('unequip')) : null)))));
+          h('td', null, online ? h('button', { type: 'button', class: 'cp-btn small', onclick: () => itemAction(d, 'unequip', item) }, T('unequip')) : null)))));
     }
     if (tab === 'bags') {
       if (!data.bags.length) return h('p', { class: 'muted' }, T('no_items'));
@@ -588,14 +699,14 @@
           item.bound ? h('small', { class: 'cp-tag' }, T('bound_tag')) : null),
           h('td', { class: 'muted' }, item.ilvl ? `ilvl ${item.ilvl}` : ''),
           h('td', { class: 'cp-row' },
-            online && item.equippable ? h('button', { type: 'button', class: 'cp-btn small primary', onclick: () => itemAction('equip', item) }, T('equip')) : null,
-            online ? h('button', { type: 'button', class: 'cp-btn small danger', onclick: () => itemAction('destroy', item) }, T('destroy')) : null)))));
+            online && item.equippable ? h('button', { type: 'button', class: 'cp-btn small primary', onclick: () => itemAction(d, 'equip', item) }, T('equip')) : null,
+            online ? h('button', { type: 'button', class: 'cp-btn small danger', onclick: () => itemAction(d, 'destroy', item) }, T('destroy')) : null)))));
     }
     if (tab === 'stats') {
       if (!online) return h('p', { class: 'muted' }, T('details_offline'));
       const rows = [[T('health'), `${data.health} / ${data.max_health}`], [T('power'), `${data.power} / ${data.max_power}`], [T('money'), money(data.money)],
         ...STAT_ORDER.filter((k) => k in data.stats).map((k) => [T('stat_' + k), PERCENT_STATS.has(k) ? `${data.stats[k].toFixed(2)}%` : String(Math.round(data.stats[k]))])];
-      return h('dl', { class: 'cp-stats' }, rows.map(([k, v]) => [h('dt', null, k), h('dd', null, v)]));
+      return h('dl', { class: 'cp-stats' }, rows.flatMap(([k, v]) => [h('dt', null, k), h('dd', null, v)]));
     }
     if (tab === 'talents') {
       if (!online) return h('p', { class: 'muted' }, T('details_offline'));
@@ -618,9 +729,9 @@
         const current = pref ? (pref.kind === 'avoid' ? 'avoid' : 'prefer') : 'allow';
         return h('tr', null, h('td', null, title(spell), pref && pref.reason ? h('div', { class: 'muted small' }, pref.reason) : null,
           pref && pref.below ? h('div', { class: 'muted small' }, T('pref_below', { pct: pref.below })) : null),
-          h('td', null, select([['allow', T('pref_normal')], ['prefer', T('pref_more')], ['avoid', T('pref_never')]], current, (v) => setPref(spell, v))));
+          h('td', null, select([['allow', T('pref_normal')], ['prefer', T('pref_more')], ['avoid', T('pref_never')]], current, (v) => setPref(d, spell, v))));
       }))),
-      (data.prefs || []).length ? h('button', { type: 'button', class: 'cp-btn', onclick: () => setPref('*', 'allow') }, T('prefs_reset')) : null);
+      (data.prefs || []).length ? h('button', { type: 'button', class: 'cp-btn', onclick: () => setPref(d, '*', 'allow') }, T('prefs_reset')) : null);
   }
 
   function renderDetails() {
@@ -636,7 +747,7 @@
       data && !data.online ? h('p', { class: 'muted small' }, T('details_offline')) : null,
       h('div', { class: 'cp-tabs', role: 'tablist' }, tabs.map((t) => h('button', { type: 'button', role: 'tab', class: 'cp-tab' + (d.tab === t ? ' on' : ''),
         onclick: () => { d.tab = state.detailsTab = t; renderDetails(); } }, T('details_' + t)))),
-      h('div', { class: 'cp-modal-body' }, detailsBody(d.tab, data)));
+      h('div', { class: 'cp-modal-body' }, detailsBody(d)));
   }
 
   const templateFromBot = (bot) => ({
@@ -895,7 +1006,7 @@
     ['set_group_movement', ['FollowMinDistance', 'FollowMaxDistance', 'TeleportDistance', 'MountLevel']],
     ['set_group_behaviour', ['Callouts', 'AnnounceInParty', 'AutoRevive', 'AutoReviveDelay', 'FreeReagents', 'FreeFood',
       'RestoreOnLogin', 'AllowAlts', 'SyncLevel', 'AutoGear', 'GearMaxQuality']],
-    ['set_group_ai', ['LLM.Enable', 'LLM.DefaultOn', 'LLM.PartyChat', 'LLM.Callouts', 'LLM.Tactics', 'LLM.TacticsInterval', 'LLM.Banter', 'LLM.Reactions', 'LLM.MaxAge']],
+    ['set_group_ai', ['LLM.Enable', 'LLM.DefaultOn', 'LLM.PartyChat', 'LLM.Callouts', 'LLM.Tactics', 'LLM.TacticsInterval', 'LLM.Banter', 'LLM.Reactions', 'LLM.MaxReplies', 'LLM.MaxAge']],
     ['set_group_raid', ['Raid20.Enable', 'Raid20.Health', 'Raid20.Damage']],
     ['set_group_ambient', ['Ambient.Enable', 'Ambient.Density', 'Ambient.CityDensity', 'Ambient.MaxTotal', 'Ambient.Radius', 'Ambient.GearQuality', 'Ambient.PoolSize', 'Ambient.CompanionChance']],
   ];

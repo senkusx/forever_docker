@@ -45,6 +45,7 @@ namespace Companions
         uint8 LootMode = 0;         // 0 what it can use, 1 everything, 2 nothing
         bool UsePotions = true;     // potions and healthstones from its bags when low
         bool AutoCC = true;         // controls an extra add of a pack on its own
+        bool Tactics = true;        // takes the brain's tactical orders in fights (kill order, crowd control, interrupts)
     };
 
     class CompanionMgr
@@ -135,6 +136,7 @@ namespace Companions
 
         // Player::Update hook (map thread)
         static void OnBotPlayerUpdate(Player* player, uint32 diff);
+        static void OnBotPacket(WorldSession* session, WorldPacket const* packet);   // what the server sends a bot
 
         // test harness (".bot test", admins only): a headless stand-in owner, to check bots without a game client
         bool LoginPuppet(ObjectGuid guid, std::string& error);

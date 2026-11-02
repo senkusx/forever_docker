@@ -331,12 +331,10 @@ namespace Companions
             return Cast("seal of command") || Cast("seal of righteousness");
         }
 
-        // a blessing asked for ("salvation on me"): Forever calls Blessing of Salvation just "Salvation"
-        std::string_view ChosenBlessing(Player* member) const
+        // a kind of blessing as this paladin knows it: Forever calls Blessing of Salvation just "Salvation". One it was told
+        // to avoid (web panel, "avoid blessing of might") is not its own: the plan hands that kind to another paladin
+        static std::string_view KnownBlessing(CompanionAI const& ai, std::string_view kind)
         {
-            std::string kind = _ai.BlessingFor(member->GetGUID());
-            if (kind.empty())
-                return { };
             // plain arrays: an initializer_list inside a pair would point at a temporary that is long gone
             struct Kind { char const* Name; char const* Spells[2]; };
             static Kind const kinds[] = {
@@ -346,37 +344,92 @@ namespace Companions
             for (Kind const& entry : kinds)
                 if (kind == entry.Name)
                     for (char const* spell : entry.Spells)
-                        if (spell && Knows(spell))
+                        if (spell && ai.Knows(spell) && !ai.IsAvoided(spell))
                             return spell;
+            return { };
+        }
+
+        // the kinds a member wants, most needed first: the one asked for, then by role (Salvation never on a tank unless asked)
+        std::vector<std::string_view> BlessingNeeds(Player* member) const
+        {
+            static char const* const known[] = { "salvation", "might", "wisdom", "kings", "light", "sanctuary" };
+            std::vector<std::string_view> needs;
+            std::string const asked = _ai.BlessingFor(member);
+            for (char const* kind : known)
+                if (asked == kind)
+                    needs.push_back(kind);
+            bool const physical = IsPhysicalClass(member) && member->GetClass() != CLASS_HUNTER;
+            switch (CompanionAI::BlessingRole(member))
+            {
+                case Role::Tank:
+                    for (std::string_view kind : { "kings", physical ? "might" : "wisdom", "light", "sanctuary" })
+                        needs.push_back(kind);
+                    break;
+                case Role::MeleeDps:
+                    for (std::string_view kind : { physical || !UsesMana(member) ? "might" : "wisdom", "kings", "salvation", "light",
+                        UsesMana(member) ? "wisdom" : "might" })
+                        needs.push_back(kind);
+                    break;
+                default:    // healers, casters, hunters
+                    for (std::string_view kind : { "wisdom", "kings", "salvation", "light" })
+                        needs.push_back(kind);
+                    break;
+            }
+            std::vector<std::string_view> unique;
+            for (std::string_view kind : needs)
+                if (std::find(unique.begin(), unique.end(), kind) == unique.end())
+                    unique.push_back(kind);
+            return unique;
+        }
+
+        // The blessing this paladin gives that member. Every paladin companion of the group works the same plan out (paladins
+        // in GUID order, the member's kinds in order of need, each kind to the first free paladin who knows it), so each kind
+        // on a member comes from one paladin and nobody overwrites another's: with three paladins a warrior gets Might, Kings
+        // and Salvation, one from each.
+        std::string_view PlannedBlessing(Player* member) const
+        {
+            std::vector<Player*> paladins;
+            for (Player* other : _ai.View().Members)
+                if (other->GetClass() == CLASS_PALADIN && other->IsAlive() && sCompanionMgr->GetAI(other))
+                    paladins.push_back(other);
+            if (std::find(paladins.begin(), paladins.end(), Me()) == paladins.end())
+                paladins.push_back(Me());
+            std::sort(paladins.begin(), paladins.end(), [](Player* a, Player* b) { return a->GetGUID() < b->GetGUID(); });
+            std::vector<bool> busy(paladins.size(), false);
+            for (std::string_view kind : BlessingNeeds(member))
+                for (size_t i = 0; i < paladins.size(); ++i)
+                {
+                    CompanionAI const* ai = busy[i] ? nullptr : sCompanionMgr->GetAI(paladins[i]);
+                    std::string_view spell = ai ? KnownBlessing(*ai, kind) : std::string_view();
+                    if (spell.empty())
+                        continue;
+                    if (paladins[i] == Me())
+                        return spell;
+                    busy[i] = true;
+                    break;
+                }
             return { };
         }
 
         std::vector<std::string_view> OwnBuffs(Player* member) override
         {
-            if (std::string_view chosen = ChosenBlessing(member); !chosen.empty())
-                return { chosen };
-            return { "blessing of kings", "blessing of might", "blessing of wisdom", "blessing of light", "salvation", "blessing of salvation" };
+            if (std::string_view planned = PlannedBlessing(member); !planned.empty())
+                return { planned };
+            return { };
         }
 
         bool GroupBuffs(Player* member) override
         {
-            static std::initializer_list<std::string_view> const blessings = { "blessing of kings", "blessing of might", "blessing of wisdom",
-                "blessing of salvation", "salvation", "blessing of light", "blessing of sanctuary", "greater blessing of kings",
-                "greater blessing of might", "greater blessing of wisdom", "greater blessing of light" };
-            // the one asked for replaces this paladin's other blessing
-            if (std::string_view chosen = ChosenBlessing(member); !chosen.empty())
-                return (!Has(member, chosen, true) || _ai.AuraRemaining(member, chosen) < 10000) && Cast(chosen, member);
-            if (HasAnyAura(member, blessings, true))
+            std::string_view const planned = PlannedBlessing(member);
+            if (planned.empty())
                 return false;
-            if (_ai.IsTank(member) && Knows("blessing of kings"))
-                return Cast("blessing of kings", member);
-            if (UsesMana(member) && !IsPhysicalClass(member) && member->GetClass() != CLASS_PALADIN && Knows("blessing of wisdom"))
-                return Cast("blessing of wisdom", member);
-            if (member->GetClass() == CLASS_PALADIN && member != Me() && Knows("blessing of wisdom"))
-                return Cast("blessing of wisdom", member);
-            if (Knows("blessing of kings") && !Knows("blessing of might"))
-                return Cast("blessing of kings", member);
-            return Cast("blessing of might", member) || Cast("blessing of kings", member);
+            // a player paladin's of that kind is left alone, never overwritten; a companion's is taken over (an older plan:
+            // a paladin came, left or died, or an order changed it), as that one gives it no more
+            if (ObjectGuid other = _ai.OtherCaster(member, planned); !other.IsEmpty())
+                if (Player* caster = ObjectAccessor::FindConnectedPlayer(other); caster && !sCompanionMgr->GetAI(caster))
+                    return false;
+            int32 const left = _ai.AuraRemaining(member, planned, true);
+            return left >= 0 && left < 10000 && Cast(planned, member);
         }
 
         bool Heal(Unit* target, HealUrgency urgency, uint32 deficit) override

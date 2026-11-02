@@ -56,7 +56,7 @@ SIMPLE_ORDERS = {'follow', 'stay', 'come', 'attack', 'pull', 'stop', 'passive', 
                  'retreat', 'spread', 'stack', 'normal'}
 TARGET_ORDERS = {'heal', 'dispel', 'protect', 'assist'}   # + a party member's name or "me"
 ICONS = {'star', 'circle', 'diamond', 'triangle', 'moon', 'square', 'cross', 'skull'}
-GROUP_KEYS = ('llm', 'aggression', 'stance', 'quality', 'provider')
+GROUP_KEYS = ('llm', 'aggression', 'stance', 'quality', 'provider', 'tactics')
 
 _attempts: dict[str, deque] = defaultdict(deque)
 _looks_cache: dict[tuple, dict] = {}
@@ -152,8 +152,8 @@ def build_router(db, soap_command, client_ip, templates, page_context):
         raise PanelError('not_your_character', 403)
 
     def bots_of(owner: int):
-        return query('SELECT b.guid, c.name, c.race, c.class, c.gender, c.level, b.role, b.active, b.created, b.llm, b.personality, '
-                     'b.spec, b.gear_quality, b.aggression, b.stance, b.template_id, b.llm_provider, b.loot_mode, b.potions, b.auto_cc, c.surname '
+        # b.*: columns the worldserver adds as the module grows (tactics) are read once it has made them
+        return query('SELECT b.*, c.name, c.race, c.class, c.gender, c.level, c.surname '
                      'FROM characters.companion_bots b '
                      'JOIN characters.characters c ON c.guid = b.guid WHERE b.owner_guid = %s AND c.deleteDate IS NULL ORDER BY c.name',
                      (owner,))
@@ -185,6 +185,7 @@ def build_router(db, soap_command, client_ip, templates, page_context):
             'spec': row['spec'], 'quality': row['gear_quality'], 'aggression': row['aggression'], 'stance': row['stance'],
             'template': row['template_id'], 'provider': row['llm_provider'], 'created': bool(row['created']), 'active': bool(row['active']),
             'loot': int(row.get('loot_mode') or 0), 'potions': bool(row.get('potions', 1)), 'autocc': bool(row.get('auto_cc', 1)),
+            'tactics': bool(row.get('tactics', 1)),
             'surname': row.get('surname') or '',
             'live': live,
         }
@@ -257,6 +258,8 @@ def build_router(db, soap_command, client_ip, templates, page_context):
             out['potions'] = bool(data.get('potions'))
         if has('autocc'):
             out['autocc'] = bool(data.get('autocc'))
+        if has('tactics'):
+            out['tactics'] = bool(data.get('tactics'))
         if has('name') or not partial:
             name = str(data.get('name') or '').strip()
             if name and not NAME_RE.match(name):
@@ -491,7 +494,7 @@ def build_router(db, soap_command, client_ip, templates, page_context):
             await admin(f"set {owner} {bot} role {ROLE_WORDS[changes['role']]}")
         if 'spec' in changes:
             await admin(f"set {owner} {bot} spec {changes['spec'] or '-'}")
-        for key in ('llm', 'quality', 'aggression', 'stance', 'provider', 'loot', 'potions', 'autocc'):
+        for key in ('llm', 'quality', 'aggression', 'stance', 'provider', 'loot', 'potions', 'autocc', 'tactics'):
             if key in changes:
                 await admin(f'set {owner} {bot} {key} {int(changes[key])}')
         if 'personality' in changes:

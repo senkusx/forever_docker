@@ -137,6 +137,7 @@ namespace Companions
         void OrderStop();
         void OrderComeHere();
         void OrderRest() { _restRequested = true; }
+        void OnRolePoll() { _rolePoll = true; }
         void OrderHeal(ObjectGuid target) { _healTarget = target; _healUntil = GameTime::Now() + Seconds(8); }
         void OrderDispel(ObjectGuid target) { _dispelTarget = target; _dispelUntil = GameTime::Now() + Seconds(8); }
         void OrderProtect(ObjectGuid target) { _protectTarget = target; _protectUntil = GameTime::Now() + Seconds(25); }
@@ -153,9 +154,14 @@ namespace Companions
         void ReleaseCrowdControl() { _ccTarget.Clear(); _ccCasts = 0; }
         void OrderInterrupt(ObjectGuid target) { _interruptTarget = target; _interruptUntil = GameTime::Now() + Seconds(30); }
         void OrderBurst() { _burstUntil = GameTime::Now() + Seconds(20); }
-        // buffs asked for: a blessing of choice for someone ("salvation on me"), or the buffs again now ("rebuff me intellect")
+        // buffs asked for: a blessing of choice for someone ("salvation on me") or for a role ("salvation on the dps": tank,
+        // healer, melee, ranged, dps, all), kept by every paladin companion of the group, or the buffs again now ("rebuff me")
         void SetBlessingFor(ObjectGuid member, std::string kind) { _blessingFor[member] = std::move(kind); }
-        std::string BlessingFor(ObjectGuid member) const;
+        void SetBlessingForRole(std::string const& who, std::string kind) { _blessingForRole[who] = std::move(kind); }
+        void ClearBlessingRequests() { _blessingFor.clear(); _blessingForRole.clear(); }
+        std::string BlessingFor(Player const* member) const;
+        // what a member is to the paladins: a companion's role; a player marked main tank in the raid is a tank, else its class
+        static Role BlessingRole(Player const* member);
         bool OrderRebuff(Player* member, std::string const& filter);   // false: none of its buffs matches
         // loot: equip something from its bags ("it" = the last item it received, "upgrades" = all that are better)
         std::string OrderEquip(std::string const& what);
@@ -197,6 +203,7 @@ namespace Companions
         bool AttackedByGroup(Unit const* unit) const;
         std::string RecentCasts() const;    // test harness: what it did lately
         std::string MechanicsLine() const;  // test harness: the boss mechanics it follows right now
+        std::string ConjureLine() const;     // test: what a mage is conjuring and for whom
 
         // ---- helpers for ClassAI ----
         uint32 SpellIdOf(std::string_view name) const { return _spells.Best(name); }
@@ -213,6 +220,7 @@ namespace Companions
         bool IsSpellNamed(uint32 spellId, std::string_view name) const;    // any rank
         bool HasAura(Unit const* unit, std::string_view name, bool mineOnly = false) const;
         int32 AuraRemaining(Unit const* unit, std::string_view name, bool mineOnly = false) const;   // ms, 0 = absent, -1 = permanent
+        ObjectGuid OtherCaster(Unit const* unit, std::string_view name) const;     // who else's aura of that name is on it
         uint32 AuraStacks(Unit const* unit, std::string_view name, bool mineOnly = false) const;
         bool IsSpellReady(std::string_view name) const;
         uint32 DispellableMask(Unit* target) const;    // 1 << DispelType of harmful auras we could remove
@@ -276,7 +284,7 @@ namespace Companions
         uint8 GetLootMode() const { return _lootMode; }
         // ---- items (CompanionAIItems.cpp) ----
         void UpdateTrade();                 // answers trade windows: opens, gives what was asked, accepts
-        bool OrderGive(Player* to, std::string const& what, std::string& reply);   // "give me your potions"
+        bool OrderGive(Player* to, std::string const& what, std::string& reply, bool conjure = true);   // "give me your potions" (a mage: conjured)
         bool UpdateLooting();               // walks to its corpses and takes what it can use
         bool UsePotion();                   // in combat: a potion or healthstone when low
         void OnTradeFinished();             // thanks the trader, tells what it will do with it
@@ -287,6 +295,7 @@ namespace Companions
 
         void Think(uint32 diff);
         void HandleRequests();
+        void SyncGroupRole(bool answer);   // its role in the group (raid frames, role checks); answer: says it to the group
         void HandleDeath(uint32 diff);
         void BuildView();
         void UpdateCombat();
@@ -299,6 +308,7 @@ namespace Companions
         bool UpdateBuffs(bool inCombat);
         bool UpdateEatDrink();
         bool UpdatePendingCast();
+        bool UpdateConjure();       // food or water a mage was asked for and conjures first
         bool CancelNeedlessHeal();
         void UpdateMount();
         uint32 MountFor(bool swift) const;          // its own race's (or class's) mount spell, 0 for none
@@ -389,6 +399,7 @@ namespace Companions
         TimePoint _lastCastTime;
         uint32 _deadTimer = 0;
         bool _restRequested = false;
+        bool _rolePoll = false;             // a role check to answer
         bool _eating = false;
         uint32 _restTimer = 0;
         struct LaterLine { TimePoint Due; std::string Text; ObjectGuid WhisperTo; };
@@ -485,6 +496,12 @@ namespace Companions
         ObjectGuid _giveTo;             // a trade it opened to hand something over
         std::string _giveWhat;
         TimePoint _giveUntil = { };
+        ObjectGuid _conjureFor;                     // who it walks over to with what was asked (a mage conjures it first)
+        std::string _deliverWhat;                   // what it trades them there
+        std::vector<char const*> _conjureSpells;    // "conjure water", "conjure food" still to cast
+        uint32 _conjureCasts = 0;
+        TimePoint _conjureUntil = { };
+        std::string _conjureNote;                   // test harness: why its last conjure failed
         bool _giveFilled = false;
         ObjectGuid _tradeBegun;         // the trade window it opened for that player
         ObjectGuid _tradeDone;          // accepted: thanks once the trade is over
@@ -496,6 +513,7 @@ namespace Companions
         float _formationSide = 1.0f;    // melee: left or right of the owner
         std::deque<std::pair<TimePoint, std::string>> _recentCasts;
         std::unordered_map<ObjectGuid, std::string> _blessingFor;
+        std::unordered_map<std::string, std::string> _blessingForRole;
         ObjectGuid _rebuffTarget;
         std::vector<std::string> _rebuffQueue;
         std::vector<uint32> _wantedLoot;            // won on Need: equipped as soon as it is in the bags

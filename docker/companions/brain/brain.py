@@ -43,6 +43,7 @@ ORDER_WORDS = {
     "run", "flee", "fallback", "cc", "sheep", "control", "interrupt", "taunt", "mark", "burst", "cooldowns",
     "bless", "rebuff", "buff", "equip", "salvation", "might", "wisdom", "kings", "light", "sanctuary",
     "plan", "prefer", "avoid", "allow", "prefs", "give", "hand", "loot", "potions", "autocc", "face", "tank", "tactics",
+    "conjure",
 }
 # what a player who is not the leader may ask of the companions
 HELP_WORDS = {"heal", "dispel", "decurse", "cleanse", "protect", "save", "assist", "status", "bless", "rebuff", "buff",
@@ -89,7 +90,9 @@ it over here"), the tank does it: give it the order and let it say so, never ref
   | taunt E2 (tank) | mark skull E2 (raid markers: skull = kill first, cross = second, moon = crowd controlled) | burst (cooldowns now)
 - passive | assist | aggressive (when they fight on their own)
 - role tank | role heal | role dps
-- bless <name> salvation|might|wisdom|kings|light|sanctuary (a paladin gives that blessing to them from now on)
+- bless <name|me|tanks|healers|dps|melee|ranged|all> salvation|might|wisdom|kings|light|sanctuary (the paladins give that \
+blessing to that player or role from now on, and split the others between them: "salv on the dps" -> bless dps salvation) \
+| bless reset (back to their usual blessings)
 - rebuff <name> [buff] (cast the buff again now even if it is still up: "rebuff me intellect", "rebuff bob fortitude"), given to
   the companion whose class has it: Arcane Intellect = mage, Fortitude and Divine Spirit = priest, Mark of the Wild and Thorns =
   druid, blessings = paladin
@@ -107,7 +110,8 @@ to how a companion fights, from feedback ("use more Frost Nova, the adds keep re
 prefer frost nova because adds keep reaching the healer; "Shield Wall when you get low" -> prefer shield wall below 30; \
 "stop breaking my sheep with Arcane Explosion" -> avoid arcane explosion because it breaks sheep). Only spells that \
 companion's class has. "prefs" makes them tell what they were told.
-- give me <item name|potions|food|drink|bandages|junk> (it opens a trade with the leader) | loot all|useful|off | \
+- give me <item name|potions|food|drink|bandages|junk> (it opens a trade with the leader) | conjure food|water|both (a mage \
+makes it and trades it over: "mage food", "can I get water" -> that mage: conjure both / conjure water) | loot all|useful|off | \
 potions on|off (drink potions when low) | autocc on|off (crowd control extra adds on its own)
 Boss tactics: the situation lists the bosses of the instance and "tactics" lines (general, then each role's part) for the \
 boss named or fought. Asked how a boss works or what to do, answer from those lines, each companion for its own role in \
@@ -172,6 +176,14 @@ def leader_of(event):
     return context_line(event, "leader")
 
 
+def most_answers(event):
+    """How many companions may answer one party line (Companions.LLM.MaxReplies, sent with the event; 2 before it was)."""
+    try:
+        return max(1, min(10, int(context_line(event, "most answers") or 2)))
+    except ValueError:
+        return 2
+
+
 def build_request(event, memory):
     bots = roster_of(event)
     names = ", ".join(f"{name} ({klass}, {role})" for _, name, klass, role in bots)
@@ -223,7 +235,7 @@ def build_request(event, memory):
         task = (f"{speaker} asks in party chat{', to ' + named if named else ''}: {message}\nThe companions answer from the "
                 "\"tactics\" line of the situation, each in its own personality and voice, never reciting it word for word: "
                 f"{named or 'the tank (or the first companion)'} first says how the fight works (what the boss does, from the "
-                "general part: none of it left out) and its own part; then up to two others add their role's part (the healer what "
+                f"general part: none of it left out) and its own part; then up to {max(2, most_answers(event) - 1)} others add their role's part (the healer what "
                 "to heal and dispel, a damage dealer the kill order and what to avoid). Each line one or two sentences, under 230 "
                 "characters. Orders only if the player asked for something. "
                 f"Companions you voice: {names}.")
@@ -232,7 +244,8 @@ def build_request(event, memory):
         task = (f"{speaker} says in party chat, to {named}: {message}\n{named} answers (and does what is asked); another companion "
                 f"adds something only if it is clearly concerned. Companions you voice: {names}.")
     elif kind == "group":
-        task = (f"{speaker} says in party chat: {message}\nDecide which of the companions answer, if any, and what they do. "
+        task = (f"{speaker} says in party chat: {message}\nDecide which of the companions answer (at most {most_answers(event)}), if any, "
+                "and what they do. "
                 f"Companions you voice: {names}.")
     else:
         task = f"{speaker} says in party chat to {bots[0][1]}: {message}"
@@ -340,7 +353,7 @@ def actions_from(event, data, order_mode="all"):
             "commands": "\n".join(orders),
             "delay_ms": max(0, min(delay, 6000)),
         })
-        limit = len(bots) if event["kind"] == "tactics" else 1 if reaction else 3 if question else 2
+        limit = len(bots) if event["kind"] == "tactics" else 1 if reaction else max(3, most_answers(event)) if question else most_answers(event)
         if single or len(actions) >= limit:
             break
     if event["kind"] == "tactics":

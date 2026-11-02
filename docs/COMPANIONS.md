@@ -7,7 +7,10 @@ A server-side AI plays each one in its role:
 - **Tank**: leads in front of you. Warriors wait in Battle Stance, charge the pull and switch to Defensive Stance;
   taking threat back comes first (healers first): taunt, the biggest hits when it is on cooldown, Challenging Shout /
   Roar when several got loose, and it keeps switching to the enemy it holds by the thinnest margin before a damage
-  dealer pulls it. Warriors: Shield Slam, Revenge, Sunder, Thunder Clap, Demoralizing Shout, Concussion Blow, Shield
+  dealer pulls it. With two tanks or more, the main tank (the one marked main tank in the raid, else the first) holds
+  the boss; the others pick up what is loose or nobody tanks, then an add off the main tank when it holds several. A
+  tank never hits what another tank holds or went for, so two tanks do not trade threat on one enemy while others run
+  free; only a tank swap of the boss's tactics, or a `taunt <marker>` order (the brain's too), puts them on one. Warriors: Shield Slam, Revenge, Sunder, Thunder Clap, Demoralizing Shout, Concussion Blow, Shield
   Block, Cleave. Paladins (no taunt): Righteous Fury, Seal of Fury, Judgement, Consecration, Holy Shield, Holy Strike,
   Holy Wrath and Exorcism on undead and demons. Bears: Swipe on packs, Lacerate, Demoralizing Roar, Faerie Fire.
 - **Healer**: heals and does nothing else in a fight (no damage spells, no wand); heals by priority (tank first), picks the cheapest rank that covers the damage (smaller ones when mana
@@ -27,7 +30,8 @@ A server-side AI plays each one in its role:
   loosely like players do, each in its part of the group (tank in front, melee beside you, healers and casters a
   little further back), shuffling now and then, calls out what matters (out of mana, low health, adds, a loose moon, someone down, a rare or a
   dangerous elite nearby), mounts when you mount, eats and drinks after fights, accepts resurrections, ready checks and shared
-  quests, and joins you when you change zone or enter a dungeon.
+  quests, answers a role check with its role (and keeps its role set in the group for the raid frames), and joins you
+  when you change zone or enter a dungeon.
 
 The 9 classic classes are supported, with their spells resolved by name to the best rank the bot knows. Hunters
 get a pet and warlocks summon demons. Bots you create level with you and learn their trainer spells. They also
@@ -55,13 +59,16 @@ your level ups. Your own characters keep their level and gear, and gain XP and l
 accounts with GM level 3 get in (`.account set gmlevel <game account> 3 -1` from the worldserver console). For each
 of your characters:
 
-- **Party**: live health, mana, item level, talents and zone of each companion. Give orders to all or one, summon or
+- **Party**: a list of your companions, one row each (role, class, level, item level, health and mana, zone) that
+  opens on its full card and details; filter it by role, class, summoned or not, or a name, and sort it by role, class,
+  name, level or item level (kept for your next visit). Live health, mana, item level, talents and zone of each companion. Give orders to all or one, summon or
   dismiss, and set the role, talents, gear quality, aggression, stance, AI brain and personality. Changes wait on the
   card (marked in gold) until **Apply**, which confirms what was applied and when it acts (talents and gear are
   relearned within seconds for a companion with you). Talents: one meta build per tree, as played in classic raids
   (for example Fury 17/34/0, Protection 8/5/38, Holy 31/20/0), or the role's one. Rename (while resting), new gear, new talents, delete. Whole-party settings: brain on or off for
-  all, aggression, stance and gear quality, plus summon or dismiss all. Also per companion: looting (what it can use,
-  everything, nothing), potions when low, crowd control of extra adds on its own.
+  all, aggression, stance and gear quality, tactical orders on or off for all, plus summon or dismiss all. Also per
+  companion: looting (what it can use, everything, nothing), potions when low, crowd control of extra adds on its own,
+  and whether it takes the brain's tactical orders.
 - **Teams**: sets of your companions you bring with one click, as often as you like ("Dungeon": tank, healer, three
   damage dealers; "Raid": nineteen). **Summon team** brings its members and sends your other companions away, so the
   team has the room. Save the party you have out now as a team, or pick the members; edit or delete them any time. In
@@ -103,7 +110,7 @@ but take no orders there.
 | `retreat` | run back to you and stop fighting for a moment |
 | `cc <marker>` / `interrupt <marker>` / `taunt <marker>` | keep it crowd controlled / interrupt its casts / the tank takes it |
 | `burst` | offensive cooldowns now |
-| `bless <name\|me> salvation` (or `salvation on me`) | a paladin gives that blessing (salvation, might, wisdom, kings, light, sanctuary) from now on |
+| `salv on dps` / `bless <who> <blessing>` / `bless reset` | the paladins give that blessing (salvation, might, wisdom, kings, light, sanctuary; salv, bom, bow, bok...) to a player (`me`, a name, `this` for the one you target), a role (`tanks`, `healers`, `dps`, `melee`, `ranged`) or everyone (`raid`), from now on (see below) |
 | `rebuff <name\|me> [buff]` | cast the buff again now, even if it is still up (`rebuff me intellect`); passed to a companion that has it |
 | `equip it` / `equip <item>` / `equip upgrades` | put on what you handed over (master loot), an item by name, or everything better in its bags |
 | `stop` | stop attacking for a few seconds |
@@ -116,11 +123,19 @@ but take no orders there.
 | `tank here` (tank) | holds the next enemy where you stand ("tank him here", "bring it to me") |
 | `plan <steps>` | several steps carried out in order (see below); `plan` shows it, `cancel plan` stops it |
 | `prefer <spell> [below 30]` / `avoid <spell>` / `allow <spell>` / `prefs [clear]` | lasting changes to how it uses an ability (see below) |
-| `give me <item\|potions\|food\|drink\|bandages\|junk>` | it opens a trade with you and puts it in |
+| `give me <item\|potions\|food\|drink\|bandages\|junk>` | it comes over, opens a trade with you and puts it in; a mage without any conjures food or water first ("mage food", "water") |
+| `conjure [food\|water]` (mage) | conjures a stack and trades it to you |
 | `loot all\|useful\|off`, `potions on\|off`, `autocc on\|off` | what it picks up from its corpses, potions when low, crowd control of extra adds on its own |
 | `status` | health, mana, role |
 | `gear` | look again for the best gear |
 | `dismiss` | leave |
+
+**Blessings.** Paladin companions share the blessings out like a raid's paladins: each player gets one blessing of each
+kind, each kind from one paladin, so none overwrites another's (nor a player paladin's). By default a tank gets Kings,
+then Might (Wisdom for a caster), Light and Sanctuary; melee Might, Kings, Salvation, Light; casters, hunters and healers
+Wisdom, Kings, Salvation, Light: as many of these as there are paladins. What you ask for ("I want salv on dis",
+"might on melee", "kings on everyone") comes first, for a player before their role before everyone; `bless reset`
+goes back to the default.
 
 Plain words work too, without the brain: "go all out", "hold up", "fall back", "help me", "take a breather" are the
 orders they mean.
@@ -262,7 +277,8 @@ with the server AI, so a slow answer never costs a fight.
 **Tactics**: in a fight worth it (a pack of three or more, two with an elite, a boss), the brain reviews the
 situation when it starts and every `LLM.TacticsInterval` seconds: enemies are numbered (E1, E2...) with their type,
 target and what they cast, and it assigns kill order, crowd control, interrupts, taunts, raid markers (that you see
-too) and cooldowns, with one short call in party chat. The server AI carries it out at once and checks everything
+too) and cooldowns, with one short call in party chat. A companion set not to take tactical orders (web panel) keeps
+to the server AI's choices. The server AI carries it out at once and checks everything
 (a mage cannot polymorph an undead); the brain is too slow to press buttons, so it leads instead. Off with
 `LLM.Tactics = 0`.
 
@@ -351,7 +367,8 @@ who loves ale` (or the panel) gives a bot a character. Banter (comments on level
 | `Companions.LLM.PartyChat` | 1 | the brain hears every party line that is not an order |
 | `Companions.LLM.Callouts` | 1 | the brain words the callouts of the bots linked to it |
 | `Companions.LLM.Tactics` | 1 | the brain leads fights (kill order, crowd control, interrupts) |
-| `Companions.LLM.TacticsInterval` | 15 | seconds between two tactical reviews of a fight |
+| `Companions.LLM.TacticsInterval` | 15 | seconds between two tactical reviews of a fight (1-60) |
+| `Companions.LLM.MaxReplies` | 2 | most companions that answer one line in party chat (1-10; a question to all gets at least 3) |
 | `Companions.LLM.Banter` | 0 | comments on level ups |
 | `Companions.LLM.Reactions` | 35 | % chance that another companion answers a companion's party line (a few in a row at most) |
 | `Companions.LLM.MaxAge` | 45 | seconds after which an unanswered line is dropped |

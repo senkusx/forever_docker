@@ -42,10 +42,11 @@ namespace Companions
         bool LLMCallouts = true;            // the brain words the bots' situational callouts
         bool LLMBanter = false;             // bots comment on events (level up, boss kill)
         uint32 LLMReactions = 35;           // % chance that another companion answers a companion's party line (bounded)
+        uint32 LLMMaxReplies = 2;           // companions that may answer one party line (boss questions: 3 at least)
         uint32 LLMPollInterval = 1000;      // ms
         uint32 LLMMaxAge = 45;              // seconds after which an unanswered line is dropped
         bool LLMTactics = true;             // in fights the brain assigns kill order, crowd control, interrupts, cooldowns
-        uint32 LLMTacticsInterval = 15;     // seconds between two tactical reviews of the same fight
+        uint32 LLMTacticsInterval = 15;     // seconds between two tactical reviews of the same fight (1 to 60)
 
         bool Raid20Enable = true;           // the 40-player raids are tuned for 20 (see CompanionScaling.h)
         float Raid20Health = 0.5f;          // share of their creatures' health (applies when they spawn)

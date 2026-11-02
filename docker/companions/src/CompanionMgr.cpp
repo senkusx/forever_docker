@@ -34,6 +34,8 @@
 #include "ItemTemplate.h"
 #include "StringFormat.h"
 #include "World.h"
+#include "Opcodes.h"
+#include "WorldPacket.h"
 #include "WorldSession.h"
 #include <algorithm>
 #include <sstream>
@@ -50,6 +52,7 @@ namespace Companions
     void CompanionMgr::Initialize()
     {
         BotSessionHooks::OnPlayerUpdate = &CompanionMgr::OnBotPlayerUpdate;
+        BotSessionHooks::OnPacket = &CompanionMgr::OnBotPacket;
         LoadStoredSettings();
         if (!GetConfig().Enable)
             return;
@@ -96,6 +99,7 @@ namespace Companions
         EnsureColumn("companion_bots", "loot_mode", "TINYINT UNSIGNED NOT NULL DEFAULT 0");
         EnsureColumn("companion_bots", "potions", "TINYINT UNSIGNED NOT NULL DEFAULT 1");
         EnsureColumn("companion_bots", "auto_cc", "TINYINT UNSIGNED NOT NULL DEFAULT 1");
+        EnsureColumn("companion_bots", "tactics", "TINYINT UNSIGNED NOT NULL DEFAULT 1");
         // teams of companions summoned together (the web panel makes them; the same definition as web/app/companions.py)
         CharacterDatabase.DirectExecute(
             "CREATE TABLE IF NOT EXISTS `companion_teams` ("
@@ -144,7 +148,7 @@ namespace Companions
     {
         _records.clear();
         QueryResult result = CharacterDatabase.Query("SELECT b.guid, b.owner_guid, b.role, b.active, b.created, b.llm, b.personality, "
-            "b.spec, b.gear_quality, b.aggression, b.stance, b.template_id, b.llm_provider, b.prefs, b.loot_mode, b.potions, b.auto_cc FROM companion_bots b JOIN characters c ON c.guid = b.guid JOIN characters o ON o.guid = b.owner_guid WHERE c.deleteDate IS NULL");
+            "b.spec, b.gear_quality, b.aggression, b.stance, b.template_id, b.llm_provider, b.prefs, b.loot_mode, b.potions, b.auto_cc, b.tactics FROM companion_bots b JOIN characters c ON c.guid = b.guid JOIN characters o ON o.guid = b.owner_guid WHERE c.deleteDate IS NULL");
         if (!result)
             return;
         do
@@ -168,6 +172,7 @@ namespace Companions
             record.LootMode = std::min<uint8>(fields[14].GetUInt8(), 2);
             record.UsePotions = fields[15].GetBool();
             record.AutoCC = fields[16].GetBool();
+            record.Tactics = fields[17].GetBool();
             _records[record.Guid] = record;
         } while (result->NextRow());
     }
@@ -181,10 +186,10 @@ namespace Companions
         std::string prefs = record.Prefs;
         CharacterDatabase.EscapeString(prefs);
         CharacterDatabase.PExecute("REPLACE INTO companion_bots (guid, owner_guid, role, active, created, llm, personality, spec, gear_quality, aggression, stance, template_id, llm_provider, "
-            "prefs, loot_mode, potions, auto_cc) VALUES ({}, {}, {}, {}, {}, {}, '{}', '{}', {}, {}, {}, {}, {}, '{}', {}, {}, {})",
+            "prefs, loot_mode, potions, auto_cc, tactics) VALUES ({}, {}, {}, {}, {}, {}, '{}', '{}', {}, {}, {}, {}, {}, '{}', {}, {}, {}, {})",
             record.Guid.GetCounter(), record.Owner.GetCounter(), uint32(record.BotRole), uint32(record.Active), uint32(record.Created),
             uint32(record.UseLLM), personality, spec, uint32(record.GearQuality), uint32(record.AggressionMode), uint32(record.StanceMode), record.TemplateId, record.LLMProvider,
-            prefs, uint32(record.LootMode), uint32(record.UsePotions), uint32(record.AutoCC));
+            prefs, uint32(record.LootMode), uint32(record.UsePotions), uint32(record.AutoCC), uint32(record.Tactics));
     }
 
     void CompanionMgr::AddRecord(BotRecord const& record)
@@ -1128,6 +1133,16 @@ namespace Companions
             _ownerAwayTimers.erase(bot->GetGUID());
     }
 
+    // a bot has no client: the few packets a player answers by hand reach its AI (a role check); the rest is dropped
+    void CompanionMgr::OnBotPacket(WorldSession* session, WorldPacket const* packet)
+    {
+        if (packet->GetOpcode() != SMSG_ROLE_POLL_INFORM)
+            return;
+        if (Player* bot = session->GetPlayer())
+            if (CompanionAI* ai = sCompanionMgr->GetAI(bot))
+                ai->OnRolePoll();
+    }
+
     void CompanionMgr::OnBotPlayerUpdate(Player* player, uint32 diff)
     {
         if (CompanionAI* ai = instance()->GetAI(player->GetGUID()))
@@ -1327,5 +1342,6 @@ namespace Companions
             delete pending.Session;
         _pendingLogins.clear();
         BotSessionHooks::OnPlayerUpdate = nullptr;
+        BotSessionHooks::OnPacket = nullptr;
     }
 }

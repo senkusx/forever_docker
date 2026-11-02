@@ -270,107 +270,6 @@ index edf57ad0..cf0c8c2a 100644
  
  private:
      void SendStartRoll();
-diff --git a/src/server/game/Server/WorldSession.cpp b/src/server/game/Server/WorldSession.cpp
-index 5e6b41b8..a9da99b9 100644
---- a/src/server/game/Server/WorldSession.cpp
-+++ b/src/server/game/Server/WorldSession.cpp
-@@ -186,9 +186,13 @@ WorldSession::~WorldSession()
-     while (_recvQueue.next(packet))
-         delete packet;
- 
--    LoginDatabase.PExecute("UPDATE account SET online = 0 WHERE id = {};", GetAccountId());     // One-time query
-+    // a bot session shares its account with other sessions: leave the account flag to them
-+    if (!_isBot)
-+        LoginDatabase.PExecute("UPDATE account SET online = 0 WHERE id = {};", GetAccountId());     // One-time query
- }
- 
-+void (*BotSessionHooks::OnPlayerUpdate)(Player* player, uint32 diff) = nullptr;
-+
- bool WorldSession::PlayerDisconnected() const
- {
-     return !(m_Socket[CONNECTION_TYPE_REALM] && m_Socket[CONNECTION_TYPE_REALM]->IsOpen() &&
-@@ -224,6 +228,10 @@ std::string WorldSession::GetPlayerInfo() const
- /// Send a packet to the client
- void WorldSession::SendPacket(WorldPacket const* packet, bool forced /*= false*/)
- {
-+    // bots have no client: drop silently instead of logging every packet as sent to a missing socket
-+    if (_isBot)
-+        return;
-+
-     if (!opcodeTable.IsValid(static_cast<OpcodeServer>(packet->GetOpcode())))
-     {
-         char const* specialName = packet->GetOpcode() == UNKNOWN_OPCODE ? "UNKNOWN_OPCODE" : "INVALID_OPCODE";
-@@ -356,7 +364,7 @@ bool WorldSession::Update(uint32 diff, PacketFilter& updater)
-     ///- Before we process anything:
-     /// If necessary, kick the player because the client didn't send anything for too long
-     /// (or they've been idling in character select)
--    if (IsConnectionIdle() && !HasPermission(rbac::RBAC_PERM_IGNORE_IDLE_CONNECTION))
-+    if (m_Socket[CONNECTION_TYPE_REALM] && IsConnectionIdle() && !HasPermission(rbac::RBAC_PERM_IGNORE_IDLE_CONNECTION))
-         m_Socket[CONNECTION_TYPE_REALM]->CloseSocket();
- 
-     // Classic 1.60: character list mail data, sent once the character list is shown (see HandleCharEnum)
-@@ -522,7 +530,7 @@ bool WorldSession::Update(uint32 diff, PacketFilter& updater)
- 
-     _recvQueue.readd(requeuePackets.begin(), requeuePackets.end());
- 
--    if (!updater.ProcessUnsafe()) // <=> updater is of type MapSessionFilter
-+    if (!updater.ProcessUnsafe() && !_isBot) // <=> updater is of type MapSessionFilter; bots never answer time syncs
-     {
-         // Send time sync packet every 10s.
-         if (_timeSyncTimer > 0)
-@@ -707,9 +715,15 @@ void WorldSession::LogoutPlayer(bool save)
-         TC_LOG_DEBUG("network", "SESSION: Sent SMSG_LOGOUT_COMPLETE Message");
- 
-         //! Since each account can only have one online character at any given time, ensure all characters for active account are marked as offline
--        CharacterDatabasePreparedStatement* stmt = CharacterDatabase.GetPreparedStatement(CHAR_UPD_ACCOUNT_ONLINE);
--        stmt->setUInt32(0, GetAccountId());
--        CharacterDatabase.Execute(stmt);
-+        //! (a bot shares its account with other online characters: only its own character goes offline)
-+        if (_isBot)
-+            CharacterDatabase.PExecute("UPDATE characters SET online = 0 WHERE guid = {}", m_GUIDLow);
-+        else
-+        {
-+            CharacterDatabasePreparedStatement* stmt = CharacterDatabase.GetPreparedStatement(CHAR_UPD_ACCOUNT_ONLINE);
-+            stmt->setUInt32(0, GetAccountId());
-+            CharacterDatabase.Execute(stmt);
-+        }
-     }
- 
-     if (m_Socket[CONNECTION_TYPE_INSTANCE])
-diff --git a/src/server/game/Server/WorldSession.h b/src/server/game/Server/WorldSession.h
-index 9a2e9b94..7dc48afa 100644
---- a/src/server/game/Server/WorldSession.h
-+++ b/src/server/game/Server/WorldSession.h
-@@ -1009,6 +1009,10 @@ class TC_GAME_API WorldSession
-         bool PlayerRecentlyLoggedOut() const { return m_playerRecentlyLogout; }
-         bool PlayerDisconnected() const;
- 
-+        // Companions (player bots): a socketless session owned and updated by the bot manager, never by World
-+        bool IsBot() const { return _isBot; }
-+        void SetBot(bool isBot) { _isBot = isBot; }
-+
-         bool IsAddonRegistered(std::string_view prefix) const;
- 
-         void SendPacket(WorldPacket const* packet, bool forced = false);
-@@ -2087,6 +2091,7 @@ class TC_GAME_API WorldSession
-         bool m_playerLogout;                                // code processed in LogoutPlayer
-         bool m_playerRecentlyLogout;
-         bool m_playerSave;
-+        bool _isBot = false;
-         LocaleConstant m_sessionDbcLocale;
-         LocaleConstant m_sessionDbLocaleIndex;
-         Minutes _timezoneOffset;
-@@ -2129,4 +2134,10 @@ class TC_GAME_API WorldSession
-         WorldSession& operator=(WorldSession const& right) = delete;
- };
- 
-+// Companions: set by the bot module, called from Player::Update (map thread) for players of bot sessions
-+struct TC_GAME_API BotSessionHooks
-+{
-+    static void (*OnPlayerUpdate)(Player* player, uint32 diff);
-+};
-+
- #endif
 diff --git a/src/server/game/Spells/Spell.cpp b/src/server/game/Spells/Spell.cpp
 index 6403d023..1e649f05 100644
 --- a/src/server/game/Spells/Spell.cpp
@@ -485,3 +384,111 @@ index 977f5fdb..63baa90e 100644
      AddClassicScripts();
 +    AddCompanionsScripts();
  }
+diff --git a/src/server/game/Server/WorldSession.cpp b/src/server/game/Server/WorldSession.cpp
+index 5e6b41b8..70ea879a 100644
+--- a/src/server/game/Server/WorldSession.cpp
++++ b/src/server/game/Server/WorldSession.cpp
+@@ -186,9 +186,14 @@ WorldSession::~WorldSession()
+     while (_recvQueue.next(packet))
+         delete packet;
+ 
+-    LoginDatabase.PExecute("UPDATE account SET online = 0 WHERE id = {};", GetAccountId());     // One-time query
++    // a bot session shares its account with other sessions: leave the account flag to them
++    if (!_isBot)
++        LoginDatabase.PExecute("UPDATE account SET online = 0 WHERE id = {};", GetAccountId());     // One-time query
+ }
+ 
++void (*BotSessionHooks::OnPlayerUpdate)(Player* player, uint32 diff) = nullptr;
++void (*BotSessionHooks::OnPacket)(WorldSession* session, WorldPacket const* packet) = nullptr;
++
+ bool WorldSession::PlayerDisconnected() const
+ {
+     return !(m_Socket[CONNECTION_TYPE_REALM] && m_Socket[CONNECTION_TYPE_REALM]->IsOpen() &&
+@@ -224,6 +229,14 @@ std::string WorldSession::GetPlayerInfo() const
+ /// Send a packet to the client
+ void WorldSession::SendPacket(WorldPacket const* packet, bool forced /*= false*/)
+ {
++    // bots have no client: the bot module sees it, then it is dropped silently instead of logged as sent to a missing socket
++    if (_isBot)
++    {
++        if (BotSessionHooks::OnPacket)
++            BotSessionHooks::OnPacket(this, packet);
++        return;
++    }
++
+     if (!opcodeTable.IsValid(static_cast<OpcodeServer>(packet->GetOpcode())))
+     {
+         char const* specialName = packet->GetOpcode() == UNKNOWN_OPCODE ? "UNKNOWN_OPCODE" : "INVALID_OPCODE";
+@@ -356,7 +369,7 @@ bool WorldSession::Update(uint32 diff, PacketFilter& updater)
+     ///- Before we process anything:
+     /// If necessary, kick the player because the client didn't send anything for too long
+     /// (or they've been idling in character select)
+-    if (IsConnectionIdle() && !HasPermission(rbac::RBAC_PERM_IGNORE_IDLE_CONNECTION))
++    if (m_Socket[CONNECTION_TYPE_REALM] && IsConnectionIdle() && !HasPermission(rbac::RBAC_PERM_IGNORE_IDLE_CONNECTION))
+         m_Socket[CONNECTION_TYPE_REALM]->CloseSocket();
+ 
+     // Classic 1.60: character list mail data, sent once the character list is shown (see HandleCharEnum)
+@@ -522,7 +535,7 @@ bool WorldSession::Update(uint32 diff, PacketFilter& updater)
+ 
+     _recvQueue.readd(requeuePackets.begin(), requeuePackets.end());
+ 
+-    if (!updater.ProcessUnsafe()) // <=> updater is of type MapSessionFilter
++    if (!updater.ProcessUnsafe() && !_isBot) // <=> updater is of type MapSessionFilter; bots never answer time syncs
+     {
+         // Send time sync packet every 10s.
+         if (_timeSyncTimer > 0)
+@@ -707,9 +720,15 @@ void WorldSession::LogoutPlayer(bool save)
+         TC_LOG_DEBUG("network", "SESSION: Sent SMSG_LOGOUT_COMPLETE Message");
+ 
+         //! Since each account can only have one online character at any given time, ensure all characters for active account are marked as offline
+-        CharacterDatabasePreparedStatement* stmt = CharacterDatabase.GetPreparedStatement(CHAR_UPD_ACCOUNT_ONLINE);
+-        stmt->setUInt32(0, GetAccountId());
+-        CharacterDatabase.Execute(stmt);
++        //! (a bot shares its account with other online characters: only its own character goes offline)
++        if (_isBot)
++            CharacterDatabase.PExecute("UPDATE characters SET online = 0 WHERE guid = {}", m_GUIDLow);
++        else
++        {
++            CharacterDatabasePreparedStatement* stmt = CharacterDatabase.GetPreparedStatement(CHAR_UPD_ACCOUNT_ONLINE);
++            stmt->setUInt32(0, GetAccountId());
++            CharacterDatabase.Execute(stmt);
++        }
+     }
+ 
+     if (m_Socket[CONNECTION_TYPE_INSTANCE])
+diff --git a/src/server/game/Server/WorldSession.h b/src/server/game/Server/WorldSession.h
+index 9a2e9b94..e50c865c 100644
+--- a/src/server/game/Server/WorldSession.h
++++ b/src/server/game/Server/WorldSession.h
+@@ -1009,6 +1009,10 @@ class TC_GAME_API WorldSession
+         bool PlayerRecentlyLoggedOut() const { return m_playerRecentlyLogout; }
+         bool PlayerDisconnected() const;
+ 
++        // Companions (player bots): a socketless session owned and updated by the bot manager, never by World
++        bool IsBot() const { return _isBot; }
++        void SetBot(bool isBot) { _isBot = isBot; }
++
+         bool IsAddonRegistered(std::string_view prefix) const;
+ 
+         void SendPacket(WorldPacket const* packet, bool forced = false);
+@@ -2087,6 +2091,7 @@ class TC_GAME_API WorldSession
+         bool m_playerLogout;                                // code processed in LogoutPlayer
+         bool m_playerRecentlyLogout;
+         bool m_playerSave;
++        bool _isBot = false;
+         LocaleConstant m_sessionDbcLocale;
+         LocaleConstant m_sessionDbLocaleIndex;
+         Minutes _timezoneOffset;
+@@ -2129,4 +2134,12 @@ class TC_GAME_API WorldSession
+         WorldSession& operator=(WorldSession const& right) = delete;
+ };
+ 
++// Companions: set by the bot module, called from Player::Update (map thread) for players of bot sessions
++struct TC_GAME_API BotSessionHooks
++{
++    static void (*OnPlayerUpdate)(Player* player, uint32 diff);
++    // what the server sends a bot session, which has no client to show it (a role check the bot answers)
++    static void (*OnPacket)(WorldSession* session, WorldPacket const* packet);
++};
++
+ #endif

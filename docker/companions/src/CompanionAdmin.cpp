@@ -273,7 +273,7 @@ namespace Companions
         return true;
     }
 
-    // .bot admin set <owner> <bot> <role|llm|quality|spec|aggression|stance|personality|name> <value>
+    // .bot admin set <owner> <bot> <role|llm|quality|spec|aggression|stance|personality|name|potions|autocc|tactics> <value>
     static bool HandleSet(ChatHandler* handler, uint64 owner, uint64 bot, std::string key, Tail value)
     {
         BotRecord* record = OwnedRecord(handler, owner, bot);
@@ -393,6 +393,8 @@ namespace Companions
             if (ai)
                 ai->SetAutoCC(record->AutoCC);
         }
+        else if (key == "tactics")
+            record->Tactics = text == "1" || text == "on";
         else if (key == "prefer" || key == "avoid" || key == "allow")
         {
             // "prefer frost nova", "avoid arcane explosion", "allow rend", "allow *" (all of them)

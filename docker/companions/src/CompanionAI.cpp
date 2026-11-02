@@ -19,6 +19,8 @@
 #include "GridNotifiers.h"
 #include "GridNotifiersImpl.h"
 #include "Group.h"
+#include "LFG.h"
+#include "PartyPackets.h"
 #include "Item.h"
 #include "Log.h"
 #include "Loot.h"
@@ -36,10 +38,12 @@
 #include "SpellHistory.h"
 #include "SpellInfo.h"
 #include "SpellMgr.h"
+#include "TradeData.h"
 #include "ThreatManager.h"
 #include "WorldSession.h"
 #include <algorithm>
 #include <cmath>
+#include <span>
 #include <sstream>
 
 namespace Companions
@@ -358,6 +362,22 @@ namespace Companions
         HandleRequests();
         BuildView();
         UpdateTrade();
+        // a trade open out of a fight: it stays by the trader (a trade breaks off past 11 yards), as a player would
+        if (TradeData* trade = _bot->GetTradeData(); trade && trade->GetTrader() && _view.Enemies.empty())
+        {
+            Player* trader = trade->GetTrader();
+            if (!_bot->IsWithinDistInMap(trader, 6.0f))
+            {
+                if (!_bot->isMoving())
+                {
+                    _bot->GetMotionMaster()->MovePoint(0, trader->GetPosition());
+                    _movement = MoveMode::Point;
+                }
+            }
+            else if (_bot->isMoving())
+                StopMovement();
+            return;
+        }
 
         bool const combat = !_view.Enemies.empty();
         if (combat && !_inCombat)
@@ -383,6 +403,9 @@ namespace Companions
                 _tankOrderUsed = false;
             }
         }
+
+        if (slowTick)
+            SyncGroupRole(false);
 
         if (slowTick && GetConfig().FreeReagents)
         {
@@ -430,6 +453,8 @@ namespace Companions
         }
 
         if (UpdatePendingCast())
+            return;
+        if (UpdateConjure())
             return;
 
         if (slowTick)
@@ -618,7 +643,30 @@ namespace Companions
         }
     }
 
-    // group invites, ready checks, quest shares: answered like an attentive player
+    // the group role (tank, healer, damage) follows its companion role, so raid frames and the group finder show it; a role check
+    // is answered like a player who picks its icon: "<bot> is now a Tank" for the one who asked
+    void CompanionAI::SyncGroupRole(bool answer)
+    {
+        Group* group = _bot->GetGroup();
+        if (!group)
+            return;
+        Role const role = GetEffectiveRole();
+        uint8 const flags = role == Role::Tank ? lfg::PLAYER_ROLE_TANK : role == Role::Healer ? lfg::PLAYER_ROLE_HEALER : lfg::PLAYER_ROLE_DAMAGE;
+        uint8 const old = group->GetLfgRoles(_bot->GetGUID());
+        if ((old & ~lfg::PLAYER_ROLE_LEADER) != flags)
+            group->SetLfgRoles(_bot->GetGUID(), uint8((old & lfg::PLAYER_ROLE_LEADER) | flags));
+        if (!answer)
+            return;
+        WorldPackets::Party::RoleChangedInform inform;
+        inform.PartyIndex = group->GetGroupCategory();
+        inform.From = _bot->GetGUID();
+        inform.ChangedUnit = _bot->GetGUID();
+        inform.OldRole = 0;
+        inform.NewRole = flags;
+        group->BroadcastPacket(inform.Write(), false);
+    }
+
+    // group invites, ready checks, role checks, quest shares: answered like an attentive player
     void CompanionAI::HandleRequests()
     {
         if (!_bot->GetPlayerSharingQuest().IsEmpty())
@@ -627,6 +675,12 @@ namespace Companions
                 if (_bot->CanTakeQuest(quest, false) && _bot->CanAddQuest(quest, false))
                     _bot->AddQuestAndCheckCompletion(quest, nullptr);
             _bot->ClearQuestSharingInfo();
+        }
+
+        if (_rolePoll)
+        {
+            _rolePoll = false;
+            SyncGroupRole(true);
         }
 
         if (Group* group = _bot->GetGroup())
@@ -1034,7 +1088,10 @@ namespace Companions
             if (Mechanics::HasRule(creature->GetEntry(), Mechanics::Kind::StunLock))
                 return target;
         Unit* tank = _view.Tank;
-        if (!tank || tank == _bot || !tank->IsAlive() || !IsTank(tank) || !_forcedTarget.IsEmpty())
+        if (!tank || !tank->IsAlive() || !IsTank(tank) || !_forcedTarget.IsEmpty())
+            return target;
+        // the main tank itself only on what another tank holds
+        if (tank == _bot && !HeldByOtherTank(target))
             return target;
         Role const role = GetEffectiveRole();
         // the enemy pulls off the tank at 110% of its threat in melee and 130% at range: stay well below it
@@ -1207,6 +1264,13 @@ namespace Companions
             return boss;
         if (!mainTank)
         {
+            // an add off the main tank only when it holds several, and never the one it is hitting: two tanks on one enemy
+            // only trade its threat back and forth
+            Unit* const mainTarget = _view.MainTank ? _view.MainTank->GetVictim() : nullptr;
+            uint32 onMainCount = 0;
+            for (Unit* enemy : _view.Enemies)
+                if (_view.MainTank && enemy->GetVictim() == _view.MainTank && !IsCrowdControlTarget(enemy))
+                    ++onMainCount;
             Unit* untanked = nullptr;
             Unit* onMain = nullptr;
             for (Unit* enemy : _view.Enemies)
@@ -1217,7 +1281,7 @@ namespace Companions
                 bool const closer = [&](Unit* best) { return !best || _bot->GetDistance(enemy) < _bot->GetDistance(best); }(victim && IsTank(victim) ? onMain : untanked);
                 if ((!victim || !IsTank(victim)) && closer)
                     untanked = enemy;
-                else if (victim && victim == _view.MainTank && victim != _bot && closer)
+                else if (victim && victim == _view.MainTank && victim != _bot && closer && enemy != mainTarget && onMainCount >= 2)
                     onMain = enemy;
             }
             if (untanked)
@@ -1256,36 +1320,42 @@ namespace Companions
         if (thin)
             return thin;
 
+        // what another tank holds or went for is its own (tank swaps aside, above): hitting it only fights that tank for threat
+        auto othersOwn = [&](Unit* enemy) { return HeldByOtherTank(enemy) || sCompanionMgr->IsTankClaimed(enemy->GetGUID(), _bot->GetGUID()); };
+
         if (Group* group = _bot->GetGroup())
         {
             ObjectGuid skull = group->GetTargetIcon(ICON_SKULL);
             if (!skull.IsEmpty())
                 if (Unit* marked = ObjectAccessor::GetUnit(*_bot, skull))
-                    if (IsValidEnemy(marked) && std::find(_view.Enemies.begin(), _view.Enemies.end(), marked) != _view.Enemies.end())
+                    if (IsValidEnemy(marked) && !othersOwn(marked) && std::find(_view.Enemies.begin(), _view.Enemies.end(), marked) != _view.Enemies.end())
                         return marked;
         }
 
         if (Unit* current = _bot->GetVictim())
-            if (IsValidEnemy(current) && !IsCrowdControlTarget(current)
+            if (IsValidEnemy(current) && !IsCrowdControlTarget(current) && !othersOwn(current)
                 && std::find(_view.Enemies.begin(), _view.Enemies.end(), current) != _view.Enemies.end())
                 return current;
 
-        if (!mainTank && _view.MainTank && _view.MainTank != _bot)
-            if (Unit* held = _view.MainTank->GetVictim())
-                if (IsValidEnemy(held) && !IsCrowdControlTarget(held))
-                    return held;
-
         if (Player* owner = _view.Owner)
             if (Unit* victim = owner->GetVictim())
-                if (IsValidEnemy(victim) && !IsCrowdControlTarget(victim))
+                if (IsValidEnemy(victim) && !IsCrowdControlTarget(victim) && !othersOwn(victim))
                     return victim;
 
         Unit* nearest = nullptr;
         for (Unit* enemy : _view.Enemies)
-            if (!IsCrowdControlTarget(enemy) && (!nearest || _bot->GetDistance(enemy) < _bot->GetDistance(nearest)))
+            if (!IsCrowdControlTarget(enemy) && !othersOwn(enemy) && (!nearest || _bot->GetDistance(enemy) < _bot->GetDistance(nearest)))
                 nearest = enemy;
+        if (nearest)
+            return nearest;
+
+        // nothing of its own: it helps on the main tank's target, below that tank's threat (UpdateCombat keeps it there)
+        if (!mainTank && _view.MainTank && _view.MainTank != _bot)
+            if (Unit* held = _view.MainTank->GetVictim())
+                if (IsValidEnemy(held) && !IsCrowdControlTarget(held))
+                    return held;
         // only crowd controlled ones left: break one out and hold it
-        return nearest ? nearest : ControlledLeft();
+        return ControlledLeft();
     }
 
     void CompanionAI::UpdateCombat()
@@ -1327,7 +1397,7 @@ namespace Companions
         }
 
         Unit* target = role == Role::Tank ? SelectTankTarget() : SelectTarget();
-        if (target && role != Role::Tank)
+        if (target && (role != Role::Tank || HeldByOtherTank(target)))
             target = KeepUnderTank(target);
         if (!target)
         {
@@ -1956,10 +2026,34 @@ namespace Companions
         return false;
     }
 
-    std::string CompanionAI::BlessingFor(ObjectGuid member) const
+    std::string CompanionAI::BlessingFor(Player const* member) const
     {
-        auto itr = _blessingFor.find(member);
-        return itr != _blessingFor.end() ? itr->second : std::string();
+        auto itr = _blessingFor.find(member->GetGUID());
+        if (itr != _blessingFor.end())
+            return itr->second;
+        // the most precise of the roles it falls under
+        Role const role = BlessingRole(member);
+        char const* const tank[] = { "tank", "all" };
+        char const* const healer[] = { "healer", "all" };
+        char const* const melee[] = { "melee", "dps", "all" };
+        char const* const ranged[] = { "ranged", "dps", "all" };
+        std::span<char const* const> keys = role == Role::Tank ? std::span<char const* const>(tank)
+            : role == Role::Healer ? std::span<char const* const>(healer) : role == Role::MeleeDps ? std::span<char const* const>(melee)
+            : std::span<char const* const>(ranged);
+        for (char const* key : keys)
+            if (auto found = _blessingForRole.find(key); found != _blessingForRole.end())
+                return found->second;
+        return std::string();
+    }
+
+    Role CompanionAI::BlessingRole(Player const* member)
+    {
+        if (CompanionAI const* ai = sCompanionMgr->GetAI(member))
+            return ai->GetEffectiveRole();
+        if (Group const* group = member->GetGroup())
+            if (group->GetMemberFlags(member->GetGUID()) & MEMBER_FLAG_MAINTANK)
+                return Role::Tank;
+        return member->GetClass() == CLASS_WARRIOR || member->GetClass() == CLASS_ROGUE ? Role::MeleeDps : Role::RangedDps;
     }
 
     bool CompanionAI::OrderRebuff(Player* member, std::string const& filter)
@@ -2851,6 +2945,20 @@ namespace Companions
             return true;
         });
         return remaining;
+    }
+
+    ObjectGuid CompanionAI::OtherCaster(Unit const* unit, std::string_view name) const
+    {
+        ObjectGuid caster;
+        if (unit)
+            unit->HasAura([&](Aura const* aura)
+            {
+                if (aura->GetCasterGUID() == _bot->GetGUID() || !NameIs(aura->GetSpellInfo(), name))
+                    return false;
+                caster = aura->GetCasterGUID();
+                return true;
+            });
+        return caster;
     }
 
     uint32 CompanionAI::AuraStacks(Unit const* unit, std::string_view name, bool mineOnly) const

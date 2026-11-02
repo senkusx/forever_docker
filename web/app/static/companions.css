@@ -71,7 +71,7 @@
 .cp-vitals { margin-top: 10px; display: flex; flex-direction: column; gap: 5px; }
 .cp-bar { height: 7px; border-radius: 4px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
 .cp-bar span { display: block; height: 100%; border-radius: 4px; transition: width 0.6s; }
-.cp-bar.hp span { background: linear-gradient(90deg, #2bb673, #3fd47a); }
+.cp-bar.health span { background: linear-gradient(90deg, #2bb673, #3fd47a); }
 .cp-bar.mana span { background: linear-gradient(90deg, #1264c8, #148eff); }
 .cp-talents { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 
@@ -129,6 +129,34 @@
   .cp-side { position: static; }
   .cp-bots { grid-template-columns: 1fr; }
   .cp-user span { display: none; }
+}
+
+/* the companion list: filters, one row per companion that opens into its settings and details */
+.cp-filters .cp-row:first-child { margin-top: 0; }
+.cp-filters label { flex: 0 1 170px; }
+.cp-filters input[type="search"] { flex: 1 1 200px; }
+.cp-shown { margin-right: auto; }
+.cp-list { grid-template-columns: 1fr; gap: 8px; }
+.cp-bot-row { padding: 0; }
+.cp-bot-row.live { border-color: rgba(63, 212, 122, 0.35); }
+.cp-row-head { display: flex; align-items: center; gap: 12px; width: 100%; padding: 11px 16px; background: none; border: 0; color: var(--text);
+  font: inherit; text-align: left; cursor: pointer; flex-wrap: wrap; }
+.cp-row-head:hover { background: rgba(255, 255, 255, 0.04); }
+.cp-row-head:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
+.cp-caret { width: 12px; color: var(--muted); }
+.cp-row-name { font-weight: 700; min-width: 120px; }
+.cp-row-meta { white-space: nowrap; }
+.cp-row-bars { display: flex; flex-direction: column; gap: 3px; width: 110px; }
+.cp-row-head .cp-state { margin-left: auto; }
+.cp-role-tank { color: #8fb8ff; border-color: rgba(143, 184, 255, 0.45); }
+.cp-role-healer { color: var(--ok); border-color: rgba(63, 212, 122, 0.45); }
+.cp-role-melee { color: #ff9d6b; border-color: rgba(255, 157, 107, 0.45); }
+.cp-role-ranged { color: #d59bff; border-color: rgba(213, 155, 255, 0.45); }
+.cp-bot.embedded, .cp-inline-details { padding: 4px 18px 16px; border-top: 1px solid var(--line); }
+.cp-inline-details .cp-tabs { margin-top: 12px; flex-wrap: wrap; }
+@media (max-width: 640px) {
+  .cp-row-bars { width: 80px; }
+  .cp-row-head .cp-state { margin-left: 0; }
 }
 
 /* details of one companion: gear, bags, stats, talents, abilities */
