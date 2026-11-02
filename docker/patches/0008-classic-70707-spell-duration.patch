@@ -1,0 +1,80 @@
+diff --git a/src/server/database/Database/Implementation/HotfixDatabase.cpp b/src/server/database/Database/Implementation/HotfixDatabase.cpp
+index 4a809b2b..0f53279e 100644
+--- a/src/server/database/Database/Implementation/HotfixDatabase.cpp
++++ b/src/server/database/Database/Implementation/HotfixDatabase.cpp
+@@ -1618,7 +1618,7 @@ void HotfixDatabaseConnection::DoPrepareStatements()
+     PREPARE_MAX_ID_STMT(HOTFIX_SEL_SPELL_COOLDOWNS, "SELECT MAX(ID) + 1 FROM spell_cooldowns", CONNECTION_SYNCH);
+ 
+     // SpellDuration.db2
+-    PrepareStatement(HOTFIX_SEL_SPELL_DURATION, "SELECT ID, Duration, MaxDuration, DurationPerResource FROM spell_duration"
++    PrepareStatement(HOTFIX_SEL_SPELL_DURATION, "SELECT ID, Duration, DurationPerLevel, MaxDuration, DurationPerResource FROM spell_duration"
+         " WHERE (`VerifiedBuild` > 0) = ?", CONNECTION_SYNCH);
+     PREPARE_MAX_ID_STMT(HOTFIX_SEL_SPELL_DURATION, "SELECT MAX(ID) + 1 FROM spell_duration", CONNECTION_SYNCH);
+ 
+diff --git a/src/server/game/DataStores/DB2LoadInfo.h b/src/server/game/DataStores/DB2LoadInfo.h
+index 4b713b8f..c9b19c76 100644
+--- a/src/server/game/DataStores/DB2LoadInfo.h
++++ b/src/server/game/DataStores/DB2LoadInfo.h
+@@ -5356,15 +5356,16 @@ struct SpellCooldownsLoadInfo
+ 
+ struct SpellDurationLoadInfo
+ {
+-    static constexpr DB2FieldMeta Fields[4] =
++    static constexpr DB2FieldMeta Fields[5] =
+     {
+         { .IsSigned = false, .Type = FT_INT, .Name = "ID" },
+         { .IsSigned = true, .Type = FT_INT, .Name = "Duration" },
++        { .IsSigned = true, .Type = FT_INT, .Name = "DurationPerLevel" },
+         { .IsSigned = true, .Type = FT_INT, .Name = "MaxDuration" },
+         { .IsSigned = true, .Type = FT_INT, .Name = "DurationPerResource" },
+     };
+ 
+-    static constexpr DB2LoadInfo Instance{ Fields, 4, &SpellDurationMeta::Instance, HOTFIX_SEL_SPELL_DURATION };
++    static constexpr DB2LoadInfo Instance{ Fields, 5, &SpellDurationMeta::Instance, HOTFIX_SEL_SPELL_DURATION };
+ };
+ 
+ struct SpellEffectLoadInfo
+diff --git a/src/server/game/DataStores/DB2Metadata.h b/src/server/game/DataStores/DB2Metadata.h
+index d06b97ba..8cb392cc 100644
+--- a/src/server/game/DataStores/DB2Metadata.h
++++ b/src/server/game/DataStores/DB2Metadata.h
+@@ -21119,21 +21119,23 @@ struct SpellDispelTypeMeta
+ 
+ struct SpellDurationMeta
+ {
+-    static constexpr DB2MetaField Fields[3] =
++    static constexpr DB2MetaField Fields[4] =
+     {
+         { .Type = FT_INT,                  .ArraySize =  1, .IsSigned =  true },
+         { .Type = FT_INT,                  .ArraySize =  1, .IsSigned =  true },
+         { .Type = FT_INT,                  .ArraySize =  1, .IsSigned =  true },
++        { .Type = FT_INT,                  .ArraySize =  1, .IsSigned =  true },
+     };
+ 
++    // Classic 1.60.1.70707 added DurationPerLevel after Duration (1.60.1.70685 and before: layout 0xA931BD2B)
+     static constexpr DB2Meta Instance =
+     {
+         .FileDataId         = 1137828,
+         .IndexField         = -1,
+         .ParentIndexField   = -1,
+-        .FieldCount         = 3,
+-        .FileFieldCount     = 3,
+-        .LayoutHash         = 0xA931BD2B,
++        .FieldCount         = 4,
++        .FileFieldCount     = 4,
++        .LayoutHash         = 0x4FDF0951,
+         .Fields             = Fields
+     };
+ };
+diff --git a/src/server/game/DataStores/DB2Structure.h b/src/server/game/DataStores/DB2Structure.h
+index 5ef436e9..8c69354f 100644
+--- a/src/server/game/DataStores/DB2Structure.h
++++ b/src/server/game/DataStores/DB2Structure.h
+@@ -3901,6 +3901,7 @@ struct SpellDurationEntry
+ {
+     uint32 ID;
+     int32 Duration;
++    int32 DurationPerLevel;     // Classic 1.60.1.70707, not applied: durations stay Duration (combo points: up to MaxDuration)
+     int32 MaxDuration;
+     int32 DurationPerResource;
+ };

@@ -1,6 +1,6 @@
 # Forever
 
-A ready-to-run private server for the **World of Warcraft Forever** beta, client build **1.60.1.70685**, with an
+A ready-to-run private server for the **World of Warcraft Forever** beta, client build **1.60.1.70707**, with an
 account sign-up website and a launcher for Windows, Linux and macOS.
 
 I made it to play the free beta with my friends. It is built on the
@@ -27,7 +27,7 @@ a few fixes of my own found with packet logs.
 The launcher and the website are in English, French, Spanish and Portuguese (Latin America), following the system
 or browser language.
 
-**Requirements on the player side**: the game client in exactly build **1.60.1.70685** (World of Warcraft Forever
+**Requirements on the player side**: the game client in exactly build **1.60.1.70707** (World of Warcraft Forever
 beta, installed with Battle.net in the `_forever_` folder). Another build will not connect.
 
 **No Blizzard assets**: this repository contains no game client, game data, artwork or logo (only screenshots of the
@@ -149,10 +149,10 @@ signed by Apple, so players run `xattr -cr "/Applications/Forever Launcher.app"`
 - **Update**: `docker compose build --no-cache && docker compose up -d`; new SQL updates are applied on start.
   If the branch merges one of the patches, the build stops at that patch: delete it.
 - **Using an AI assistant**: [AGENTS.md](AGENTS.md) explains the project and the steps to it.
-- **Newer game client**: set `CLIENT_BUILD` in `.env` to the build number (for example, `70685`), extract the data
+- **Newer game client**: set `CLIENT_BUILD` in `.env` to the build number (for example, `70707`), extract the data
   of the new client into a new folder, point `DATA_DIR` at it and restart. The build override is experimental and does
   not itself add protocol support to TrinityCore: it only works while the new build keeps the protocol and the DB2
-  layouts of the supported one (70685 kept the DB2 layouts of 70532).
+  layouts of the supported one (70685 kept those of 70532; 70707 changed SpellDuration's, see core patch 0008).
 
 ## License
 
