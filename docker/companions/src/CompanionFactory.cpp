@@ -890,6 +890,13 @@ namespace Companions
             if (!bot->HasSpell(spellId) && sSpellMgr->GetSpellInfo(spellId, DIFFICULTY_NONE))
                 bot->LearnSpell(spellId, false, 0, true);
 
+        // Dual Wield (674) is a generic spell, not of the class family, so TrainSpells passes over it like a recipe and the
+        // off hand stayed empty: rogues learn it at 10, warriors and hunters at 20 (their trainers' levels)
+        uint8 const dualWieldLevel = bot->GetClass() == CLASS_ROGUE ? 10
+            : (bot->GetClass() == CLASS_WARRIOR || bot->GetClass() == CLASS_HUNTER) ? 20 : 0;
+        if (dualWieldLevel && bot->GetLevel() >= dualWieldLevel && !bot->HasSpell(674) && sSpellMgr->GetSpellInfo(674, DIFFICULTY_NONE))
+            bot->LearnSpell(674, false, 0, true);
+
         if (bot->GetLevel() >= 40)
         {
             uint32 armor = 0;
