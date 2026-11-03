@@ -1043,7 +1043,9 @@
     const stored = s.stored ? h('button', { type: 'button', class: 'cp-link small', title: T('setting_reset_hint'), onclick: () => changeSetting(s.key, null, true) }, T('setting_reset')) : null;
     if (s.type === 'b')
       return h('div', { class: 'cp-setting' }, toggle(settingLabel(s.key), s.value === '1', (on) => changeSetting(s.key, on)), stored);
-    const input = h('input', { type: 'number', value: s.value, min: s.min, max: s.max, step: s.type === 'f' ? '0.5' : '1',
+    // shares (0.1-1, the raid tuning) go by 0.05, other decimals by 0.5
+    const step = s.type !== 'f' ? '1' : Number(s.max) <= 1 ? '0.05' : '0.5';
+    const input = h('input', { type: 'number', value: s.value, min: s.min, max: s.max, step,
       onchange: (e) => changeSetting(s.key, e.target.value) });
     return h('label', { class: 'cp-setting' }, h('span', null, settingLabel(s.key), ' ', h('small', { class: 'muted' }, `(${s.min}–${s.max})`)), input, stored);
   }
