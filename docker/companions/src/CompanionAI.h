@@ -166,7 +166,7 @@ namespace Companions
         // loot: equip something from its bags ("it" = the last item it received, "upgrades" = all that are better)
         std::string OrderEquip(std::string const& what);
         void SetFollowSlot(uint32 slot, uint32 count) { _followSlot = slot; _followCount = count; _movement = MoveMode::None; }
-        void SetSpread(float spread) { _spread = spread; _loitering = false; _movement = MoveMode::None; }
+        void SetSpread(float spread) { _spread = spread; _loitering = false; _takePlace = true; _movement = MoveMode::None; }
         void RefreshSpells() { _spellsDirty = true; }
 
         // ---- state ----
@@ -331,6 +331,7 @@ namespace Companions
         bool PickLoiterSpot(Player* owner, float angle, float halfWidth, float minDist, float maxDist, Position& spot) const;
         // where this bot stands around the owner: tank in front, melee beside, healers and casters behind
         void FormationSlot(bool travelling, float& angle, float& halfWidth, float& minDist, float& maxDist) const;
+        void OwnSlot(bool travelling, float& angle, float& dist);
         bool FollowPullingTank();
         bool AvoidGroundEffects();      // out of fire, poison clouds and other hostile ground effects
         // boss mechanics (CompanionMechanics.h): out of casts, debuffs, fronts and lines; spreading, polarity, hiding
@@ -418,7 +419,12 @@ namespace Companions
         Position _loiterSpot;
         Position _lastOwnerPosition;
         TimePoint _ownerStillSince = { };
-        TimePoint _scatterUntil = { };
+        float _slotDepth = -1.0f;       // its own place in its part of the group: 0 near, 1 far (-1: not picked yet)
+        float _slotSide = 0.0f;         // and -1 to 1 across it
+        bool _takePlace = false;        // "spread" / "stack": to that place at the next stop, not where it stands
+        TimePoint _slotUntil = { };     // when that place drifts a little
+        float _followDist = 0.0f;       // the follow it was given, to give it again only when its place moved
+        float _followAngle = 0.0f;
         TimePoint _fidgetAt = { };
         TimePoint _faceAt = { };
         uint32 _loiterDelay = 1000;

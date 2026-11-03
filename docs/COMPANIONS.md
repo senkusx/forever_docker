@@ -394,11 +394,12 @@ owner: `login <character>`, `party <owner> [role]`, `raid <owner> [size]`, `say 
 <item>` / `equip <bot> <it|name>` (loot decisions), `status <owner>`, `near <owner> [yards] [name]` (creatures around, their health and mechanics rules), `ambient <owner>` (the zone as the ambient
 bots see it and what each one does), `invite <owner> <name>` (a /invite), `order <owner> <order>`, `why <bot>` (what it sees),
 `threat <bot>` (the group's threat modifiers, and for each enemy of its fight the health it lost and its threat list),
-`spells <bot>`, `tactics <owner> <question>` (what the companions answer to it), `auras <name> [spell]` (auras on a character and who cast them, the area triggers that spell made), `kill <bot>`, `logout <owner>`.
+`spells <bot>`, `tactics <owner> <question>` (what the companions answer to it), `auras <name> [spell]` (auras on a character and who cast them, the area triggers that spell made), `unaura <name>` (its buffs off, to watch them come back),
+`walk <owner> <x> <y> <z>` (the stand-in walks there, the companions follow), `rolepoll <owner>` (a role check; prints the group roles), `kill <bot>`, `logout <owner>`.
 For instance events: `trigger <owner> <id>` (the stand-in enters an area trigger), `objects <owner> [yards] [entry]`
 (game objects around and their state: doors 0 open, 1 closed), `use <owner> <entry>` (it uses the nearest one: a lever,
 an altar), `slay <owner> <entry|0> [yards]` (it kills those creatures, whose death scripts run: doors, the next boss),
-`item <owner> <item>` (a key or a quest item in its bags), `idata <owner>` (the instance's boss states and saved data). `why <bot>` also shows where it stands around you and its last casts. Administrators only (the permission of `.server shutdown`).
+`item <owner> <item>` (a key or a quest item in its bags), `idata <owner>` (the instance's boss states and saved data). `why <bot>` also shows where it stands around you and its last casts (a paladin: the blessing it gives each member; a mage: what it conjures). Administrators only (the permission of `.server shutdown`).
 
 ## Good to know
 

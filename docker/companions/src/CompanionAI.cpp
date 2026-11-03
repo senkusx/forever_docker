@@ -2556,35 +2556,48 @@ namespace Companions
             _loitering = false;
         }
 
-        // travelling: each bot follows in its part of the group (tank ahead, healers and casters behind), drifting now and then
+        // travelling: each bot follows at its own place in its part of the group (tank ahead, healers and casters behind)
         if (ownerMoving || Elapsed(_ownerStillSince) < _loiterDelay)
         {
+            float angle, dist;
+            OwnSlot(true, angle, dist);
             bool following = _movement == MoveMode::Follow && _moveTarget == owner->GetGUID()
                 && motion->GetCurrentMovementGeneratorType() == FOLLOW_MOTION_TYPE;
-            if (following && now < _scatterUntil)
+            if (following && std::fabs(dist - _followDist) < 0.5f && std::fabs(angle - _followAngle) < 0.05f)
                 return;
-            float angle, halfWidth, slotMin, slotMax;
-            FormationSlot(true, angle, halfWidth, slotMin, slotMax);
-            float dist = frand(slotMin, slotMax);
-            _scatterUntil = now + Milliseconds(urand(5000, 12000));
+            _followDist = dist;
+            _followAngle = angle;
             _loiterDelay = urand(400, 1800);                    // each bot notices the stop at its own pace
-            motion->MoveFollow(owner, dist, ChaseAngle(angle + frand(-halfWidth, halfWidth), float(M_PI) / 10.0f));
+            motion->MoveFollow(owner, dist, ChaseAngle(angle, float(M_PI) / 10.0f));
             _movement = MoveMode::Follow;
             _moveTarget = owner->GetGUID();
             return;
         }
 
-        // the owner waits: each bot takes a spot of its own in its part of the group, and moves again now and then
-        float angle, halfWidth, slotMin, slotMax;
-        FormationSlot(false, angle, halfWidth, slotMin, slotMax);
-        float dist = _bot->GetExactDist2d(owner);
+        // the owner waits: like players who stop when the leader does, each bot stays where it stands if that is a fair place
+        // (not on the leader's toes, not far past its place in the group). Too close it steps out, too far it comes in, along
+        // the line it stands on; now and then it shifts a step or two. (Taking its formation spot at every stop had the ones
+        // the leader walked past, which the follow leaves where they are, run 20 yards out and back.)
+        float angle, slot;
+        OwnSlot(false, angle, slot);
+        float const dist = _bot->GetExactDist2d(owner);
+        float const crowd = std::max(3.0f, std::min(slot, GetConfig().FollowMinDistance * _spread + 2.0f));
+        bool const fair = !_takePlace && dist >= crowd && dist <= slot + 5.0f;
         bool fidget = now >= _fidgetAt;
         if (fidget)
             _fidgetAt = now + Milliseconds(urand(12000, 35000));
-        if (!_loitering || dist > slotMax + 4.0f || dist < slotMin * 0.5f || (fidget && roll_chance(35)))
+        if (!_loitering && fair)
         {
+            _loiterSpot = _bot->GetPosition();
+            _loitering = true;
+        }
+        else if (!_loitering || dist < crowd * 0.6f || dist > slot + 8.0f || (fidget && roll_chance(35)))
+        {
+            float const want = _takePlace ? slot : fair ? dist : std::clamp(dist, crowd + 1.0f, slot);
+            float const bearing = dist < 1.0f || _takePlace ? angle : owner->GetRelativeAngle(_bot);
+            _takePlace = false;
             Position spot;
-            if (PickLoiterSpot(owner, angle, halfWidth, slotMin, slotMax, spot))
+            if (PickLoiterSpot(owner, bearing, 0.2f, std::max(0.5f, want - 1.5f), want + 1.5f, spot))
             {
                 _loiterSpot = spot;
                 _loitering = true;
@@ -2609,10 +2622,10 @@ namespace Companions
     void CompanionAI::FormationSlot(bool travelling, float& angle, float& halfWidth, float& minDist, float& maxDist) const
     {
         Config const& config = GetConfig();
-        // a bigger group stands wider
+        // a bigger group stands wider, up to 30 yards (25 yards times 2.2 put a raid's healers 60 yards back)
         float size = std::clamp(std::sqrt(float(sCompanionMgr->CountBotsOf(_owner)) / 4.0f), 1.0f, 2.2f);
         float near = std::max(1.0f, config.FollowMinDistance * _spread);
-        float far = std::max(near + 1.0f, config.FollowMaxDistance * _spread * size);
+        float far = std::max(near + 1.0f, std::min(config.FollowMaxDistance * _spread * size, std::max(config.FollowMaxDistance * _spread, 30.0f)));
         float const pi = float(M_PI);
         switch (GetEffectiveRole())
         {
@@ -2643,6 +2656,29 @@ namespace Companions
                 maxDist = far * 1.2f;
                 break;
         }
+    }
+
+    // its own place in its part of the group, kept from one stop to the next (a new one each time had the bots running from
+    // the leader's feet to the back of the group and back), drifting a little every half a minute or so
+    void CompanionAI::OwnSlot(bool travelling, float& angle, float& dist)
+    {
+        float base, halfWidth, slotMin, slotMax;
+        FormationSlot(travelling, base, halfWidth, slotMin, slotMax);
+        TimePoint const now = GameTime::Now();
+        if (_slotDepth < 0.0f)
+        {
+            _slotDepth = frand(0.0f, 1.0f);
+            _slotSide = frand(-1.0f, 1.0f);
+            _slotUntil = now + Milliseconds(urand(30000, 90000));
+        }
+        else if (now >= _slotUntil)
+        {
+            _slotDepth = std::clamp(_slotDepth + frand(-0.15f, 0.15f), 0.0f, 1.0f);
+            _slotSide = std::clamp(_slotSide + frand(-0.3f, 0.3f), -1.0f, 1.0f);
+            _slotUntil = now + Milliseconds(urand(30000, 90000));
+        }
+        angle = base + _slotSide * halfWidth;
+        dist = slotMin + _slotDepth * (slotMax - slotMin);
     }
 
     bool CompanionAI::PickLoiterSpot(Player* owner, float angle, float halfWidth, float minDist, float maxDist, Position& spot) const

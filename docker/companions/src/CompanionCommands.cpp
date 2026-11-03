@@ -935,6 +935,7 @@ namespace Companions
                 { "spawn",  HandleTestSpawn,  rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "status", HandleTestStatus, rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "rolepoll", HandleTestRolePoll, rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
+                { "walk",   HandleTestWalk,   rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "go",     HandleTestGo,     rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "near",   HandleTestNear,   rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "ambient", HandleTestAmbient, rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
@@ -1615,6 +1616,14 @@ namespace Companions
                     bot->GetDistance(puppet), victim ? victim->GetName().c_str() : "-", ai ? uint32(ai->Spells().Size()) : 0,
                     sCompanionFactory->DescribeGear(bot).c_str(), bot->IsPvP() ? " | PvP" : "");
             }
+            return true;
+        }
+
+        // .bot test walk <owner> <x> <y> <z>: the stand-in walks there, as a player does (the companions follow it on the move)
+        static bool HandleTestWalk(ChatHandler* handler, std::string owner, float x, float y, float z)
+        {
+            if (Player* puppet = Puppet(handler, owner))
+                puppet->GetMotionMaster()->MovePoint(0, x, y, z);
             return true;
         }
 
