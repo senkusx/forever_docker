@@ -11,8 +11,11 @@
 #include "GridDefines.h"
 #include "GridNotifiers.h"
 #include "GridNotifiersImpl.h"
+#include "InstanceScript.h"
+#include "StringFormat.h"
 #include "Map.h"
 #include "MotionMaster.h"
+#include "MoveSpline.h"
 #include "ObjectAccessor.h"
 #include "Player.h"
 #include "Spell.h"
@@ -193,7 +196,10 @@ namespace Companions
                     if (!(rule->Roles & roleBit))
                         continue;
                     if (rule->Type == Kind::AvoidCast)
+                    {
                         avoid.Circles.push_back({ enemy->GetPosition(), rule->Radius + 2.0f });
+                        HoldAwayFrom(enemy, rule->Value, rule->Radius + 2.0f);
+                    }
                     else if (rule->Type == Kind::AvoidLine)
                         avoid.Bands.push_back({ enemy->GetPosition(), enemy->GetOrientation(), rule->Radius, float(rule->Value) / 2.0f + 2.0f });
                     else
@@ -244,6 +250,7 @@ namespace Companions
                         {
                             avoid.Circles.push_back({ enemy->GetPosition(), rule->Radius + 2.0f });
                             avoid.Hard = true;
+                            HoldAwayFrom(enemy, rule->Value, rule->Radius + 2.0f);
                         }
                         break;
                     case Kind::Spread:
@@ -266,14 +273,29 @@ namespace Companions
                 }
             }
 
+            // Onyxia's Deep Breath shows no cast (the script casts it at once): she hangs still in the air without a target while
+            // she takes the breath (5 s), then crosses the room at three times her speed, and its fire reaches 30 yards to either
+            // side of her path (twelve blasts of 30 yards): everyone keeps out of that band
+            uint32 constexpr NPC_ONYXIA = 10184, SPELL_ONYXIA_HOVER = 17131;
+            if (entry == NPC_ONYXIA && enemy->HasAura(SPELL_ONYXIA_HOVER)
+                && ((enemy->movespline->Finalized() && enemy->GetTarget().IsEmpty()) || enemy->GetSpeedRate(MOVE_RUN) > 2.0f))
+            {
+                avoid.Bands.push_back({ enemy->GetPosition(), enemy->GetOrientation(), 110.0f, 33.0f });
+                avoid.Hard = true;
+            }
+
             // in front of a breath or a cleave (by rule, or seen casting a cone): only its tank stands there
             if (IsBig(creature) && roleBit != Mechanics::ROLE_BIT_TANK && enemy->GetVictim() != _bot)
             {
                 bool sides = Mechanics::HasRule(entry, Kind::AvoidSides);
                 if (sides || Mechanics::HasRule(entry, Kind::AvoidFront) || ConeCasters.count(entry))
                 {
-                    avoid.Arcs.push_back({ enemy->GetGUID(), enemy->GetPosition(), enemy->GetOrientation(), float(M_PI) / 3.0f,
-                        enemy->GetCombatReach() + 25.0f });
+                    // as far as the rule says it reaches (a dragon's breath: 45 yards, where the raid's healers stood)
+                    float frontReach = enemy->GetCombatReach() + 25.0f;
+                    for (Rule const* rule : Mechanics::RulesFor(entry))
+                        if ((rule->Type == Kind::AvoidSides || rule->Type == Kind::AvoidFront) && rule->Radius > 0.0f)
+                            frontReach = std::max(frontReach, enemy->GetCombatReach() + rule->Radius);
+                    avoid.Arcs.push_back({ enemy->GetGUID(), enemy->GetPosition(), enemy->GetOrientation(), float(M_PI) / 3.0f, frontReach });
                     if (sides)
                         avoid.Arcs.push_back({ enemy->GetGUID(), enemy->GetPosition(), enemy->GetOrientation() + float(M_PI), float(M_PI) / 4.0f,
                             enemy->GetCombatReach() + 12.0f });
@@ -284,7 +306,30 @@ namespace Companions
             }
         }
 
-        // debuffs that hurt the others: the one who has it leaves everyone, the others keep away from him
+        // casters still kept away from after their cast or aura ended (a rule's hold time)
+        for (auto itr = _castAvoid.begin(); itr != _castAvoid.end();)
+        {
+            Unit* caster = GameTime::Now() < itr->second.first ? ObjectAccessor::GetUnit(*_bot, itr->first) : nullptr;
+            if (!caster || !caster->IsAlive())
+            {
+                itr = _castAvoid.erase(itr);
+                continue;
+            }
+            avoid.Circles.push_back({ caster->GetPosition(), itr->second.second });
+            avoid.Hard = true;
+            ++itr;
+        }
+
+        // debuffs that hurt the others (Living Bomb, Burning Adrenaline, Conflagration): the one who has it leaves everyone, and
+        // the raid around the boss stays where it is: the others keep away from him only when he cannot go (confused, rooted,
+        // a tank who keeps the boss where it is). (All of them stepping away from every carrier kept a raid's tanks and melee
+        // off Baron Geddon most of the fight, and stepping away in its last seconds sent the casters into his Inferno.)
+        auto holdsBoss = [this](Player const* member)
+        {
+            if (!IsTank(member))
+                return false;
+            return std::any_of(_view.Enemies.begin(), _view.Enemies.end(), [member](Unit* enemy) { return enemy->GetVictim() == member && IsBossUnit(enemy); });
+        };
         for (Player* member : _view.Members)
         {
             if (!member->IsAlive())
@@ -292,12 +337,18 @@ namespace Companions
             for (auto const& [spellId, application] : member->GetAppliedAuras())
                 if (Rule const* rule = Mechanics::FindSpellRule(spellId, Kind::RunWithDebuff))
                 {
+                    bool const keepsBoss = holdsBoss(member);
                     if (member == _bot)
                     {
-                        runner = true;
-                        runRadius = std::max(runRadius, rule->Radius);
+                        if (!keepsBoss)
+                        {
+                            runner = true;
+                            runRadius = std::max(runRadius, rule->Radius);
+                        }
+                        continue;
                     }
-                    else
+                    bool const stuck = keepsBoss || member->HasUnitState(UNIT_STATE_CONFUSED | UNIT_STATE_ROOT | UNIT_STATE_STUNNED | UNIT_STATE_FLEEING);
+                    if (stuck)
                     {
                         avoid.Circles.push_back({ member->GetPosition(), rule->Radius });
                         avoid.Hard = true;
@@ -344,12 +395,13 @@ namespace Companions
             }
         }
 
-        // an enemy after a caster or healer (one that can still move): to the tank, who takes it back
+        // an enemy after a caster or healer (one that can still move): to the tank, who takes it back. Not a boss: the tank
+        // taunts it off, and a raid's healers running into it gathered the whole raid in Baron Geddon's Inferno
         if (!spot && !melee && !runner)
             if (Player* tank = _view.Tank; tank && tank != _bot && tank->IsAlive() && IsTank(tank) && _bot->GetExactDist2d(tank) > 8.0f)
                 for (Unit* enemy : _view.Enemies)
                 {
-                    if (enemy->GetVictim() != _bot || enemy->HasUnitState(UNIT_STATE_ROOT) || IsCrowdControlTarget(enemy))
+                    if (enemy->GetVictim() != _bot || enemy->HasUnitState(UNIT_STATE_ROOT) || IsCrowdControlTarget(enemy) || IsBossUnit(enemy))
                         continue;
                     float const angle = tank->GetAbsoluteAngle(_bot);
                     Position near(tank->GetPositionX() + std::cos(angle) * 3.0f, tank->GetPositionY() + std::sin(angle) * 3.0f, tank->GetPositionZ());
@@ -520,6 +572,13 @@ namespace Companions
         return (status & MAP_LIQUID_STATUS_IN_CONTACT) != 0;
     }
 
+    // a cast or aura to keep away from for some seconds from its start, whatever becomes of it (counted once per start)
+    void CompanionAI::HoldAwayFrom(Unit* caster, uint32 seconds, float radius)
+    {
+        if (seconds)
+            _castAvoid.try_emplace(caster->GetGUID(), GameTime::Now() + Seconds(seconds), radius);
+    }
+
     bool CompanionAI::IsMechanicTarget(Unit const* unit) const
     {
         if (!unit)
@@ -679,5 +738,139 @@ namespace Companions
                 return true;
         }
         return false;
+    }
+
+    // ------------------------------------------------------------------ Blackwing Lair: Razorgore the Untamed
+
+    namespace
+    {
+        uint32 constexpr MAP_BLACKWING_LAIR = 469;
+        uint32 constexpr NPC_RAZORGORE = 12435;
+        uint32 constexpr GO_ORB_OF_DOMINATION = 177808;
+        uint32 constexpr GO_BLACK_DRAGON_EGG = 177807;
+        uint32 constexpr SPELL_DESTROY_EGG = 19873;
+        uint32 constexpr SPELL_POSSESS = 19832;
+        uint32 constexpr SPELL_MIND_EXHAUSTION = 23958;
+        uint32 constexpr DATA_EGGS = 12;            // the instance script's egg state: DONE once all 30 are broken
+        uint32 constexpr DATA_EGGS_BROKEN = 13;     // how many are broken
+        uint32 constexpr EGGS_LAST = 27;            // from here the main tank controls him: he turns on the last one who did
+    }
+
+    bool Mechanics::Untouchable(Unit const* unit)
+    {
+        if (!unit || unit->GetTypeId() != TYPEID_UNIT || unit->GetEntry() != NPC_RAZORGORE || unit->GetMapId() != MAP_BLACKWING_LAIR)
+            return false;
+        InstanceScript const* instance = unit->GetInstanceScript();
+        return instance && instance->GetData(DATA_EGGS) != DONE;
+    }
+
+    namespace
+    {
+        // who takes the orb next: the owner's companions in the group view, alive and without Mind Exhaustion (all agree)
+        Player* NextOrbController(GroupView const& view, ObjectGuid owner, uint32 broken)
+        {
+            Player* best = nullptr;
+            int32 bestRank = 0;
+            for (Player* member : view.Members)
+            {
+                CompanionAI const* ai = sCompanionMgr->GetAI(member);
+                if (!ai || ai->GetOwnerGUID() != owner || !member->IsAlive() || member->HasAura(SPELL_MIND_EXHAUSTION))
+                    continue;
+                Role const role = ai->GetEffectiveRole();
+                int32 rank = role == Role::RangedDps ? 1 : role == Role::MeleeDps ? 2 : role == Role::Tank ? 3 : 4;
+                if (broken >= EGGS_LAST && member == view.MainTank)
+                    rank = 0;
+                if (!best || rank < bestRank || (rank == bestRank && member->GetGUID() < best->GetGUID()))
+                {
+                    best = member;
+                    bestRank = rank;
+                }
+            }
+            return best;
+        }
+    }
+
+    std::string CompanionAI::OrbLine()
+    {
+        Creature* razorgore = _bot->FindNearestCreature(NPC_RAZORGORE, 200.0f);
+        GameObject* orb = _bot->FindNearestGameObject(GO_ORB_OF_DOMINATION, 200.0f);
+        if (!razorgore)
+            return "no Razorgore";
+        uint32 const broken = razorgore->GetInstanceScript() ? razorgore->GetInstanceScript()->GetData(DATA_EGGS_BROKEN) : 0;
+        Player* next = NextOrbController(_view, _owner, broken);
+        Unit* charmer = razorgore->GetCharmer();
+        return Trinity::StringFormat("Razorgore {} {}, untouchable {}, controlled by {}, eggs broken {}, next {}, orb {:.1f} yards{}",
+            razorgore->IsInCombat() ? "fighting" : "idle", razorgore->IsInEvadeMode() ? "evading" : "", uint32(Mechanics::Untouchable(razorgore)),
+            charmer ? charmer->GetName() : "nobody", broken, next ? next->GetName() : "nobody", orb ? _bot->GetExactDist2d(orb) : -1.0f,
+            _bot->HasAura(SPELL_MIND_EXHAUSTION) ? ", exhausted" : "");
+    }
+
+    // Razorgore's phase one: his eggs break only under his own Destroy Egg, while someone controls him through the Orb of
+    // Domination, and his death before the last one blows up the whole raid. One companion at a time takes the orb (damage
+    // dealers first; the main tank for the last eggs, so that Razorgore turns on a tank), walks him from egg to egg and
+    // breaks them; when its control ends the next one without Mind Exhaustion takes over. A player who takes the orb keeps it.
+    bool CompanionAI::UpdateOrbControl()
+    {
+        if (_bot->GetMapId() != MAP_BLACKWING_LAIR || _ambient)
+            return false;
+        Creature* razorgore = _bot->FindNearestCreature(NPC_RAZORGORE, 200.0f);
+        if (!razorgore || !Mechanics::Untouchable(razorgore) || !razorgore->IsInCombat())
+            return false;
+        uint32 const broken = razorgore->GetInstanceScript()->GetData(DATA_EGGS_BROKEN);
+
+        auto nextController = [&]() { return NextOrbController(_view, _owner, broken); };
+
+        // controlling him: its own body keeps still (moving or casting would end the control), he goes from egg to egg
+        if (_bot->GetCharmedGUID() == razorgore->GetGUID())
+        {
+            Player* next = nextController();
+            if (broken >= EGGS_LAST && next && next != _bot && next == _view.MainTank)
+            {
+                razorgore->RemoveAurasDueToSpell(SPELL_POSSESS);    // the main tank takes him for the last eggs
+                return true;
+            }
+            if (razorgore->HasUnitState(UNIT_STATE_CASTING))
+                return true;
+            std::list<GameObject*> eggs;
+            razorgore->GetGameObjectListWithEntryInGrid(eggs, GO_BLACK_DRAGON_EGG, 150.0f);
+            GameObject* egg = nullptr;
+            for (GameObject* candidate : eggs)
+                if (candidate->isSpawned() && (!egg || razorgore->GetExactDist2d(candidate) < razorgore->GetExactDist2d(egg)))
+                    egg = candidate;
+            if (!egg)
+                return true;
+            if (razorgore->GetExactDist2d(egg) > 3.0f)
+            {
+                if (_orbEgg != egg->GetGUID() || !razorgore->isMoving())
+                {
+                    razorgore->GetMotionMaster()->MovePoint(0, egg->GetPosition());
+                    _orbEgg = egg->GetGUID();
+                }
+                return true;
+            }
+            if (razorgore->isMoving())
+                razorgore->StopMoving();
+            razorgore->CastSpell(egg, SPELL_DESTROY_EGG, false);
+            return true;
+        }
+
+        // someone controls him already: the others fight the adds
+        if (!razorgore->GetCharmerGUID().IsEmpty() || nextController() != _bot)
+            return false;
+        GameObject* orb = _bot->FindNearestGameObject(GO_ORB_OF_DOMINATION, 200.0f);
+        if (!orb)
+            return false;
+        if (_bot->GetExactDist2d(orb) > 3.0f)
+        {
+            if (!_bot->isMoving())
+            {
+                _bot->GetMotionMaster()->MovePoint(0, orb->GetPosition());
+                _movement = MoveMode::Point;
+            }
+            return true;
+        }
+        StopMovement();
+        orb->Use(_bot);
+        return true;
     }
 }

@@ -25,9 +25,10 @@ namespace Companions::Mechanics
             { CrowdControlNpc, 12099,   0,  0, 0, ROLES_ALL },                  // Firesworn (Garr): banish
             { KillFirst,     12099,     0,  0, 1, ROLES_ALL },
             { DispelFirst,   12057, 19496,  0, 0, ROLES_ALL },                  // Garr: Magma Shackles
-            { RunWithDebuff, 12056, 20475, 25, 0, ROLES_ALL },                  // Baron Geddon: Living Bomb
-            { AvoidCast,     12056, 19695, 22, 0, ROLES_ALL },                  // Inferno
+            { RunWithDebuff, 12056, 20475, 20, 0, ROLES_ALL },                  // Baron Geddon: Living Bomb (explodes 18 yards)
+            { AvoidCast,     12056, 19695, 22, 8, ROLES_ALL },                  // Inferno: its blasts go on 8 s, the aura fades first
             { DispelFirst,   12056, 19659,  0, 0, ROLES_ALL },                  // Ignite Mana
+            { AvoidCast,     12056, 20478, 30, 0, ROLES_ALL },                  // Armageddon (at 5%): he explodes 8 s later
             { DispelFirst,   12264, 19713,  0, 0, ROLES_ALL },                  // Shazzrah's Curse
             { Purge,         12264, 19714,  0, 0, ROLES_ALL },                  // Deaden Magic on Shazzrah
             { Spread,        12264,     0,  6, 0, ROLE_BIT_RANGED | ROLE_BIT_HEALER },
@@ -46,9 +47,9 @@ namespace Companions::Mechanics
             { AvoidFront,    11502,     0,  0, 0, ROLES_NOT_TANK },             // Ragnaros
 
             // ---------------------------------------------------------------- Onyxia's Lair
-            { AvoidSides,    10184,     0,  0, 0, ROLES_NOT_TANK },             // Flame Breath in front, Tail Sweep behind
+            { AvoidSides,    10184,     0, 45, 0, ROLES_NOT_TANK },             // Flame Breath in front (45 yards), Tail Sweep behind
             { Fear,          10184,     0,  0, 0, ROLES_ALL },                  // Bellowing Roar (phase 3)
-            { KillFirst,     11262,     0,  0, 1, ROLE_BIT_MELEE | ROLE_BIT_RANGED },   // Onyxian Whelp
+            { KillFirst,     11262,     0,  0, 1, ROLE_BIT_MELEE },             // Onyxian Whelp: the melee's (the ranged stay on Onyxia)
             { AvoidLine,     10184, 18576, 80, 14, ROLES_ALL },                 // Deep Breath, every direction
             { AvoidLine,     10184, 18617, 80, 14, ROLES_ALL },
             { AvoidLine,     10184, 17086, 80, 14, ROLES_ALL },
@@ -60,15 +61,21 @@ namespace Companions::Mechanics
 
             // ---------------------------------------------------------------- Blackwing Lair
             { AvoidFront,    12435,     0,  0, 0, ROLES_NOT_TANK },             // Razorgore: Cleave
-            { RunWithDebuff, 12435, 23023, 10, 0, ROLES_ALL },                  // Conflagration
+            { RunWithDebuff, 12435, 23023,  6, 0, ROLES_ALL },                  // Conflagration: burns who stands within 5 yards
+            { KillFirst,     12420,     0,  0, 2, ROLES_ALL },                  // Blackwing Mage (Razorgore): Fireballs pile up
+            { Interrupt,     12420, 17290,  0, 0, ROLES_ALL },                  //   their Fireball
+            { KillFirst,     12422,     0,  0, 1, ROLES_ALL },                  // Death Talon Dragonspawn: Bellowing Roar
+            { IgnoreThreat,  12416,     0,  0, 0, ROLES_ALL },                  // Razorgore's waves: burnt down, not held
+            { IgnoreThreat,  12420,     0,  0, 0, ROLES_ALL },
+            { IgnoreThreat,  12422,     0,  0, 0, ROLES_ALL },
             { RunWithDebuff, 13020, 23620, 20, 0, ROLES_ALL },                  // Vaelastrasz: Burning Adrenaline
             { TankSwap,      13020, 23620,  0, 1, ROLES_ALL },
-            { AvoidSides,    13020,     0,  0, 0, ROLES_NOT_TANK },             // Flame Breath, Tail Sweep
+            { AvoidSides,    13020,     0, 45, 0, ROLES_NOT_TANK },             // Flame Breath (45 yards), Tail Sweep
             { AvoidFront,    12017,     0,  0, 0, ROLES_NOT_TANK },             // Broodlord: Cleave
-            { AvoidSides,    11983,     0,  0, 0, ROLES_NOT_TANK },             // Firemaw: Shadow Flame, Wing Buffet
-            { AvoidSides,    14601,     0,  0, 0, ROLES_NOT_TANK },             // Ebonroc
+            { AvoidSides,    11983,     0, 45, 0, ROLES_NOT_TANK },             // Firemaw: Shadow Flame (45 yards), Wing Buffet
+            { AvoidSides,    14601,     0, 45, 0, ROLES_NOT_TANK },             // Ebonroc: Shadow Flame
             { TankSwap,      14601, 23340,  0, 1, ROLES_ALL },                  // Shadow of Ebonroc heals him on the tank
-            { AvoidSides,    11981,     0,  0, 0, ROLES_NOT_TANK },             // Flamegor
+            { AvoidSides,    11981,     0, 45, 0, ROLES_NOT_TANK },             // Flamegor: Shadow Flame
             { Tranquilize,   11981, 23342,  0, 0, ROLES_ALL },                  // Frenzy
             { AvoidFront,    14020,     0,  0, 0, ROLES_NOT_TANK },             // Chromaggus: breaths
             { Tranquilize,   14020, 23128,  0, 0, ROLES_ALL },
@@ -77,7 +84,7 @@ namespace Companions::Mechanics
             { DispelFirst,   14020, 23155,  0, 0, ROLES_ALL },                  // Red
             { DispelFirst,   14020, 23169,  0, 0, ROLES_ALL },                  // Green
             { Fear,          10162,     0,  0, 0, ROLES_ALL },                  // Lord Victor Nefarius
-            { AvoidSides,    11583,     0,  0, 0, ROLES_NOT_TANK },             // Nefarian: Shadow Flame, Tail Lash
+            { AvoidSides,    11583,     0, 45, 0, ROLES_NOT_TANK },             // Nefarian: Shadow Flame (45 yards), Tail Lash
             { Fear,          11583,     0,  0, 0, ROLES_ALL },                  // Bellowing Roar
             { StopOnAura,    11583, 23418,  0, 1, ROLES_ALL },                  // paladin call: Blessing of Protection on him
             { NoHealWithAura, 0,    23401,  0, 0, ROLES_ALL },                  // priest call: their heals hurt
@@ -301,7 +308,7 @@ namespace Companions::Mechanics
             { 11982, "Magmadar", "Fears every 30 s: Fear Ward and Tremor Totem on the tank. Hunters Tranquilizing Shot the Frenzy. Step out of Lava Bombs." },
             { 12259, "Gehennas", "Kill the two Flamewakers first. Remove Gehennas' Curse (-75% healing). Move out of Rain of Fire." },
             { 12057, "Garr", "Banish or kill the Firesworn one by one away from the group: each one dying explodes and empowers Garr. Then Garr." },
-            { 12056, "Baron Geddon", "Living Bomb: run away from everyone until it explodes. Everyone leaves him during Inferno. Ignite Mana: dispel it." },
+            { 12056, "Baron Geddon", "Living Bomb: run away from everyone until it explodes. Everyone leaves him during Inferno. Ignite Mana: dispel it. At 5% he casts Armageddon: everyone runs out, he explodes." },
             { 12264, "Shazzrah", "Blinks and casts Arcane Explosion around himself: ranged stand apart. Remove his curse, purge Deaden Magic from him." },
             { 12098, "Sulfuron Harbinger", "Kill the four Flamewaker Priests first, interrupting Dark Mending. Then Sulfuron." },
             { 11988, "Golemagg the Incinerator", "One tank holds the Core Ragers away; nobody attacks them, they die with him. Melee leave at 10% (Earthquake)." },
@@ -310,7 +317,7 @@ namespace Companions::Mechanics
             // Onyxia
             { 10184, "Onyxia", "Stand at her flanks: breath in front, tail behind. Phase 2 (flying): kill whelps, never stand in the line of Deep Breath. Phase 3: Fear Ward for Bellowing Roar." },
             // Blackwing Lair
-            { 12435, "Razorgore the Untamed", "Phase 1 needs a player controlling him through the orb to break the eggs. Phase 2: tank him, run away with Conflagration." },
+            { 12435, "Razorgore the Untamed", "Phase 1: nobody hurts him (his death blows up the raid); a companion controls him through the orb and breaks the eggs, the main tank the last ones. Phase 2: tank him, run away with Conflagration." },
             { 13020, "Vaelastrasz the Corrupt", "Stand at his flanks. Burning Adrenaline: run away from everyone; on the tank, the next tank taunts at once." },
             { 12017, "Broodlord Lashlayer", "Tank faces him away (Cleave); Knock Away drops threat, off-tanks taunt back." },
             { 11983, "Firemaw", "Stand at his flanks. Flame Buffet stacks: break line of sight to drop them." },

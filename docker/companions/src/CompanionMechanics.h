@@ -22,8 +22,9 @@ namespace Companions::Mechanics
     enum class Kind : uint8
     {
         Interrupt,      // Spell: interrupt it before anything else
-        AvoidCast,      // Spell (cast, channel or aura on the caster): bots within Radius of it leave until it ends
-        AvoidFront,     // Entry: nobody but its tank stands in front of it (breath, cleave, cone)
+        AvoidCast,      // Spell (cast, channel or aura on the caster): bots within Radius of it leave until it ends (and at
+                        //   least Value seconds from its start: Inferno's aura fades before its scripted blasts do)
+        AvoidFront,     // Entry: nobody but its tank stands in front of it (breath, cleave, cone; Radius: how far it reaches)
         AvoidSides,     // Entry: front and tail both hit: the others stand at its flanks
         RunWithDebuff,  // Spell (aura): a bot with it runs Radius away from everyone; the others keep away from it
         AvoidNpc,       // Entry (add, cloud, tornado, void zone): keep Radius away from it
@@ -45,6 +46,7 @@ namespace Companions::Mechanics
         FreezeWithDebuff, // Spell (aura on the bot): it does nothing at all while it has it (Threatening Gaze)
         StunLock,       // Entry: whoever has a stun keeps it stunned, in turn (Gurubashi Axe Thrower before its Axe Flurry)
         DrainMana,      // Entry: its mana is kept low (it blasts the raid at full mana): Mana Burn, Drain Mana, Viper Sting
+        IgnoreThreat,   // Entry: damage dealers burn it whatever the tank's threat (waves faster than a tank can hold)
     };
 
     enum : uint8
@@ -81,6 +83,9 @@ namespace Companions::Mechanics
     Rule const* FindSpellRule(uint32 spellId, Kind type);
     size_t RuleCount();
     size_t EncounterCount();
+
+    // must not be hurt now: Razorgore while his eggs are not all broken (his death then blows up the whole raid)
+    bool Untouchable(Unit const* unit);
 
     // generic readings of a spell nobody wrote a rule for
     float CasterAreaRadius(SpellInfo const* spell);    // hostile area around its caster (Arcane Explosion, War Stomp...), 0 if not

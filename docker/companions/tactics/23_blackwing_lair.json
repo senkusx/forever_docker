@@ -6,10 +6,10 @@
     {
       "name": "Razorgore the Untamed",
       "aliases": ["razorgore"],
-      "general": "Phase 1: one player controls Razorgore with the orb and breaks all 30 eggs while the raid holds the orcs and dragonkin. Phase 2: kill Razorgore (Conflagration, Fireball Volley).",
-      "tank": "Hold the adds in the corners in phase 1; take Razorgore in phase 2.",
+      "general": "Phase 1: control him with the Orb of Domination and break all 30 eggs (Destroy Egg); never hurt him, his death kills the raid. Companions take the orb themselves. Phase 2: kill him.",
+      "tank": "Hold the adds in phase 1; the main tank controls him for the last eggs and keeps him in phase 2.",
       "healer": "Protect the orb controller; heal the volleys in phase 2.",
-      "dps": "Kill adds before they reach the orb; then Razorgore."
+      "dps": "Kill adds before they reach the orb; never Razorgore until the eggs are gone; then Razorgore."
     },
     {
       "name": "Vaelastrasz the Corrupt",

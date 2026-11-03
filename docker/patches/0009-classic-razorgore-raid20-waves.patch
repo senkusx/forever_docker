@@ -1,0 +1,22 @@
+diff --git a/src/server/scripts/Custom/Classic/instances/blackwing_lair/classic_boss_razorgore.cpp b/src/server/scripts/Custom/Classic/instances/blackwing_lair/classic_boss_razorgore.cpp
+index 81324e01..f0257516 100644
+--- a/src/server/scripts/Custom/Classic/instances/blackwing_lair/classic_boss_razorgore.cpp
++++ b/src/server/scripts/Custom/Classic/instances/blackwing_lair/classic_boss_razorgore.cpp
+@@ -33,6 +33,7 @@
+ #include "ThreatManager.h"
+ #include "classic_blackwing_lair.h"
+ #include "classic_script_text.h"
++#include <algorithm>
+ #include <initializer_list>
+ #include <list>
+ 
+@@ -623,7 +624,8 @@ struct classic_trigger_orb_of_command : public ScriptedAI
+                 for (uint8 i = 0; i < 4; ++i)
+                     PopAdd(i);
+ 
+-                m_uiPopTimer = 15000;
++                // a raid tuned for fewer players (companions Raid20: creature health scaled down) gets the waves less often
++                m_uiPopTimer = uint32(15000 / std::max(0.25f, me->HealthScale()));
+             }
+             else
+                 m_uiPopTimer -= uiDiff;

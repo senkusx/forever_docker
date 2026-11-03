@@ -20,6 +20,7 @@
 #include <unordered_map>
 #include <vector>
 
+struct ChaseAngle;
 class Creature;
 class Group;
 class Item;
@@ -58,6 +59,7 @@ namespace Companions
         std::vector<Player*> Tanks;     // bots with the tank role and players marked main tank in the raid (else the owner)
         Player* MainTank = nullptr;     // holds the boss: the raid's marked main tank, else the first tank
         std::vector<Unit*> Enemies;     // hostile units in combat with a member
+        std::vector<Unit*> Spared;      // in the fight but not to be hurt (Mechanics::Untouchable): no area spells near them
     };
 
     // what a player told a bot about one of its abilities ("use more frost nova, adds keep reaching the healer")
@@ -197,6 +199,12 @@ namespace Companions
         Unit* GetCurrentTarget() const;
         std::string StatusLine() const;
         bool IsPulling() const { return _pulling && !_forcedTarget.IsEmpty(); }
+        // a raid's boss tanks: the first two tanks (marked ones first); only they trade a boss on a tank swap
+        bool IsBossTank() const;
+        // the tank this healer looks after in a raid (some healers on each tank, the main tank the most); null: it heals the
+        // raid. healersAssigned: the raid's healers share the work this way (a raid with three healers or more)
+        Player* AssignedTank(bool* healersAssigned = nullptr) const;
+        ChaseAngle HealerSpot(Unit const* tank) const;      // where a healer stands by that tank
         ObjectGuid GetPullTarget() const { return _pulling ? _forcedTarget : ObjectGuid::Empty; }
         // an enemy this bot was told to crowd control: the others leave it alone while it does
         bool IsAssignedCrowdControl(Unit const* unit) const;
@@ -204,6 +212,7 @@ namespace Companions
         std::string RecentCasts() const;    // test harness: what it did lately
         std::string MechanicsLine() const;  // test harness: the boss mechanics it follows right now
         std::string ConjureLine() const;     // test: what a mage is conjuring and for whom
+        std::string OrbLine();               // test: Razorgore's orb, who controls him and who takes it next
 
         // ---- helpers for ClassAI ----
         uint32 SpellIdOf(std::string_view name) const { return _spells.Best(name); }
@@ -336,6 +345,8 @@ namespace Companions
         bool AvoidGroundEffects();      // out of fire, poison clouds and other hostile ground effects
         // boss mechanics (CompanionMechanics.h): out of casts, debuffs, fronts and lines; spreading, polarity, hiding
         bool UpdateMechanics();
+        void HoldAwayFrom(Unit* caster, uint32 seconds, float radius);
+        bool UpdateOrbControl();        // Blackwing Lair: Razorgore through the Orb of Domination, egg after egg
         bool MechanicSpells();                          // Fear Ward, Tranquilizing Shot, Purge, crowd control the mind controlled
         bool IsMechanicTarget(Unit const* unit) const;  // false: a rule says this bot leaves it alone (immune, reflecting...)
         Unit* KillFirstTarget() const;
@@ -465,6 +476,7 @@ namespace Companions
         TimePoint _mechanicScanAt = { };
         Optional<float> _mechanicAngle; // chase angle around the target a mechanic asks for (behind, flanks)
         std::vector<ObjectGuid> _hazards;   // creatures to keep away from (void zones, tornadoes, clouds)
+        std::unordered_map<ObjectGuid, std::pair<TimePoint, float>> _castAvoid;   // casters kept away from: until, radius
         TimePoint _fearWardAt = { };
         std::string _mechanicDebug;     // test harness: why the last search found no spot
         // ambient life
@@ -504,6 +516,7 @@ namespace Companions
         TimePoint _giveUntil = { };
         ObjectGuid _conjureFor;                     // who it walks over to with what was asked (a mage conjures it first)
         std::string _deliverWhat;                   // what it trades them there
+        ObjectGuid _orbEgg;                         // the egg it walks Razorgore to
         std::vector<char const*> _conjureSpells;    // "conjure water", "conjure food" still to cast
         uint32 _conjureCasts = 0;
         TimePoint _conjureUntil = { };

@@ -7,10 +7,12 @@ A server-side AI plays each one in its role:
 - **Tank**: leads in front of you. Warriors wait in Battle Stance, charge the pull and switch to Defensive Stance;
   taking threat back comes first (healers first): taunt, the biggest hits when it is on cooldown, Challenging Shout /
   Roar when several got loose, and it keeps switching to the enemy it holds by the thinnest margin before a damage
-  dealer pulls it. With two tanks or more, the main tank (the one marked main tank in the raid, else the first) holds
-  the boss; the others pick up what is loose or nobody tanks, then an add off the main tank when it holds several. A
-  tank never hits what another tank holds or went for, so two tanks do not trade threat on one enemy while others run
-  free; only a tank swap of the boss's tactics, or a `taunt <marker>` order (the brain's too), puts them on one. Warriors: Shield Slam, Revenge, Sunder, Thunder Clap, Demoralizing Shout, Concussion Blow, Shield
+  dealer pulls it. With two tanks or more, the ones marked main tank in the raid come first, in the raid's order (else
+  the group's order): the first holds the boss and never holds back on it, the second takes it on a tank swap (only
+  those two trade a boss), the others pick up what is loose or nobody tanks, then an add off the main tank when it holds
+  several. A tank never hits what another tank holds or went for, and the off-tanks leave a boss without tank swaps to
+  the main tank, so two tanks do not trade threat on one enemy while others run free; only a tank swap of the boss's
+  tactics, or a `taunt <marker>` order (the brain's too), puts them on one. Warriors: Shield Slam, Revenge, Sunder, Thunder Clap, Demoralizing Shout, Concussion Blow, Shield
   Block, Cleave. Paladins (no taunt): Righteous Fury, Seal of Fury, Judgement, Consecration, Holy Shield, Holy Strike,
   Holy Wrath and Exorcism on undead and demons. Bears: Swipe on packs, Lacerate, Demoralizing Roar, Faerie Fire.
 - **Healer**: heals and does nothing else in a fight (no damage spells, no wand); heals by priority (tank first), picks the cheapest rank that covers the damage (smaller ones when mana
@@ -19,8 +21,14 @@ A server-side AI plays each one in its role:
   below 85% and on the others below 75% (lower as its mana drops), stops a heal whose target got full before it lands,
   and out of combat tops up only with mana to spare. A hybrid tanking or dealing damage (paladin, druid, shaman) leaves
   the healing to the group's healer while one is near with mana, itself included: it heals only a life about to end
-  with no heal on its way.
-- **Damage**: attacks the skull, then the cross, then your target, then the tank's target. On a pull the melee walk
+  with no heal on its way. In a raid with three healers or more they share the work like a raid's healers: three in
+  five on the tanks (half of those on the main tank, paladins and priests first), the others on the raid. A tank
+  healer keeps its tank in reach (it goes along on a pull), and once a boss hits it heals from 97% with a heal sized for
+  the next blow (cancelled at the last moment if it proves needless); the raid's healers leave the tanks to them. Near
+  a boss whose front hurts (a dragon's breath) the healers stand at their tank's side, not behind it, and in a raid the
+  formation keeps them within healing range of the tanks (healers at most 22 yards behind you, tanks 15 in front).
+- **Damage**: attacks the skull, then the cross, then your target, then the tank's target (on a boss after three seconds
+  of the tank's threat). On a pull the melee walk
   up with the tank and wait behind the enemy until the tank has it. They stand behind enemies (melee) or at range
   (casters, hunters), interrupt casts, use AoE only when no crowd-controlled enemy is near, and keep an add out of a
   pack of three or more by themselves (polymorph, banish, hibernate, scare beast), calling it out like players do.
@@ -395,7 +403,10 @@ owner: `login <character>`, `party <owner> [role]`, `raid <owner> [size]`, `say 
 bots see it and what each one does), `invite <owner> <name>` (a /invite), `order <owner> <order>`, `why <bot>` (what it sees),
 `threat <bot>` (the group's threat modifiers, and for each enemy of its fight the health it lost and its threat list),
 `spells <bot>`, `tactics <owner> <question>` (what the companions answer to it), `auras <name> [spell]` (auras on a character and who cast them, the area triggers that spell made), `unaura <name>` (its buffs off, to watch them come back),
-`walk <owner> <x> <y> <z>` (the stand-in walks there, the companions follow), `rolepoll <owner>` (a role check; prints the group roles), `kill <bot>`, `logout <owner>`.
+`walk <owner> <x> <y> <z>` (the stand-in walks there, the companions follow), `rolepoll <owner>` (a role check; prints the group roles),
+`hp <owner> [entry]` (the whole group on one line: health, yards to that creature, the debuffs a rule names; with the
+boss's health, target and movement), `sethp <owner> <entry> <pct>` (a boss to its next phase), `castat <name> <spell>
+<entry> [triggered]` (a cast at the nearest such creature and its result), `kill <bot>`, `logout <owner>`.
 For instance events: `trigger <owner> <id>` (the stand-in enters an area trigger), `objects <owner> [yards] [entry]`
 (game objects around and their state: doors 0 open, 1 closed), `use <owner> <entry>` (it uses the nearest one: a lever,
 an altar), `slay <owner> <entry|0> [yards]` (it kills those creatures, whose death scripts run: doors, the next boss),

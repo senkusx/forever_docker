@@ -378,6 +378,8 @@ namespace Companions
                 StopMovement();
             return;
         }
+        if (UpdateOrbControl())
+            return;
 
         bool const combat = !_view.Enemies.empty();
         if (combat && !_inCombat)
@@ -762,6 +764,7 @@ namespace Companions
     {
         _view.Members.clear();
         _view.Enemies.clear();
+        _view.Spared.clear();
         _view.Owner = ObjectAccessor::GetPlayer(*_bot, _owner);
         _view.Tank = nullptr;
         _view.Tanks.clear();
@@ -799,6 +802,10 @@ namespace Companions
         }
         if (_view.Tanks.empty() && _view.Owner && _view.Owner->IsAlive())
             _view.Tanks.push_back(_view.Owner);
+        // the ones the raid marked come first, in the raid's order: the first holds the boss, the second takes it on a swap
+        if (group)
+            std::stable_partition(_view.Tanks.begin(), _view.Tanks.end(),
+                [group](Player* tank) { return (group->GetMemberFlags(tank->GetGUID()) & MEMBER_FLAG_MAINTANK) != 0; });
         if (!_view.MainTank && !_view.Tanks.empty())
             _view.MainTank = _view.Tanks.front();
         _view.Tank = _view.MainTank;
@@ -813,6 +820,11 @@ namespace Companions
             if (!unit || std::find(_viewSeen.begin(), _viewSeen.end(), unit) != _viewSeen.end())
                 return;
             _viewSeen.push_back(unit);
+            if (Mechanics::Untouchable(unit))
+            {
+                _view.Spared.push_back(unit);
+                return;
+            }
             if (!IsValidEnemy(unit, maxDistance))
                 return;
             // a mind controlled friend is crowd controlled (MechanicSpells), never fought
@@ -878,7 +890,7 @@ namespace Companions
         if (!unit->isTargetableForAttack() || !_bot->IsValidAttackTarget(unit))
             return false;
         if (Creature const* creature = unit->ToCreature())
-            if (creature->IsEvadingAttacks() || creature->IsTrigger())
+            if (creature->IsEvadingAttacks() || creature->IsTrigger() || Mechanics::Untouchable(creature))
                 return false;
         return _bot->GetDistance(unit) < maxDistance;
     }
@@ -1039,8 +1051,9 @@ namespace Companions
 
         // a careful player lets the tank build threat first
         uint32 const sincePull = Elapsed(_combatStart);
+        uint32 const opening = IsBossUnit(pick) ? 3000 : 1500;     // a boss: the tank gets three seconds of threat first
         if (_view.Tank && _view.Tank != _bot && _view.Tank->IsAlive() && IsTank(_view.Tank) && pick->GetVictim() != _bot
-            && _forcedTarget.IsEmpty() && (sincePull < 1500 || (!IsTank(pick->GetVictim()) && sincePull < 4000)))
+            && _forcedTarget.IsEmpty() && (sincePull < opening || (!IsTank(pick->GetVictim()) && sincePull < 4000)))
         {
             _waitingFor = pick->GetGUID();
             return nullptr;
@@ -1083,15 +1096,16 @@ namespace Companions
     Unit* CompanionAI::KeepUnderTank(Unit* target)
     {
         _holdingThreat = false;
-        // the ones that wipe a raid if they live (Gurubashi Axe Thrower): burnt down, whatever the threat
+        // the ones that wipe a raid if they live (Gurubashi Axe Thrower) or come faster than a tank holds them (Razorgore's
+        // waves): burnt down, whatever the threat
         if (Creature const* creature = target ? target->ToCreature() : nullptr)
-            if (Mechanics::HasRule(creature->GetEntry(), Mechanics::Kind::StunLock))
+            if (Mechanics::HasRule(creature->GetEntry(), Mechanics::Kind::StunLock) || Mechanics::HasRule(creature->GetEntry(), Mechanics::Kind::IgnoreThreat))
                 return target;
         Unit* tank = _view.Tank;
         if (!tank || !tank->IsAlive() || !IsTank(tank) || !_forcedTarget.IsEmpty())
             return target;
-        // the main tank itself only on what another tank holds
-        if (tank == _bot && !HeldByOtherTank(target))
+        // the main tank itself only on what another tank holds, and never on its boss: it takes that back (taunt, threat)
+        if (tank == _bot && (!HeldByOtherTank(target) || IsBossUnit(target)))
             return target;
         Role const role = GetEffectiveRole();
         // the enemy pulls off the tank at 110% of its threat in melee and 130% at range: stay well below it
@@ -1349,10 +1363,12 @@ namespace Companions
         if (nearest)
             return nearest;
 
-        // nothing of its own: it helps on the main tank's target, below that tank's threat (UpdateCombat keeps it there)
+        // nothing of its own: it helps on the main tank's target, below that tank's threat (UpdateCombat keeps it there). Not on
+        // a boss without tank swaps: a warrior off-tank's opening outran a main tank's first seconds of threat and took it
         if (!mainTank && _view.MainTank && _view.MainTank != _bot)
             if (Unit* held = _view.MainTank->GetVictim())
-                if (IsValidEnemy(held) && !IsCrowdControlTarget(held))
+                if (IsValidEnemy(held) && !IsCrowdControlTarget(held)
+                    && (!IsBossUnit(held) || Mechanics::HasRule(held->ToCreature()->GetEntry(), Mechanics::Kind::TankSwap)))
                     return held;
         // only crowd controlled ones left: break one out and hold it
         return ControlledLeft();
@@ -1452,7 +1468,7 @@ namespace Companions
                         uint32 myStacks = mine ? std::max<uint32>(1, mine->GetStackAmount()) : 0;
                         if (holder && holder != _bot && IsTank(holder) && myStacks > 0)
                             handedOver = true;
-                        else if (holder && holder != _bot && IsTank(holder) && myStacks == 0)
+                        else if (holder && holder != _bot && IsTank(holder) && myStacks == 0 && IsBossTank())
                             if (Aura* theirs = holder->GetAura(rule->Spell))
                                 if (std::max<uint32>(1, theirs->GetStackAmount()) >= std::max<uint32>(1, rule->Value) && _class->Taunt(target))
                                     return;
@@ -1834,6 +1850,40 @@ namespace Companions
         else if (covered)
             threshold = tankThreshold = 15.0f;
 
+        // a raid's tank healer: its tank first, kept in reach (it walks up to it, a pull included) and topped up early once a
+        // boss hits it, with a heal sized for the next blow (one that proves needless is cancelled at the last moment, as raid
+        // healers do). The raid's other healers leave the tanks to them and look after everyone else first.
+        bool assigned = false;
+        Player* const myTank = healer && inCombat ? AssignedTank(&assigned) : nullptr;
+        if (myTank)
+        {
+            if (_bot->GetDistance(myTank) > 36.0f || !_bot->IsWithinLOSInMap(myTank))
+            {
+                if (_movement != MoveMode::Follow || _moveTarget != myTank->GetGUID())
+                {
+                    _bot->GetMotionMaster()->MoveFollow(myTank, 20.0f, HealerSpot(myTank));
+                    _movement = MoveMode::Follow;
+                    _moveTarget = myTank->GetGUID();
+                }
+                return true;
+            }
+            bool bossOnIt = false;
+            for (Unit* enemy : _view.Enemies)
+                if (enemy->GetVictim() == myTank && IsBossUnit(enemy))
+                    bossOnIt = true;
+            uint64 const have = myTank->GetHealth() + IncomingHealing(myTank);
+            float const pct = std::min(100.0f, float(have) * 100.0f / float(std::max<uint64>(1, myTank->GetMaxHealth())));
+            if (pct < (bossOnIt ? 97.0f : 88.0f))
+            {
+                uint64 const missing = myTank->GetMaxHealth() > have ? myTank->GetMaxHealth() - have : 0;
+                uint64 const blow = bossOnIt ? myTank->GetMaxHealth() * 35 / 100 : 0;
+                uint32 const deficit = uint32(std::min<uint64>(std::max(missing, blow), std::numeric_limits<uint32>::max()));
+                if (HealPreferred(myTank, deficit) || _class->Heal(myTank, pct < 35.0f ? HealUrgency::Emergency : HealUrgency::Normal, deficit))
+                    return true;
+            }
+        }
+        bool const raidHealer = assigned && !myTank;
+
         Unit* best = nullptr;
         float bestPct = 101.0f;
         float bestScore = 101.0f;
@@ -1849,7 +1899,7 @@ namespace Companions
             if (!healer && member != _bot && inCombat && pct > 25.0f)
                 continue;
             bool const tank = IsTank(member);
-            float const score = tank ? pct - 10.0f : pct;     // the tank first among the equally hurt
+            float const score = tank && !raidHealer ? pct - 10.0f : pct;     // the tank first among the equally hurt
             if (pct < (tank ? tankThreshold : threshold) && score < bestScore)
             {
                 bestScore = score;
@@ -2369,8 +2419,10 @@ namespace Companions
 
         if (role == Role::Healer || !target)
         {
-            // stay in healing range of the tank, out of melee
-            Unit* anchor = _view.Tank && _view.Tank != _bot ? _view.Tank : _view.Owner;
+            // stay in healing range of the tank (a raid's tank healer: its own), out of melee
+            Unit* anchor = AssignedTank();
+            if (!anchor)
+                anchor = _view.Tank && _view.Tank != _bot ? _view.Tank : _view.Owner;
             if (!anchor || anchor == _bot)
                 return;
             float dist = _bot->GetDistance(anchor);
@@ -2387,7 +2439,7 @@ namespace Companions
             {
                 if (_movement != MoveMode::Follow || _moveTarget != anchor->GetGUID())
                 {
-                    _bot->GetMotionMaster()->MoveFollow(anchor, 15.0f, ChaseAngle(float(M_PI)));
+                    _bot->GetMotionMaster()->MoveFollow(anchor, 15.0f, HealerSpot(anchor));
                     _movement = MoveMode::Follow;
                     _moveTarget = anchor->GetGUID();
                 }
@@ -2546,6 +2598,19 @@ namespace Companions
         if (_bot->GetVictim())
             _bot->AttackStop();
 
+        // a raid's tank healer goes along when its tank pulls, to be in reach when the boss lands its first blows
+        if (Player* tank = AssignedTank())
+            if (CompanionAI const* tankAI = sCompanionMgr->GetAI(tank); tankAI && tankAI->IsPulling())
+            {
+                if (_bot->GetDistance(tank) > 25.0f && (_movement != MoveMode::Follow || _moveTarget != tank->GetGUID()))
+                {
+                    motion->MoveFollow(tank, 20.0f, HealerSpot(tank));
+                    _movement = MoveMode::Follow;
+                    _moveTarget = tank->GetGUID();
+                }
+                return;
+            }
+
         TimePoint now = GameTime::Now();
 
         bool ownerMoving = owner->isMoving() || owner->GetExactDist2d(_lastOwnerPosition) > 0.3f;
@@ -2634,7 +2699,7 @@ namespace Companions
                 angle = travelling ? _formationSide * 0.5f : 0.0f;
                 halfWidth = travelling ? 0.3f : 0.6f;
                 minDist = near + 1.0f;
-                maxDist = std::max(minDist + 1.0f, far * 0.8f);
+                maxDist = std::max(minDist + 1.0f, std::min(far * 0.8f, 15.0f));    // healers in reach (below)
                 break;
             case Role::MeleeDps:
                 // beside the leader, between the tank and the back line
@@ -2644,10 +2709,11 @@ namespace Companions
                 maxDist = std::max(minDist + 1.0f, far * 0.7f);
                 break;
             case Role::Healer:
+                // behind, but never farther than the tank in front can be healed from (15 + 22 yards)
                 angle = pi;
                 halfWidth = 0.8f;
-                minDist = near + far * 0.3f;
-                maxDist = far * 1.15f;
+                minDist = std::min(near + far * 0.3f, 18.0f);
+                maxDist = std::max(minDist + 1.0f, std::min(far * 1.15f, 22.0f));
                 break;
             default:    // ranged damage: the back line, a little wider
                 angle = pi + _formationSide * 0.4f;
@@ -3062,6 +3128,9 @@ namespace Companions
         for (Unit* enemy : _view.Enemies)
             if (enemy->GetExactDist(pos) <= radius && IsCrowdControlTarget(enemy))
                 return true;
+        for (Unit* spared : _view.Spared)
+            if (spared->IsAlive() && spared->GetExactDist(pos) <= radius + spared->GetCombatReach())
+                return true;
         if (Group* group = _bot->GetGroup())
         {
             ObjectGuid moon = group->GetTargetIcon(ICON_MOON);
@@ -3091,6 +3160,67 @@ namespace Companions
             if (CompanionAI* ai = sCompanionMgr->GetAI(player))
                 return ai->GetEffectiveRole() == Role::Healer;
         return false;
+    }
+
+    // where a healer stands by its tank: behind it, or at its side when the tank holds a boss whose front hurts (behind the
+    // tank is the front of the boss: Onyxia's 45-yard Flame Breath killed a raid's healers there)
+    ChaseAngle CompanionAI::HealerSpot(Unit const* tank) const
+    {
+        Creature const* boss = tank && tank->GetVictim() ? tank->GetVictim()->ToCreature() : nullptr;
+        if (boss && (Mechanics::HasRule(boss->GetEntry(), Mechanics::Kind::AvoidSides) || Mechanics::HasRule(boss->GetEntry(), Mechanics::Kind::AvoidFront)))
+            return ChaseAngle(_formationSide > 0.0f ? float(M_PI_2) : float(M_PI) * 1.5f, float(M_PI) / 8.0f);
+        return ChaseAngle(float(M_PI));
+    }
+
+    bool CompanionAI::IsBossTank() const
+    {
+        size_t const bossTanks = std::min<size_t>(2, _view.Tanks.size());
+        return std::find(_view.Tanks.begin(), _view.Tanks.begin() + bossTanks, _bot) != _view.Tanks.begin() + bossTanks;
+    }
+
+    // A raid's healers share the work like a raid's healers do: three in five on the tanks (half of those on the main tank,
+    // the others spread over the off-tanks), the rest on the raid, paladins and priests on the tanks first, shamans (Chain
+    // Heal) on the raid. Every companion healer works the same list out, so they agree without a word; a dead tank's healers
+    // go to the others. In a party (or with fewer than three healers) nobody is assigned.
+    Player* CompanionAI::AssignedTank(bool* healersAssigned) const
+    {
+        if (healersAssigned)
+            *healersAssigned = false;
+        Group const* group = _bot->GetGroup();
+        if (!group || !group->isRaidGroup() || GetEffectiveRole() != Role::Healer)
+            return nullptr;
+        std::vector<Player*> healers;
+        for (Player* member : _view.Members)
+            if (member->IsAlive() && IsHealer(member))
+                healers.push_back(member);
+        std::vector<Player*> tanks;
+        for (Player* tank : _view.Tanks)
+            if (tank->IsAlive() && tank != _bot)
+                tanks.push_back(tank);
+        if (healers.size() < 3 || tanks.empty())
+            return nullptr;
+        if (healersAssigned)
+            *healersAssigned = true;
+        auto fit = [](Player const* healer)
+        {
+            switch (healer->GetClass())
+            {
+                case CLASS_PALADIN: return 0;
+                case CLASS_PRIEST:  return 1;
+                case CLASS_DRUID:   return 2;
+                default:            return 3;
+            }
+        };
+        std::sort(healers.begin(), healers.end(), [&](Player const* a, Player const* b)
+            { return fit(a) != fit(b) ? fit(a) < fit(b) : a->GetGUID() < b->GetGUID(); });
+        size_t const onTanks = std::clamp<size_t>((healers.size() * 3 + 4) / 5, std::min<size_t>(tanks.size(), 2), healers.size() - 1);
+        size_t const onMain = std::max<size_t>(1, (onTanks + 1) / 2);
+        size_t const index = std::find(healers.begin(), healers.end(), _bot) - healers.begin();
+        if (index >= onTanks)
+            return nullptr;
+        if (index < onMain || tanks.size() == 1)
+            return tanks.front();
+        return tanks[1 + (index - onMain) % (tanks.size() - 1)];
     }
 
     Unit* CompanionAI::LowestAlly(float maxPct, float range, bool includePets) const

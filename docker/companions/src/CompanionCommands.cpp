@@ -32,6 +32,7 @@
 #include "GridNotifiersImpl.h"
 #include "Language.h"
 #include "MotionMaster.h"
+#include "MoveSpline.h"
 #include "Log.h"
 #include "ObjectAccessor.h"
 #include "ObjectMgr.h"
@@ -936,6 +937,9 @@ namespace Companions
                 { "status", HandleTestStatus, rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "rolepoll", HandleTestRolePoll, rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "walk",   HandleTestWalk,   rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
+                { "hp",     HandleTestHp,     rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
+                { "sethp",  HandleTestSetHp,  rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
+                { "castat", HandleTestCastAt, rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "go",     HandleTestGo,     rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "near",   HandleTestNear,   rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
                 { "ambient", HandleTestAmbient, rbac::RBAC_PERM_COMMAND_SERVER_SHUTDOWN, Console::Yes },
@@ -1619,6 +1623,66 @@ namespace Companions
             return true;
         }
 
+        // .bot test castat <name> <spell> <creature entry> [triggered]: that character casts the spell at the nearest such creature
+        // and tells the result (SpellCastResult: 0 = cast); for scripted encounters that make players cast
+        static bool HandleTestCastAt(ChatHandler* handler, std::string name, uint32 spellId, uint32 entry, Optional<uint32> triggered)
+        {
+            Player* player = ObjectAccessor::FindPlayerByName(name);
+            Creature* target = player ? player->FindNearestCreature(entry, 200.0f) : nullptr;
+            if (!target)
+            {
+                handler->PSendSysMessage("Companions test: no %s or no creature %u near", name.c_str(), entry);
+                return true;
+            }
+            SpellCastResult result = player->CastSpell(target, spellId, triggered.value_or(1) != 0);
+            handler->PSendSysMessage("%s casts %u at %s (%.1f yards): result %u, charming %s", player->GetName().c_str(), spellId,
+                target->GetName().c_str(), player->GetDistance(target), uint32(result), player->GetCharmedGUID().IsEmpty() ? "nothing" : "it");
+            return true;
+        }
+
+        // .bot test hp <owner> [entry]: the whole group on one line: health %, yards to the nearest creature of that entry, and
+        // the auras on each that a mechanics rule names (Living Bomb, Ignite Mana...): to watch a boss fight second by second
+        static bool HandleTestHp(ChatHandler* handler, std::string owner, Optional<uint32> entry)
+        {
+            Player* puppet = Puppet(handler, owner);
+            Group* group = puppet ? puppet->GetGroup() : nullptr;
+            if (!group)
+                return true;
+            Creature* boss = entry ? puppet->FindNearestCreature(*entry, 200.0f) : nullptr;
+            std::string line;
+            for (GroupReference const& ref : group->GetMembers())
+            {
+                Player* member = ref.GetSource();
+                if (!member)
+                    continue;
+                line += Trinity::StringFormat(" | {} {}", member->GetName(), member->IsAlive() ? uint32(member->GetHealthPct()) : 0);
+                if (boss && member->IsAlive())
+                    line += Trinity::StringFormat(" d{:.0f}", member->GetExactDist2d(boss));
+                for (auto const& [spellId, application] : member->GetAppliedAuras())
+                    if (!Mechanics::RulesForSpell(spellId).empty())
+                        line += Trinity::StringFormat(" *{}", spellId);
+            }
+            if (boss)
+                line = Trinity::StringFormat("{} {}% on {} at {:.0f} {:.0f} {:.0f}{}{}{}{}", boss->GetName(), uint32(boss->GetHealthPct()),
+                    boss->GetVictim() ? boss->GetVictim()->GetName() : "-", boss->GetPositionX(), boss->GetPositionY(), boss->GetPositionZ(),
+                    boss->movespline->Finalized() ? "" : " moving", boss->GetTarget().IsEmpty() ? " no-target" : "",
+                    boss->GetSpeedRate(MOVE_RUN) > 2.0f ? " fast" : "", line);
+            handler->SendSysMessage(line);
+            return true;
+        }
+
+        // .bot test sethp <owner> <entry> <pct>: the nearest creature of that entry to that share of its health (a boss's next phase)
+        static bool HandleTestSetHp(ChatHandler* handler, std::string owner, uint32 entry, uint32 pct)
+        {
+            Player* puppet = Puppet(handler, owner);
+            Creature* creature = puppet ? puppet->FindNearestCreature(entry, 200.0f) : nullptr;
+            if (!creature)
+                return true;
+            creature->SetHealth(std::max<uint64>(1, creature->CountPctFromMaxHealth(int32(std::min<uint32>(pct, 100)))));
+            handler->PSendSysMessage("%s at %u%%", creature->GetName().c_str(), uint32(creature->GetHealthPct()));
+            return true;
+        }
+
         // .bot test walk <owner> <x> <y> <z>: the stand-in walks there, as a player does (the companions follow it on the move)
         static bool HandleTestWalk(ChatHandler* handler, std::string owner, float x, float y, float z)
         {
@@ -2066,6 +2130,10 @@ namespace Companions
             handler->PSendSysMessage("  mechanics: %s", ai->MechanicsLine().c_str());
             if (bot->GetClass() == CLASS_MAGE)
                 handler->PSendSysMessage("  conjuring: %s", ai->ConjureLine().c_str());
+            if (bot->GetMapId() == 469)
+                handler->PSendSysMessage("  orb: %s", ai->OrbLine().c_str());
+            if (Unit* charmer = bot->GetCharmer())
+                handler->PSendSysMessage("  charmed by %s (%u)", charmer->GetName().c_str(), charmer->GetEntry());
             if (TradeData* trade = bot->GetTradeData())
             {
                 uint32 items = 0;
